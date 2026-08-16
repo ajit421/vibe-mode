@@ -256,19 +256,54 @@
    * cropped — cropping to fill the window is what made the scene look like a
    * zoomed-in detail rather than a room you are sitting in.
    */
+  /* The box is given the artwork's own ratio and centred, so it matches the
+     rendered scene exactly. That matters for the mask below: each scene paints
+     an opaque backdrop, and where that backdrop stops it meets the page on a
+     hard seam. Feathering only works if the mask lines up with the artwork, so
+     the box cannot just be the whole viewport with the scene floating in it.
+
+     `margin: auto` against a full `inset`, not a transform — Motion writes an
+     inline `transform` here for the cross-fade and would overwrite it. */
   .vm-scene {
     position: absolute;
     inset: 0;
+    margin: auto;
+    height: 100%;
+    width: auto;
+    aspect-ratio: 10 / 7;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      black 8%,
+      black 92%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
   }
 
-  /* On a portrait window the scene is confined to the upper area so it clears
-     the bottom-anchored text panel. No mask or aspect-ratio juggling is needed
-     any more: `meet` fits the artwork inside whatever box it is given and
-     leaves the remainder transparent, so the theme gradient simply continues
-     around it and there are no hard edges to feather. */
+  /* Portrait: width-driven and pinned to the upper area so the whole scene
+     clears the bottom-anchored text panel. The seams are horizontal here, so
+     the feather turns with it. */
   @media (max-aspect-ratio: 20/19) {
     .vm-scene {
-      inset: 7% 0 40% 0;
+      inset: 7% 0 auto 0;
+      margin: 0;
+      width: 100%;
+      height: auto;
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        black 9%,
+        black 91%,
+        transparent 100%
+      );
+      mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        black 9%,
+        black 91%,
+        transparent 100%
+      );
     }
   }
 

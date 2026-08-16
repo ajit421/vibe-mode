@@ -19,10 +19,6 @@ export function Landing() {
     // `pointer-events-auto`: the landing is a full screen of interface, so it
     // takes clicks back from the scene behind it.
     <div className="pointer-events-auto mx-auto flex h-full max-w-[1600px] flex-col justify-center gap-1 overflow-hidden px-4 pt-16 pb-4 sm:px-6">
-      <motion.p {...rise(0)} className="vm-label text-primary" style={{ letterSpacing: '0.24em' }}>
-        Vibe Mode
-      </motion.p>
-
       {/* `vh`-aware clamps: the headline and the gaps give ground on a short
           window so the mode cards below always stay on screen. */}
       <motion.h1

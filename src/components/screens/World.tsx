@@ -1,7 +1,6 @@
 import { Hero } from '@/components/hero/Hero';
 import { QuoteRotator } from '@/components/hero/QuoteRotator';
 import { StatsPanel } from '@/components/hero/StatsPanel';
-import { PlaylistChips } from '@/components/player/PlaylistChips';
 import { StatusBar } from '@/components/layout/StatusBar';
 
 /**
@@ -31,23 +30,14 @@ export function World() {
             and `pointer-events-auto` is safe here because the panel is opaque
             anyway — nothing behind it is clickable. */}
         <div className="pointer-events-auto vm-panel flex w-fit min-w-0 max-w-full flex-col rounded-2xl px-5 py-4 sm:px-6 sm:py-5 lg:max-w-[38rem]">
-          {/* Nothing here re-enables pointer events at block level — the text
-              is not interactive, and a transparent box over the scene would
-              block its hotspots. The controls inside the quote row and the
-              playlist chips opt themselves back in.
-
-              Spacing is deliberately uneven: title and quote belong together,
-              so they sit close, and the playlist sits further down as its own
-              thing. Even gaps between four blocks is what made this read as a
-              stack of widgets rather than a page. */}
+          {/* No playlist switcher here. It lives in the player's expanded
+              drawer and in Settings, which is where you go when you actually
+              want to change what is playing — on this screen it was a second
+              set of controls competing with the player bar directly below it. */}
           <Hero />
 
-          <div className="vm-hide-short mt-5 lg:mt-7">
+          <div className="vm-hide-short mt-5 lg:mt-6">
             <QuoteRotator />
-          </div>
-
-          <div className="mt-7 lg:mt-9">
-            <PlaylistChips />
           </div>
 
           {/* Flavour, and the first thing to go when height is scarce. */}
