@@ -42,7 +42,9 @@ export function RadioSetVisual() {
     <svg
       viewBox="0 0 800 560"
       className="h-full w-full"
-      role="img"
+      // `group`, not `img` — `img` makes descendants presentational, hiding the
+      // Hotspots from screen readers while they stay keyboard-focusable.
+      role="group"
       aria-label="A wooden valve radio on a table: a woven speaker grille, a glowing tuning dial with a red needle, three bakelite knobs and a telescopic antenna."
     >
       <defs>

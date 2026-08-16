@@ -15,7 +15,9 @@ export function CollegeDeskVisual() {
     <svg
       viewBox="0 0 800 560"
       className="h-full w-full"
-      role="img"
+      // `group`, not `img` — `img` makes descendants presentational, hiding the
+      // Hotspots from screen readers while they stay keyboard-focusable.
+      role="group"
       aria-label="A classroom seen from the back bench: a green blackboard with chalk writing, and a carved wooden desk holding an open notebook, a phone with a shared earphone splitter and a water bottle."
     >
       <defs>
@@ -57,59 +59,59 @@ export function CollegeDeskVisual() {
 
       {/* ── Blackboard ──────────────────────────────────────────────────── */}
       <Hotspot label="Read the blackboard" onActivate={() => push(board.item ?? '> kuch samajh nahi aaya', 'BOARD')}>
-        <rect x="168" y="56" width="592" height="256" rx="6" fill="#3a2a18" />
-        <rect x="180" y="68" width="568" height="232" rx="3" fill="url(#cl-board)" />
+        <rect x="168" y="48" width="592" height="238" rx="6" fill="#3a2a18" />
+        <rect x="180" y="60" width="568" height="214" rx="3" fill="url(#cl-board)" />
 
         {/* Chalk smears from a lazy duster */}
         <g fill="#e8eee4" opacity="0.07">
-          <rect x="196" y="90" width="220" height="42" rx="20" />
-          <rect x="430" y="180" width="280" height="54" rx="26" />
-          <rect x="210" y="240" width="180" height="36" rx="18" />
+          <rect x="196" y="78" width="220" height="40" rx="19" />
+          <rect x="430" y="164" width="280" height="50" rx="24" />
+          <rect x="210" y="222" width="180" height="34" rx="17" />
         </g>
 
         <g fontFamily="var(--f-mono)" fill="#e8eee4">
-          <text x="206" y="106" fontSize="17" opacity="0.92" letterSpacing="1">
+          <text x="206" y="94" fontSize="17" opacity="0.92" letterSpacing="1">
             UNIT 4 — IMPORTANT
           </text>
-          <path d="M206 114 h198" stroke="#e8eee4" strokeWidth="1.5" opacity="0.55" />
+          <path d="M206 102 h198" stroke="#e8eee4" strokeWidth="1.5" opacity="0.55" />
 
-          <text x="206" y="146" fontSize="12" opacity="0.66">
+          <text x="206" y="130" fontSize="12" opacity="0.66">
             (sir ne kaha tha exam mein aayega)
           </text>
 
-          <text x="206" y="196" fontSize="13" opacity="0.8">
+          <text x="206" y="176" fontSize="13" opacity="0.8">
             ATTENDANCE :
           </text>
-          <text x="330" y="196" fontSize="14" fill="#f0a52c" opacity="0.95">
+          <text x="330" y="176" fontSize="14" fill="#f0a52c" opacity="0.95">
             61%
           </text>
-          <text x="206" y="220" fontSize="11" opacity="0.5">
+          <text x="206" y="198" fontSize="11" opacity="0.5">
             (75% chahiye)
           </text>
 
           {/* Half-erased diagram nobody copied */}
           <g stroke="#e8eee4" strokeWidth="1.6" fill="none" opacity="0.5">
-            <rect x="470" y="96" width="86" height="54" />
-            <path d="M470 150 l86 -54M556 96 l40 30 l0 54 l-40 -30z" />
-            <path d="M470 96 l40 30 l86 0" />
-            <path d="M596 180 l-40 30 l-86 0" strokeDasharray="4 4" />
+            <rect x="470" y="84" width="86" height="52" />
+            <path d="M470 136 l86 -52M556 84 l40 29 l0 52 l-40 -29z" />
+            <path d="M470 84 l40 29 l86 0" />
+            <path d="M596 165 l-40 29 l-86 0" strokeDasharray="4 4" />
           </g>
-          <text x="470" y="238" fontSize="10" opacity="0.42">
+          <text x="470" y="218" fontSize="10" opacity="0.42">
             fig 4.2 — “simple hai”
           </text>
 
           {/* Today's rotating line, in chalk */}
-          <text x="206" y="272" fontSize="11" fill="#6ee7b7" opacity="0.75">
+          <text x="206" y="246" fontSize="11" fill="#6ee7b7" opacity="0.75">
             {(board.item ?? '').slice(0, 52)}
           </text>
         </g>
 
         {/* Chalk tray */}
-        <rect x="180" y="300" width="568" height="12" rx="3" fill="#4a3620" />
-        <rect x="240" y="296" width="30" height="7" rx="3.5" fill="#f1efe4" />
-        <rect x="278" y="297" width="18" height="6" rx="3" fill="#f8d9a0" />
-        <rect x="640" y="292" width="52" height="14" rx="3" fill="#2f2418" />
-        <rect x="640" y="292" width="52" height="6" rx="3" fill="#5c4a30" />
+        <rect x="180" y="274" width="568" height="12" rx="3" fill="#4a3620" />
+        <rect x="240" y="270" width="30" height="7" rx="3.5" fill="#f1efe4" />
+        <rect x="278" y="271" width="18" height="6" rx="3" fill="#f8d9a0" />
+        <rect x="640" y="266" width="52" height="14" rx="3" fill="#2f2418" />
+        <rect x="640" y="266" width="52" height="6" rx="3" fill="#5c4a30" />
       </Hotspot>
 
       {/* ── Wall clock, watched constantly ──────────────────────────────── */}
@@ -148,7 +150,7 @@ export function CollegeDeskVisual() {
 
       {/* ── Notebook ────────────────────────────────────────────────────── */}
       <Hotspot label="Look at the notebook" onActivate={() => push('Notes? Ye toh sirf doodles hain.', 'NOTEBOOK')}>
-        <g transform="rotate(-3 300 330)">
+        <g transform="translate(0 22) rotate(-3 300 330)">
           <rect x="196" y="278" width="208" height="104" rx="3" fill="#f4f1e2" />
           <rect x="196" y="278" width="208" height="104" rx="3" fill="none" stroke="#d8d2bd" />
           {/* Ruled lines */}
@@ -183,7 +185,7 @@ export function CollegeDeskVisual() {
           </text>
         </g>
         {/* Pen */}
-        <g transform="rotate(24 430 356)">
+        <g transform="translate(0 22) rotate(24 430 356)">
           <rect x="398" y="352" width="72" height="7" rx="3.5" fill="#1f5fa8" />
           <rect x="464" y="353" width="14" height="5" rx="2.5" fill="#cfd6dd" />
           <rect x="398" y="352" width="16" height="7" rx="3.5" fill="#123f74" />
@@ -198,7 +200,7 @@ export function CollegeDeskVisual() {
           push(shared ? 'Theek hai, dono kaan mere.' : 'Ek earphone tu le, ek main.', 'MUSIC');
         }}
       >
-        <g transform="rotate(8 540 336)">
+        <g transform="translate(0 20) rotate(8 540 336)">
           <rect x="504" y="292" width="72" height="88" rx="9" fill="#15181c" />
           <rect x="509" y="297" width="62" height="78" rx="6" fill="#0c1a16" />
           {/* Tiny now-playing UI */}
@@ -230,33 +232,33 @@ export function CollegeDeskVisual() {
         </g>
 
         {/* Splitter and two cables heading opposite ways */}
-        <circle cx="560" cy="384" r="6" fill="#2b2f34" />
+        <circle cx="560" cy="404" r="6" fill="#2b2f34" />
         <path
-          d="M560 384 C 520 404 470 396 436 414"
+          d="M560 404 C 520 424 470 416 436 434"
           stroke="#e8e4d8"
           strokeWidth="2.5"
           fill="none"
           strokeLinecap="round"
         />
         <path
-          d={shared ? 'M560 384 C 606 404 656 398 700 418' : 'M560 384 C 596 400 606 424 588 442'}
+          d={shared ? 'M560 404 C 606 424 656 418 700 438' : 'M560 404 C 596 420 606 444 588 462'}
           stroke="#e8e4d8"
           strokeWidth="2.5"
           fill="none"
           strokeLinecap="round"
           style={{ transition: 'd 300ms ease' }}
         />
-        <circle cx="436" cy="414" r="5" fill="#e8e4d8" />
-        <circle cx={shared ? 700 : 588} cy={shared ? 418 : 442} r="5" fill="#e8e4d8" />
+        <circle cx="436" cy="434" r="5" fill="#e8e4d8" />
+        <circle cx={shared ? 700 : 588} cy={shared ? 438 : 462} r="5" fill="#e8e4d8" />
       </Hotspot>
 
       {/* ── Water bottle ────────────────────────────────────────────────── */}
       <g>
-        <rect x="676" y="288" width="34" height="86" rx="10" fill="#7fb3d5" opacity="0.65" />
-        <rect x="676" y="288" width="34" height="86" rx="10" fill="none" stroke="#5b90b3" opacity="0.6" />
-        <rect x="676" y="330" width="34" height="44" rx="8" fill="#4a90c2" opacity="0.5" />
-        <rect x="684" y="272" width="18" height="18" rx="4" fill="#2f6f9e" />
-        <rect x="678" y="316" width="30" height="12" fill="#f0a52c" opacity="0.55" />
+        <rect x="676" y="308" width="34" height="86" rx="10" fill="#7fb3d5" opacity="0.65" />
+        <rect x="676" y="308" width="34" height="86" rx="10" fill="none" stroke="#5b90b3" opacity="0.6" />
+        <rect x="676" y="350" width="34" height="44" rx="8" fill="#4a90c2" opacity="0.5" />
+        <rect x="684" y="292" width="18" height="18" rx="4" fill="#2f6f9e" />
+        <rect x="678" y="336" width="30" height="12" fill="#f0a52c" opacity="0.55" />
       </g>
 
       {/* ── Bag slung on the desk edge ──────────────────────────────────── */}

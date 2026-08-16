@@ -26,7 +26,9 @@ export function OfficeDeskVisual() {
     <svg
       viewBox="0 0 800 560"
       className="h-full w-full"
-      role="img"
+      // `group`, not `img` — `img` makes descendants presentational, hiding the
+      // Hotspots from screen readers while they stay keyboard-focusable.
+      role="group"
       aria-label="An office desk: a monitor with a code editor open, a laptop, keyboard, coffee mug, a small plant and daylight from a window."
     >
       <defs>
@@ -174,10 +176,13 @@ export function OfficeDeskVisual() {
       </Hotspot>
 
       {/* ── Notification chip ───────────────────────────────────────────── */}
+      {/* No animation-delay here: a delayed `both`-filled animation holds the
+          element at opacity 0, so it would stay invisible for as long as
+          animations are paused (a backgrounded tab). */}
       <g
         style={
           motionEnabled
-            ? ({ animation: 'vm-rise 0.6s ease-out 1.2s both' } as CSSProperties)
+            ? ({ animation: 'vm-rise 0.5s ease-out both' } as CSSProperties)
             : undefined
         }
       >

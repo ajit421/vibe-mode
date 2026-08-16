@@ -28,7 +28,9 @@ export function TrainWindowVisual() {
     <svg
       viewBox="0 0 800 560"
       className={`h-full w-full ${motionEnabled ? 'vm-shudder' : ''}`}
-      role="img"
+      // `group`, not `img` — `img` makes descendants presentational, hiding the
+      // Hotspots from screen readers while they stay keyboard-focusable.
+      role="group"
       aria-label="A window seat on an Indian train: barred window, fields and hills sliding past at golden hour, a paper ticket and a glass of chai on the ledge."
     >
       <defs>

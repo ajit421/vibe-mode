@@ -52,6 +52,14 @@
   /* Height reserved at the bottom for the player bar. */
   --player-height: 92px;
 
+  /* `viewport-fit=cover` in index.html lets the page run under the notch and
+     the home indicator, so every edge-anchored bar has to inset itself back
+     out again or its controls end up untappable on a modern phone. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
   color-scheme: dark;
 }
 
@@ -210,6 +218,20 @@
   .vm-range:hover::-moz-range-thumb,
   .vm-range:focus-visible::-moz-range-thumb {
     opacity: 1;
+  }
+
+  /* Icon buttons are sized for a mouse. On a touch screen the smallest of them
+     lands at 36px, under the 44px every mobile guideline asks for, so grow the
+     hit area there without changing the visual density on desktop. */
+  @media (pointer: coarse) {
+    .vm-tap {
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    .vm-range {
+      height: 32px;
+    }
   }
 
   /* Small uppercase mono label used for kickers, HUD chips and stat rows. */

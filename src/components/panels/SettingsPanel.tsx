@@ -31,7 +31,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
 
   const currentOverride = playlist ? (playlistOverrides[playlist.id] ?? '') : '';
   // `playlist` already has the .env value merged in by `playlistsFor`.
-  const envDefault = playlist?.youtubePlaylistId || playlist?.videoIds?.length;
+  const envDefault = Boolean(playlist?.youtubePlaylistId || playlist?.videoIds?.length);
   const [draft, setDraft] = useState(currentOverride);
   const [invalid, setInvalid] = useState(false);
 

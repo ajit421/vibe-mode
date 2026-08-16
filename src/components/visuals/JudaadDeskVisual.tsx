@@ -24,7 +24,9 @@ export function JudaadDeskVisual() {
     <svg
       viewBox="0 0 800 560"
       className="h-full w-full"
-      role="img"
+      // `group`, not `img` — `img` makes descendants presentational, hiding the
+      // Hotspots from screen readers while they stay keyboard-focusable.
+      role="group"
       aria-label="A messy engineering desk in a rented room at night: a laptop, a circuit board, a multimeter, tools and a cup of chai."
     >
       <defs>

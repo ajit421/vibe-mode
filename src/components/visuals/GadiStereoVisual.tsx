@@ -32,7 +32,9 @@ export function GadiStereoVisual() {
     <svg
       viewBox="0 0 800 560"
       className="h-full w-full"
-      role="img"
+      // `group`, not `img` — `img` makes descendants presentational, hiding the
+      // Hotspots from screen readers while they stay keyboard-focusable.
+      role="group"
       aria-label="The inside of a car at night: a bright aftermarket stereo with a spectrum display, a speedometer, a marigold garland on the mirror and truck-art patterns across the dashboard."
     >
       <defs>

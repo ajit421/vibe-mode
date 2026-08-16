@@ -41,6 +41,11 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
             type="button"
             onClick={() => selectPlaylist(playlist.id)}
             aria-pressed={selected}
+            // Without this the `title` below wins the accessible name, so the
+            // chip announces its blurb instead of the playlist it switches to.
+            aria-label={
+              configured ? playlist.name : `${playlist.name} — not configured yet`
+            }
             title={
               configured
                 ? playlist.description

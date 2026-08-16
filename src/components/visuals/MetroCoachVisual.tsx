@@ -50,7 +50,9 @@ export function MetroCoachVisual() {
     <svg
       viewBox="0 0 800 560"
       className={`h-full w-full ${motionEnabled ? 'vm-shudder' : ''}`}
-      role="img"
+      // `group`, not `img` — `img` makes descendants presentational, hiding the
+      // Hotspots from screen readers while they stay keyboard-focusable.
+      role="group"
       aria-label="Inside a metro coach: a wide window with tunnel lights rushing past, an LED destination board, hanging straps and empty seats."
     >
       <defs>

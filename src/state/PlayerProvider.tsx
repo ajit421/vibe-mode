@@ -51,6 +51,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
   const key = sourceKey(source);
 
+  // `source` is a fresh object whenever the playlist or the overrides map
+  // changes identity, even when it describes the exact same thing to load.
+  // The player effect keys off `key` (the value, not the object) and reads the
+  // source through this ref, so a no-op change no longer tears the iframe down
+  // and restarts the track from zero.
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+
   // Refs let the YouTube callbacks read fresh values without being rebuilt.
   const wasPlayingRef = useRef(false);
   wasPlayingRef.current = isPlaying;
@@ -157,6 +165,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!host) return;
 
+    const source = sourceRef.current;
     if (!source) {
       setStatus('unconfigured');
       setIsPlaying(false);
@@ -297,7 +306,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [host, key, source, readTrack, settleTrackInfo, clearWatchdog, retryToken]);
+  }, [host, key, readTrack, settleTrackInfo, clearWatchdog, retryToken]);
 
   /* ── Tear the player down exactly once, on unmount ────────────────────── */
   useEffect(

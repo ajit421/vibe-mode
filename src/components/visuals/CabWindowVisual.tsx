@@ -41,7 +41,9 @@ export function CabWindowVisual() {
     <svg
       viewBox="0 0 800 560"
       className="h-full w-full"
-      role="img"
+      // `group`, not `img` — `img` makes descendants presentational, hiding the
+      // Hotspots from screen readers while they stay keyboard-focusable.
+      role="group"
       aria-label="The view from the back seat of a cab at night: a rainy windscreen, city lights streaking past, and a navigation screen on the dashboard."
     >
       <defs>

@@ -19,6 +19,8 @@ const TRANSITION_MS = 900;
 
 interface Bootstrap {
   themeId: string;
+  /** True when the mode came from `?mode=` rather than storage or the default. */
+  fromUrl: boolean;
   hasEntered: boolean;
   urlPlaylistId: string | null;
 }
@@ -31,6 +33,7 @@ function bootstrapState(): Bootstrap {
 
   return {
     themeId: theme.id,
+    fromUrl: Boolean(fromUrl),
     // A shared ?mode= link should drop you straight into that world.
     hasEntered: Boolean(fromUrl) || readStorage<boolean>(STORAGE_KEYS.hasEntered, false),
     urlPlaylistId: fromUrl ? url.playlist : null,
@@ -42,10 +45,18 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   bootRef.current ??= bootstrapState();
   const boot = bootRef.current;
 
-  const [themeId, setThemeId] = useLocalStorage<string>(STORAGE_KEYS.selectedTheme, boot.themeId);
+  // `useLocalStorage` prefers whatever is already in storage, so anything the
+  // URL decided has to be re-asserted here — otherwise a returning visitor's
+  // saved mode silently overrides the ?mode= link they were sent.
+  const [themeId, setThemeId] = useLocalStorage<string>(
+    STORAGE_KEYS.selectedTheme,
+    boot.themeId,
+    (stored) => (boot.fromUrl ? boot.themeId : (findTheme(stored)?.id ?? boot.themeId)),
+  );
   const [hasEntered, setHasEntered] = useLocalStorage<boolean>(
     STORAGE_KEYS.hasEntered,
     boot.hasEntered,
+    (stored) => boot.fromUrl || stored === true,
   );
   const [storedPreferences, setPreferences] = useLocalStorage<VibePreferences>(
     STORAGE_KEYS.preferences,

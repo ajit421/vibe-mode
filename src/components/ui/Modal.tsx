@@ -21,6 +21,14 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
   const titleId = useId();
   const descriptionId = useId();
 
+  // Callers pass an inline arrow, so `onClose` is a new function on every
+  // parent render. Reading it through a ref keeps the effect below keyed on
+  // `open` alone — otherwise it tears down and re-runs on every render of the
+  // app shell (which re-renders ~2.5×/second while a track is playing),
+  // yanking focus back to the first control mid-keystroke.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   // Escape closes, Tab stays inside. Small hand-rolled trap — enough for two
   // simple dialogs and cheaper than pulling in a focus-management library.
   useEffect(() => {
@@ -33,7 +41,7 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panel) return;
@@ -63,7 +71,7 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <AnimatePresence>

@@ -30,7 +30,16 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
   const Icon = theme.icon;
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50">
+    // Insets live on the header so the inner row keeps its responsive padding
+    // and simply starts below the notch / inside the rounded corners.
+    <header
+      className="fixed inset-x-0 top-0 z-50"
+      style={{
+        paddingTop: 'var(--safe-top)',
+        paddingLeft: 'var(--safe-left)',
+        paddingRight: 'var(--safe-right)',
+      }}
+    >
       {/* Scrim so page content scrolling underneath never collides with the
           wordmark or the controls. */}
       <div
@@ -52,6 +61,9 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
             <button
               type="button"
               onClick={() => setSelectorOpen(true)}
+              // Both labels below are hidden on small screens, which would
+              // leave this as an unnamed icon-only button on a phone.
+              aria-label={`Change vibe — currently ${theme.name}`}
               className="vm-panel group flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-3 transition-colors hover:border-primary/50"
             >
               <Icon className="size-3.5 text-primary" />

@@ -190,7 +190,12 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
         </div>
 
         {/* ── Main row ───────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-3 pb-3 sm:gap-4 sm:px-6">
+        {/* The extra bottom padding clears the home indicator on notched
+            phones — without it the transport buttons sit underneath it. */}
+        <div
+          className="flex items-center gap-3 px-3 pb-3 sm:gap-4 sm:px-6"
+          style={{ paddingBottom: 'calc(0.75rem + var(--safe-bottom))' }}
+        >
           {/* The YouTube iframe itself, doubling as the artwork. */}
           <div
             className={cn(

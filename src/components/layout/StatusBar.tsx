@@ -52,7 +52,9 @@ export function StatusBar() {
         {(theme.hud ?? []).map((item) => (
           <div key={item.label} className="flex items-center gap-1.5">
             <span className="hidden h-4 w-px bg-line sm:block" aria-hidden="true" />
-            <span className="vm-label text-muted/70">{item.label}</span>
+            {/* Full `muted`, not `muted/70` — at 11px the faded variant lands
+                around 4.2:1 on the darker themes, under the AA threshold. */}
+            <span className="vm-label text-muted">{item.label}</span>
             <span className="font-mono text-xs text-ink/85">{item.value}</span>
           </div>
         ))}
