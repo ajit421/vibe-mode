@@ -234,6 +234,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           events: {
             onReady: (event: YTPlayerEvent) => {
               const player = event.target;
+
+              // The embed is covered by the artwork, so it must not be a tab
+              // stop or a thing a screen reader offers to enter — nothing in
+              // there is reachable or useful once it is hidden behind the
+              // thumbnail. We drive it entirely through the JS API.
+              const iframe = host.querySelector('iframe');
+              if (iframe) {
+                iframe.setAttribute('tabindex', '-1');
+                iframe.setAttribute('aria-hidden', 'true');
+                iframe.setAttribute('title', 'Audio stream');
+              }
+
               player.setVolume(clamp(volumeRef.current, 0, 100));
               if (mutedRef.current) player.mute();
               else player.unMute();

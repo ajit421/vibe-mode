@@ -75,6 +75,20 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
   const errored = status === 'error';
   const controlsDisabled = unconfigured || errored;
 
+  // `mqdefault` is the only still that is a true 16:9 crop and exists for every
+  // video — `hqdefault` is 4:3 with black bars, `maxresdefault` 404s on plenty
+  // of tracks. At ~10kB it costs less than a second of the video we're no
+  // longer showing.
+  const thumbnailUrl =
+    track?.videoId && !unconfigured && !errored
+      ? `https://i.ytimg.com/vi/${encodeURIComponent(track.videoId)}/mqdefault.jpg`
+      : null;
+
+  // A pulled or region-locked video still resolves a videoId but has no still,
+  // so fall back to the mode's emoji rather than leaving a broken image.
+  const [artworkFailed, setArtworkFailed] = useState(false);
+  useEffect(() => setArtworkFailed(false), [thumbnailUrl]);
+
   const share = async () => {
     const url = buildShareUrl({ mode: theme.id, playlist: playlist?.id ?? null });
     try {
@@ -196,24 +210,45 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
           className="flex items-center gap-3 px-3 pb-3 sm:gap-4 sm:px-6"
           style={{ paddingBottom: 'calc(0.75rem + var(--safe-bottom))' }}
         >
-          {/* The YouTube iframe itself, doubling as the artwork. */}
+          {/* Cover art. The YouTube player sits underneath, painted but fully
+              covered — see the note on the host div below. */}
           <div
             className={cn(
-              'relative shrink-0 overflow-hidden rounded-lg border border-line bg-black transition-[width,height] duration-300',
+              'relative shrink-0 overflow-hidden rounded-lg border border-line bg-canvas-2 transition-[width,height] duration-300',
               expanded ? 'h-[74px] w-[132px] sm:h-[104px] sm:w-[185px]' : 'h-12 w-[85px]',
             )}
           >
+            {/* The embed has to stay in the layout and stay painted: YouTube
+                refuses to play from a `display:none` or zero-sized iframe. So
+                it keeps its box and the artwork is drawn over the top of it,
+                which is also why the box stays this small — YouTube picks its
+                video rendition from the player size, so a thumbnail-sized
+                player means it streams the lowest one and spends almost all
+                the bandwidth on audio. */}
             <div
               ref={player.registerHost}
-              className="absolute inset-0 [&_iframe]:h-full [&_iframe]:w-full"
+              className="pointer-events-none absolute inset-0 [&_iframe]:h-full [&_iframe]:w-full"
             />
-            {(unconfigured || errored || !track) && (
+
+            {thumbnailUrl && !artworkFailed ? (
+              <img
+                src={thumbnailUrl}
+                alt=""
+                width={320}
+                height={180}
+                loading="lazy"
+                decoding="async"
+                onError={() => setArtworkFailed(true)}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
               <div className="absolute inset-0 grid place-items-center bg-canvas-2">
                 <span className="text-lg opacity-60" aria-hidden="true">
                   {theme.emoji}
                 </span>
               </div>
             )}
+
             {isBuffering && (
               <span className="absolute inset-0 grid place-items-center bg-black/45">
                 <Loader2 className="size-4 animate-spin text-primary" />
