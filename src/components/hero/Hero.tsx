@@ -14,7 +14,9 @@ export function Hero() {
 
   return (
     <AnimatePresence mode="wait" initial={false}>
-      <div key={theme.id}>
+      {/* motion.div, not div — AnimatePresence needs a motion child to hold
+          the exit animation open while the previous world fades out. */}
+      <motion.div key={theme.id} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}>
         <motion.p
           {...rise(0)}
           className="vm-label text-primary/90"
@@ -33,7 +35,7 @@ export function Hero() {
         <motion.p {...rise(0.12)} className="mt-4 max-w-lg text-base text-muted sm:text-lg">
           {theme.hero.subtitle}
         </motion.p>
-      </div>
+      </motion.div>
     </AnimatePresence>
   );
 }

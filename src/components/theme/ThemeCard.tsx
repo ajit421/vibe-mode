@@ -69,20 +69,21 @@ export function ThemeCard({
       <div className="flex flex-1 flex-col gap-2 px-4 pt-1 pb-4">
         <div className="flex items-center gap-2">
           <Icon className="size-4 shrink-0" style={{ color: theme.colors.primary }} />
-          <h3
+          {/* Spans, not headings — a <button> may only contain phrasing content. */}
+          <span
             className="font-display text-base font-semibold"
             style={{ color: theme.colors.text }}
           >
             {theme.name}
-          </h3>
+          </span>
           <span className="ml-auto text-lg" aria-hidden="true">
             {theme.emoji}
           </span>
         </div>
 
-        <p className="text-[0.82rem] leading-relaxed" style={{ color: theme.colors.muted }}>
+        <span className="text-[0.82rem] leading-relaxed" style={{ color: theme.colors.muted }}>
           {theme.description}
-        </p>
+        </span>
 
         <div
           className="mt-auto flex items-center gap-1.5 pt-1.5 font-mono text-[0.65rem]"

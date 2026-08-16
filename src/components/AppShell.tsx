@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 import { usePlayer } from '@/state/player-context';
 import { useKeyboardShortcuts, type ShortcutMap } from '@/hooks/useKeyboardShortcuts';
@@ -61,40 +61,54 @@ export function AppShell() {
   useKeyboardShortcuts(shortcuts, !anyOverlayOpen);
 
   return (
-    <div className="relative min-h-dvh">
-      <ThemeBackground />
-      <AmbientEffects />
+    // `reducedMotion="always"` makes Motion skip transform animations while
+    // still cross-fading, matching what the CSS layer does for keyframes.
+    <MotionConfig reducedMotion={motionEnabled ? 'never' : 'always'}>
+      <div className="relative min-h-dvh">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-100 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-canvas"
+        >
+          Skip to content
+        </a>
 
-      <TopBar
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenShortcuts={() => setShortcutsOpen(true)}
-      />
+        <ThemeBackground />
+        <AmbientEffects />
 
-      <main
-        id="main"
-        className="relative z-10"
-        style={{ paddingBottom: 'calc(var(--player-height) + 2.5rem)' }}
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={hasEntered ? 'world' : 'landing'}
-            initial={motionEnabled ? { opacity: 0, y: 12 } : { opacity: 0 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={motionEnabled ? { opacity: 0, y: -10 } : { opacity: 0 }}
-            transition={{ duration: 0.32, ease: 'easeOut' }}
-          >
-            {hasEntered ? <World /> : <Landing />}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+        <TopBar
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+        />
 
-      <MusicPlayer onOpenSettings={() => setSettingsOpen(true)} />
+        <main
+          id="main"
+          className="relative z-10"
+          style={{
+            // No need to clear the player bar while it is parked off-screen.
+            paddingBottom: hasEntered ? 'calc(var(--player-height) + 2.5rem)' : '2rem',
+          }}
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={hasEntered ? 'world' : 'landing'}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.32, ease: 'easeOut' }}
+            >
+              {hasEntered ? <World /> : <Landing />}
+            </motion.div>
+          </AnimatePresence>
+        </main>
 
-      <ToastViewport />
-      <TransitionOverlay />
-      <ModeSelectorOverlay />
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <ShortcutsPanel open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
-    </div>
+        <MusicPlayer onOpenSettings={() => setSettingsOpen(true)} />
+
+        <ToastViewport />
+        <TransitionOverlay />
+        <ModeSelectorOverlay />
+        <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        <ShortcutsPanel open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      </div>
+    </MotionConfig>
   );
 }

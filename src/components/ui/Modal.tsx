@@ -67,8 +67,10 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
 
   return (
     <AnimatePresence>
+      {/* The wrapper must be a motion component: AnimatePresence only
+          propagates exit animations through motion children. */}
       {open && (
-        <div className="fixed inset-0 z-90 flex items-end justify-center p-0 sm:items-center sm:p-6">
+        <motion.div className="fixed inset-0 z-90 flex items-end justify-center p-0 sm:items-center sm:p-6">
           <motion.div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             initial={{ opacity: 0 }}
@@ -108,7 +110,7 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
             </div>
             <div className="px-5 py-5 sm:px-6">{children}</div>
           </motion.div>
-        </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );

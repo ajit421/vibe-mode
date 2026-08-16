@@ -9,7 +9,7 @@ export function ThemeBackground() {
   const { theme } = useVibe();
 
   return (
-    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-base">
+    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-canvas">
       <AnimatePresence initial={false}>
         <motion.div
           key={theme.id}

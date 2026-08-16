@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePageHidden } from './usePageVisibility';
 
+/**
+ * Stable stand-in for a missing list. Passing a fresh `[]` on every render
+ * would retrigger the reset effect below, so optional fields should fall back
+ * to this instead of an inline literal.
+ */
+export const EMPTY_ITEMS: readonly string[] = [];
+
 interface RotatorOptions {
   intervalMs?: number;
   /** Pause auto-advance (e.g. the user is hovering the quote). */

@@ -1,7 +1,7 @@
 import { type CSSProperties } from 'react';
 import { useToast } from '@/state/toast-context';
 import { useVibe } from '@/state/vibe-context';
-import { useRotator } from '@/hooks/useRotator';
+import { EMPTY_ITEMS, useRotator } from '@/hooks/useRotator';
 import { Hotspot } from './Hotspot';
 
 /** Syntax-coloured filler — shaped like real code without pretending to be any. */
@@ -20,7 +20,7 @@ const CODE_LINES: { indent: number; tokens: [string, string][] }[] = [
 export function OfficeDeskVisual() {
   const { push } = useToast();
   const { theme, motionEnabled } = useVibe();
-  const ticker = useRotator(theme.ticker ?? [], { intervalMs: 4200 });
+  const ticker = useRotator(theme.ticker ?? EMPTY_ITEMS, { intervalMs: 4200 });
 
   return (
     <svg

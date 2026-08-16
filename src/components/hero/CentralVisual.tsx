@@ -5,7 +5,7 @@ import { getVisual } from '@/components/visuals/registry';
 
 function VisualSkeleton() {
   return (
-    <div className="absolute inset-0 grid place-items-center bg-base-alt/40">
+    <div className="absolute inset-0 grid place-items-center bg-canvas-2/40">
       <div className="flex items-end gap-1.5" aria-hidden="true">
         {[0, 1, 2, 3, 4].map((index) => (
           <span
@@ -45,7 +45,7 @@ export function CentralVisual() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={theme.id}
-          className="relative aspect-[10/7] w-full overflow-hidden rounded-2xl border border-line/80 bg-base shadow-2xl shadow-black/50"
+          className="relative aspect-[10/7] w-full overflow-hidden rounded-2xl border border-line/80 bg-canvas shadow-2xl shadow-black/50"
           initial={motionEnabled ? { opacity: 0, scale: 0.985, filter: 'blur(6px)' } : { opacity: 0 }}
           animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
           exit={motionEnabled ? { opacity: 0, scale: 1.01, filter: 'blur(8px)' } : { opacity: 0 }}

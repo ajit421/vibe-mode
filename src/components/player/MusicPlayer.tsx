@@ -199,7 +199,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
               className="absolute inset-0 [&_iframe]:h-full [&_iframe]:w-full"
             />
             {(unconfigured || errored || !track) && (
-              <div className="absolute inset-0 grid place-items-center bg-base-alt">
+              <div className="absolute inset-0 grid place-items-center bg-canvas-2">
                 <span className="text-lg opacity-60" aria-hidden="true">
                   {theme.emoji}
                 </span>

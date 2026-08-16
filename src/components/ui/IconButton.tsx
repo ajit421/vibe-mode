@@ -23,7 +23,7 @@ const SIZES: Record<Size, string> = {
 const VARIANTS: Record<Variant, string> = {
   ghost: 'text-ink/70 hover:text-ink hover:bg-ink/8',
   outline: 'text-ink/80 border border-line hover:text-ink hover:border-primary/50',
-  solid: 'bg-primary text-base hover:brightness-110 shadow-lg shadow-glow/25',
+  solid: 'bg-primary text-canvas hover:brightness-110 shadow-lg shadow-glow/25',
 };
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(

@@ -1,11 +1,10 @@
 import { useState, type CSSProperties } from 'react';
 import { useToast } from '@/state/toast-context';
 import { useVibe } from '@/state/vibe-context';
-import { useRotator } from '@/hooks/useRotator';
+import { EMPTY_ITEMS, useRotator } from '@/hooks/useRotator';
 import { Hotspot } from './Hotspot';
 
 const VOLTAGES = ['240.1', '229.8', '0.00', '3.31', '11.98', '5.02', '—.——'];
-const LAMP_STATES = ['on', 'off'] as const;
 
 /**
  * The flagship scene: a rented-room desk at 2am. Front elevation, one warm
@@ -15,9 +14,10 @@ export function JudaadDeskVisual() {
   const { push } = useToast();
   const { theme, motionEnabled } = useVibe();
   const [voltage, setVoltage] = useState(0);
-  const [lamp, setLamp] = useState<(typeof LAMP_STATES)[number]>('on');
+  const [lamp, setLamp] = useState<'on' | 'off'>('on');
 
-  const terminal = useRotator(theme.ticker ?? [], { intervalMs: 3400 });
+  const terminalLines = theme.ticker ?? EMPTY_ITEMS;
+  const terminal = useRotator(terminalLines, { intervalMs: 3400 });
   const lampOn = lamp === 'on';
 
   return (
@@ -173,7 +173,7 @@ export function JudaadDeskVisual() {
           <text x="324" y="232" fontSize="8.5" fontFamily="var(--f-mono)" fill="#5eead4" opacity="0.75">
             judaad@house:~$
           </text>
-          {(theme.ticker ?? []).slice(0, 4).map((line, index) => (
+          {terminalLines.slice(0, 4).map((line, index) => (
             <text
               key={line}
               x="324"

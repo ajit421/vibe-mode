@@ -1,11 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
-import { useRotator } from '@/hooks/useRotator';
+import { EMPTY_ITEMS, useRotator } from '@/hooks/useRotator';
 
 /** A single terminal-style line, cycling. `> ELECTRICAL: checking voltage…` */
 export function Ticker() {
   const { theme, motionEnabled } = useVibe();
-  const lines = theme.ticker ?? [];
+  const lines = theme.ticker ?? EMPTY_ITEMS;
   const { item, index } = useRotator(lines, { intervalMs: 4200 });
 
   if (!lines.length) return null;

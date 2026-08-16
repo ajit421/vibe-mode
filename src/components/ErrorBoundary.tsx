@@ -39,7 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children;
 
     return (
-      <div className="grid min-h-dvh place-items-center bg-base px-6 text-center">
+      <div className="grid min-h-dvh place-items-center bg-canvas px-6 text-center">
         <div className="max-w-md">
           <p className="vm-label text-primary">Something broke</p>
           <h1 className="mt-3 font-display text-3xl font-bold text-ink">
@@ -62,7 +62,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               type="button"
               onClick={this.reset}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-base transition-[filter] hover:brightness-110"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-canvas transition-[filter] hover:brightness-110"
             >
               Reset and start over
             </button>

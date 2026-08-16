@@ -12,8 +12,10 @@
   --color-primary: var(--c-primary);
   --color-secondary: var(--c-secondary);
   --color-accent: var(--c-accent);
-  --color-base: var(--c-background);
-  --color-base-alt: var(--c-background-alt);
+  /* Named `canvas`, not `base` — `text-base` is already Tailwind's font-size
+     utility, and a colour of the same name would shadow it. */
+  --color-canvas: var(--c-background);
+  --color-canvas-2: var(--c-background-alt);
   --color-surface: var(--c-surface);
   --color-ink: var(--c-text);
   --color-muted: var(--c-muted);
