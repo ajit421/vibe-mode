@@ -62,7 +62,7 @@ export const PLAYLISTS: Record<string, VibePlaylist[]> = {
       name: 'Judaad House Nights',
       description: '2am. Everyone is “almost done”.',
       mood: 'Late night',
-      youtubePlaylistId: '',
+      youtubePlaylistId: 'PLeatb7hupNV_AWUl_7ttbsKeCQh8tF5N4',
     },
     {
       id: 'judaad-chai',

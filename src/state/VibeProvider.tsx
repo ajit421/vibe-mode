@@ -47,7 +47,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     STORAGE_KEYS.hasEntered,
     boot.hasEntered,
   );
-  const [preferences, setPreferences] = useLocalStorage<VibePreferences>(
+  const [storedPreferences, setPreferences] = useLocalStorage<VibePreferences>(
     STORAGE_KEYS.preferences,
     DEFAULT_PREFERENCES,
   );
@@ -67,6 +67,13 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   const tabHidden = usePageHidden();
 
   const theme = useMemo(() => getTheme(themeId), [themeId]);
+
+  // Merged with the defaults so a partial object saved by an older build (or a
+  // preference added after that visit) still yields a complete set.
+  const preferences = useMemo(
+    () => ({ ...DEFAULT_PREFERENCES, ...storedPreferences }),
+    [storedPreferences],
+  );
   const motionEnabled = preferences.motion && !systemReducedMotion;
 
   const playlist = useMemo(() => {

@@ -10,18 +10,32 @@ export const STORAGE_KEYS = {
   hasEntered: `${PREFIX}.hasEntered`,
 } as const;
 
+const kindOf = (value: unknown): string => (Array.isArray(value) ? 'array' : typeof value);
+
 /**
  * localStorage is unavailable in some privacy modes and throws on quota
  * errors, so every access is guarded. A failed read simply returns the
  * fallback and a failed write is dropped — persistence is a nicety here, not
  * something the app depends on.
+ *
+ * Stored values are also shape-checked against the fallback. Without that, a
+ * hand-edited entry or one left behind by an older version (a bare `null`, an
+ * array where an object is expected) would flow straight into state and crash
+ * the app on every load — with no way out, since the bad value is persisted.
  */
 export function readStorage<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
     const raw = window.localStorage.getItem(key);
     if (raw === null) return fallback;
-    return JSON.parse(raw) as T;
+
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || parsed === undefined) return fallback;
+    if (fallback !== null && fallback !== undefined && kindOf(parsed) !== kindOf(fallback)) {
+      return fallback;
+    }
+
+    return parsed as T;
   } catch {
     return fallback;
   }

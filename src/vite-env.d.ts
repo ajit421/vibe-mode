@@ -1,8 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_SITE_URL?: string;
-
   readonly VITE_PLAYLIST_JUDAAD_NIGHT?: string;
   readonly VITE_PLAYLIST_JUDAAD_CHAI?: string;
   readonly VITE_PLAYLIST_METRO_VIBES?: string;
