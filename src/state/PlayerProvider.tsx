@@ -6,6 +6,7 @@ import {
   YT_STATE,
   describeYouTubeError,
   loadYouTubeIframeApi,
+  type YTNamespace,
   type YTPlayer,
   type YTPlayerEvent,
 } from '@/music/youtube';
@@ -76,6 +77,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (typeof index === 'number' && index >= 0) setTrackIndex(index);
   }, []);
 
+  const refreshTimers = useRef<number[]>([]);
+  const clearRefreshTimers = useCallback(() => {
+    for (const id of refreshTimers.current) window.clearTimeout(id);
+    refreshTimers.current = [];
+  }, []);
+
+  /**
+   * A newly cued playlist does not expose its track list straight away, and
+   * the CUED event can arrive before the metadata does — read once and the bar
+   * ends up showing the *previous* playlist's tracks under the new playlist's
+   * name. Re-reading on a short schedule lets it catch up.
+   */
+  const settleTrackInfo = useCallback(
+    (player: YTPlayer) => {
+      clearRefreshTimers();
+      for (const delay of [250, 700, 1500, 2600, 4200]) {
+        refreshTimers.current.push(window.setTimeout(() => readTrack(player), delay));
+      }
+    },
+    [clearRefreshTimers, readTrack],
+  );
+
+  useEffect(() => clearRefreshTimers, [clearRefreshTimers]);
+
   /* ── Create / re-target the YouTube player ────────────────────────────── */
   useEffect(() => {
     if (!host) return;
@@ -97,43 +122,42 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setErrorMessage(null);
     setProgress(0);
     setDuration(0);
-
-    const applyToExisting = (player: YTPlayer) => {
-      // Only auto-start the new playlist if music was already playing — that
-      // counts as an existing user gesture, so no autoplay policy problem.
-      const autoplay = wasPlayingRef.current;
-      if (source.kind === 'playlist') {
-        const options = { list: source.playlistId, listType: 'playlist' as const, index: 0 };
-        if (autoplay) player.loadPlaylist(options);
-        else player.cuePlaylist(options);
-      } else if (autoplay) {
-        player.loadPlaylist(source.videoIds);
-      } else {
-        player.cuePlaylist(source.videoIds);
-      }
-      setStatus('ready');
-    };
+    // Drop the outgoing playlist's track straight away rather than showing it
+    // under the incoming playlist's name while the swap is in flight.
+    setTrack(null);
+    setTrackCount(0);
+    setTrackIndex(0);
 
     loadYouTubeIframeApi()
       .then((YT) => {
         if (cancelled) return;
 
+        // Only resume automatically if music was already playing — that counts
+        // as an existing user gesture, so no autoplay-policy problem.
+        const resumePlayback = wasPlayingRef.current;
+
+        // A player created with a playlist in `playerVars` does not reliably
+        // re-target: `cuePlaylist`/`loadPlaylist` are accepted but leave it on
+        // the original list, so the bar ends up one switch behind. Rebuilding
+        // the player is the only dependable way to change playlists.
         if (playerRef.current) {
-          applyToExisting(playerRef.current);
-          return;
+          playerRef.current.destroy?.();
+          playerRef.current = null;
         }
+        host.replaceChildren();
 
         // YouTube *replaces* the element it is given, so hand it a throwaway
         // child rather than the div React is holding a ref to.
         const mount = document.createElement('div');
         host.appendChild(mount);
 
-        playerRef.current = new YT.Player(mount, {
+        // `videoId` must be absent entirely for a playlist — passing the key
+        // with an undefined value makes the API throw "Invalid video id".
+        const config: ConstructorParameters<YTNamespace['Player']>[1] = {
           width: '100%',
           height: '100%',
-          videoId: source.kind === 'videos' ? source.videoIds[0] : undefined,
           playerVars: {
-            autoplay: 0,
+            autoplay: resumePlayback ? 1 : 0,
             controls: 0,
             disablekb: 1,
             modestbranding: 1,
@@ -155,6 +179,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               setStatus('ready');
               setDuration(player.getDuration?.() ?? 0);
               readTrack(player);
+              settleTrackInfo(player);
             },
 
             onStateChange: (event: YTPlayerEvent) => {
@@ -199,7 +224,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               setErrorMessage(message);
             },
           },
-        });
+        };
+
+        if (source.kind === 'videos') config.videoId = source.videoIds[0];
+
+        playerRef.current = new YT.Player(mount, config);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -214,7 +243,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [host, key, source, readTrack, retryToken]);
+  }, [host, key, source, readTrack, settleTrackInfo, retryToken]);
 
   /* ── Tear the player down exactly once, on unmount ────────────────────── */
   useEffect(

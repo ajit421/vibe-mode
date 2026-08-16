@@ -57,7 +57,12 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   );
   const [selectedPlaylists, setSelectedPlaylists] = useLocalStorage<Record<string, string>>(
     STORAGE_KEYS.selectedPlaylists,
-    boot.urlPlaylistId ? { [boot.themeId]: boot.urlPlaylistId } : {},
+    {},
+    // A ?playlist= in the link is an explicit instruction from whoever shared
+    // it, so it has to beat whatever this browser picked last time. Without
+    // this, a returning visitor silently gets their own old choice instead.
+    (stored) =>
+      boot.urlPlaylistId ? { ...stored, [boot.themeId]: boot.urlPlaylistId } : stored,
   );
 
   const [incomingTheme, setIncomingTheme] = useState<ReturnType<typeof getTheme> | null>(null);

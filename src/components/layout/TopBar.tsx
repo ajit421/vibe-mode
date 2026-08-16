@@ -31,7 +31,13 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
 
   return (
     <header className="fixed inset-x-0 top-0 z-50">
-      <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
+      {/* Scrim so page content scrolling underneath never collides with the
+          wordmark or the controls. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-canvas via-canvas/85 to-transparent"
+        aria-hidden="true"
+      />
+      <div className="relative mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
         <button
           type="button"
           onClick={leaveToLanding}

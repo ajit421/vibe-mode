@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 import { usePlayer } from '@/state/player-context';
@@ -60,6 +60,13 @@ export function AppShell() {
 
   // Modals do their own Escape handling and focus trapping.
   useKeyboardShortcuts(shortcuts, !anyOverlayOpen);
+
+  // Entering or switching a world must start at the top — otherwise a scroll
+  // position left over from the mode picker hides the new hero behind the bar.
+  useEffect(() => {
+    if (!hasEntered) return;
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [hasEntered, theme.id]);
 
   return (
     // `reducedMotion="always"` makes Motion skip transform animations while
