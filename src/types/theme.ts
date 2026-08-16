@@ -67,11 +67,9 @@ export interface VibeHero {
   kicker: string;
   title: string;
   /**
-   * Which central visual to render. Resolved through the registry in
-   * `src/components/visuals/registry.ts`. An unknown id falls back to a
-   * generic colour-driven visual, so a new theme never renders blank.
+   * There is no `visual` here any more. The background is a picture configured
+   * per mode in `.env` — see `src/themes/backgrounds.ts`.
    */
-  visual: string;
 }
 
 /** One row of the little stats panel (`CHAI LEVEL ████████░░`). */

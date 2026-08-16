@@ -11,38 +11,6 @@ const GLOBAL: [string, string][] = [
   ['Esc', 'Close whatever is open'],
 ];
 
-/** Easter eggs that only make sense inside a particular world. */
-const PER_MODE: Record<string, [string, string][]> = {
-  metro: [
-    ['A', 'Station announcement'],
-    ['Click the LED board', 'Same announcement'],
-  ],
-  'indian-train': [['Click the window', 'Change how fast the scenery goes past']],
-  'cab-wala': [
-    ['R', 'Reroute'],
-    ['Click the nav screen', 'Same reroute'],
-  ],
-  'judaad-house': [
-    ['Click the screwdriver', 'Jugaad mode activated'],
-    ['Click the chai', 'Chai required'],
-    ['Click the lamp', 'Lights off'],
-  ],
-  office: [['Click the monitor', 'Read the next line of the log']],
-  'radio-wala': [
-    ['T', 'Tune to the next station'],
-    ['Click the dial', 'Same thing, by hand'],
-    ['Click a knob', 'Volume, tone, band'],
-  ],
-  'gadi-wala': [
-    ['Click the stereo', 'Change what is playing'],
-    ['Click the volume knob', 'Louder. Always louder.'],
-  ],
-  college: [
-    ['Click the blackboard', 'Read what you missed'],
-    ['Click the phone', 'Share an earphone'],
-  ],
-};
-
 function Row({ keys, action }: { keys: string; action: string }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
@@ -55,8 +23,7 @@ function Row({ keys, action }: { keys: string; action: string }) {
 }
 
 export function ShortcutsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { theme, themes } = useVibe();
-  const modeShortcuts = PER_MODE[theme.id] ?? [];
+  const { themes } = useVibe();
 
   return (
     <Modal
@@ -84,16 +51,8 @@ export function ShortcutsPanel({ open, onClose }: { open: boolean; onClose: () =
           </div>
         </section>
 
-        {modeShortcuts.length > 0 && (
-          <section>
-            <h3 className="vm-label mb-1 text-muted">In {theme.name}</h3>
-            <div className="divide-y divide-line/50">
-              {modeShortcuts.map(([keys, action]) => (
-                <Row key={keys} keys={keys} action={action} />
-              ))}
-            </div>
-          </section>
-        )}
+        {/* The per-mode section is gone: those shortcuts drove animations
+            inside the drawn scenes, which the background pictures replaced. */}
       </div>
     </Modal>
   );

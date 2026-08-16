@@ -42,7 +42,6 @@ export const radioWala: VibeTheme = {
   hero: {
     kicker: '98.3 FM · AAPKA APNA STATION',
     title: 'RADIO WALA',
-    visual: 'radio-set',
   },
 
   playlists: playlistsFor('radio-wala'),

@@ -1,8 +1,7 @@
 import { motion } from 'motion/react';
 import { Check, ListMusic } from 'lucide-react';
 import type { VibeTheme } from '@/types/theme';
-import { MiniPreview } from '@/components/visuals/MiniPreview';
-import { preloadVisual } from '@/components/visuals/registry';
+import { backgroundImageFor } from '@/themes/backgrounds';
 import { cn } from '@/utils/cn';
 
 interface ThemeCardProps {
@@ -24,13 +23,12 @@ export function ThemeCard({
   index,
 }: ThemeCardProps) {
   const Icon = theme.icon;
+  const preview = backgroundImageFor(theme.id);
 
   return (
     <motion.button
       type="button"
       onClick={() => onSelect(theme.id)}
-      onMouseEnter={() => preloadVisual(theme.hero.visual)}
-      onFocus={() => preloadVisual(theme.hero.visual)}
       aria-pressed={selected}
       initial={motionEnabled ? { opacity: 0, y: 22 } : { opacity: 0 }}
       animate={{ opacity: 1, y: 0 }}
@@ -46,9 +44,23 @@ export function ThemeCard({
       )}
       style={{ backgroundColor: theme.colors.surface }}
     >
-      {/* Animated preview of the world */}
-      <div className="relative h-24 w-full overflow-hidden sm:h-28">
-        <MiniPreview theme={theme} still={!motionEnabled} />
+      {/* The mode's own background, cropped to a strip. When no image is set
+          the card falls back to the mode's gradient, so it still looks like
+          something rather than an empty slot. */}
+      <div
+        className="relative h-24 w-full overflow-hidden sm:h-28"
+        style={{ background: theme.background.gradient ?? theme.colors.backgroundAlt }}
+      >
+        {preview && (
+          <img
+            src={preview}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
         <div
           className="absolute inset-0"
           style={{

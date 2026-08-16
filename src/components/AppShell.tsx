@@ -3,7 +3,6 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 import { usePlayer } from '@/state/player-context';
 import { useKeyboardShortcuts, type ShortcutMap } from '@/hooks/useKeyboardShortcuts';
-import { emitVibeEvent } from '@/utils/events';
 import { ThemeBackground } from '@/components/theme/ThemeBackground';
 import { SceneBackground } from '@/components/theme/SceneBackground';
 import { TransitionOverlay } from '@/components/theme/TransitionOverlay';
@@ -17,12 +16,9 @@ import { ToastViewport } from '@/components/ui/ToastViewport';
 import { Landing } from '@/components/screens/Landing';
 import { World } from '@/components/screens/World';
 
-/** Extra keys that only exist inside a particular world. */
-const MODE_KEYS: Record<string, ShortcutMap> = {
-  metro: { a: () => emitVibeEvent('announce') },
-  'cab-wala': { r: () => emitVibeEvent('reroute') },
-  'radio-wala': { t: () => emitVibeEvent('tune') },
-};
+// The per-mode keys (A to announce, R to reroute, T to tune) are gone with the
+// drawn scenes — they drove animations inside those illustrations, and there is
+// nothing left for them to talk to now that the background is a picture.
 
 export function AppShell() {
   const { themes, theme, hasEntered, enter, selectorOpen, setSelectorOpen, motionEnabled } =
@@ -52,12 +48,8 @@ export function AppShell() {
       map[String(index + 1)] = () => enter(item.id);
     });
 
-    // Mode-specific keys are only bound while that mode is active, so we never
-    // swallow a keystroke a different world has no use for.
-    Object.assign(map, MODE_KEYS[theme.id] ?? {});
-
     return map;
-  }, [themes, theme.id, enter, player, selectorOpen, setSelectorOpen]);
+  }, [themes, enter, player, selectorOpen, setSelectorOpen]);
 
   // Modals do their own Escape handling and focus trapping.
   useKeyboardShortcuts(shortcuts, !anyOverlayOpen);

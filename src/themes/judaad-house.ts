@@ -42,7 +42,6 @@ export const judaadHouse: VibeTheme = {
   hero: {
     kicker: '3 ENGINEERS · 1 HOUSE · 0 PROPER SOLUTIONS',
     title: 'JUDAAD HOUSE',
-    visual: 'judaad-desk',
   },
 
   playlists: playlistsFor('judaad-house'),

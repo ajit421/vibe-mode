@@ -3,7 +3,6 @@ import { AnimatePresence, motion } from 'motion/react';
 import { RefreshCw } from 'lucide-react';
 import { useVibe } from '@/state/vibe-context';
 import { useRotator } from '@/hooks/useRotator';
-import { subscribeVibeEvent } from '@/utils/events';
 import { IconButton } from '@/components/ui/IconButton';
 
 /**
@@ -66,9 +65,6 @@ export function QuoteRotator() {
 
   const revealRef = useRef(reveal);
   revealRef.current = reveal;
-
-  // Poking the scene always counts, pinned or not.
-  useEffect(() => subscribeVibeEvent('interact', () => revealRef.current()), []);
 
   // A click anywhere summons a line while the quote is not pinned.
   useEffect(() => {

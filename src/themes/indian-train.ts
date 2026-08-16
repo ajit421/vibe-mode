@@ -42,7 +42,6 @@ export const indianTrain: VibeTheme = {
   hero: {
     kicker: 'INDIAN RAILWAYS · 12951 · PLATFORM 07',
     title: 'WINDOW SEAT',
-    visual: 'train-window',
   },
 
   playlists: playlistsFor('indian-train'),

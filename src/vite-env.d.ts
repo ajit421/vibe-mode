@@ -23,6 +23,21 @@ interface ImportMetaEnv {
   readonly VITE_PLAYLIST_GADI_HIGHWAY?: string;
   readonly VITE_PLAYLIST_COLLEGE_VIBES?: string;
   readonly VITE_PLAYLIST_COLLEGE_CANTEEN?: string;
+
+  /**
+   * One background picture per mode. Names are derived from the theme id —
+   * see `imageVarFor` in `src/themes/backgrounds.ts`. Declared here purely for
+   * editor autocomplete; the app reads them dynamically, so a new mode works
+   * without touching this file.
+   */
+  readonly VITE_IMAGE_JUDAAD_HOUSE?: string;
+  readonly VITE_IMAGE_METRO?: string;
+  readonly VITE_IMAGE_INDIAN_TRAIN?: string;
+  readonly VITE_IMAGE_CAB_WALA?: string;
+  readonly VITE_IMAGE_OFFICE?: string;
+  readonly VITE_IMAGE_RADIO_WALA?: string;
+  readonly VITE_IMAGE_GADI_WALA?: string;
+  readonly VITE_IMAGE_COLLEGE?: string;
 }
 
 interface ImportMeta {

@@ -42,7 +42,6 @@ export const gadiWala: VibeTheme = {
   hero: {
     kicker: 'HORN OK PLEASE · VOLUME 100',
     title: 'GADI WALA',
-    visual: 'gadi-stereo',
   },
 
   playlists: playlistsFor('gadi-wala'),

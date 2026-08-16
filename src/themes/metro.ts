@@ -42,7 +42,6 @@ export const metro: VibeTheme = {
   hero: {
     kicker: 'NEXT STATION: VIBE',
     title: 'METRO MODE',
-    visual: 'metro-coach',
   },
 
   playlists: playlistsFor('metro'),
