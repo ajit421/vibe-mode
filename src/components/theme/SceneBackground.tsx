@@ -41,7 +41,7 @@ function SceneSkeleton() {
  *    and left-to-right from `lg`, where the text column is on the left.
  */
 export function SceneBackground() {
-  const { theme, motionEnabled } = useVibe();
+  const { theme, motionEnabled, hasEntered } = useVibe();
   const Visual = useMemo(() => getVisual(theme.hero.visual), [theme.hero.visual]);
 
   return (
@@ -67,11 +67,19 @@ export function SceneBackground() {
       {/* An even tint across the whole frame, not a wash down one side.
           Sacrificing half the artwork to make one column readable is what made
           the scene look half-hidden; a uniform knock-back keeps every part of
-          it equally visible and simply calms the whole thing. */}
+          it equally visible and simply calms the whole thing.
+
+          The landing screen is damped much further. Its headline and cards sit
+          straight on the background with no panel of their own, and the scene
+          behind them is just whichever mode happens to be stored — arbitrary,
+          and not worth costing the chooser its legibility. The mode cards carry
+          their own previews, so nothing is lost by holding it back to a wash. */}
       <div
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 transition-[background-color] duration-700"
         aria-hidden="true"
-        style={{ background: 'color-mix(in oklab, var(--c-background) 18%, transparent)' }}
+        style={{
+          background: `color-mix(in oklab, var(--c-background) ${hasEntered ? 18 : 72}%, transparent)`,
+        }}
       />
       {/* Only what the two fixed bars need. The text carries its own surface
           (see `World`), so the scene does not have to be dimmed into a

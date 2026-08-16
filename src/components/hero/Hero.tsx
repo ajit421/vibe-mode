@@ -1,7 +1,14 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 
-/** Kicker, title, subtitle for the active world. */
+/**
+ * The world's kicker and its scene line.
+ *
+ * The mode's name is not here — it is the `h1` in the top bar now. What is
+ * left is the flavour: the ticket-stub kicker, and the line that describes
+ * where you are. Repeating the name in both places just made the panel look
+ * like a duplicate of the header.
+ */
 export function Hero() {
   const { theme, motionEnabled } = useVibe();
 
@@ -25,18 +32,9 @@ export function Hero() {
           {theme.hero.kicker}
         </motion.p>
 
-        <motion.h1
-          {...rise(0.06)}
-          // Sized against height as well as width — on a short window the
-          // headline has to give ground so the scene below stays on screen.
-          className="vm-glow-text mt-2 font-display text-[clamp(1.9rem,min(7vw,6.5vh),4.75rem)] leading-[0.94] font-bold text-ink lg:mt-3"
-        >
-          {theme.hero.title}
-        </motion.h1>
-
         <motion.p
-          {...rise(0.12)}
-          className="vm-hide-short mt-3 max-w-lg text-base text-muted sm:text-lg"
+          {...rise(0.06)}
+          className="mt-2 max-w-lg font-display text-[clamp(1.05rem,2.1vw,1.5rem)] leading-snug font-medium text-ink"
         >
           {theme.hero.subtitle}
         </motion.p>

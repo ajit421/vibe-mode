@@ -250,48 +250,25 @@
 
   /* The scene layer.
    *
-   * The artwork is drawn 10:7 landscape. Stretched edge-to-edge on a portrait
-   * phone, `slice` crops away about two thirds of its width and the scene stops
-   * being recognisable — the metro coach turns into a few streaks of light.
-   *
-   * So the box only goes full-bleed once the window is wide enough to deserve
-   * it. On a portrait window the box is given the artwork's own 10:7 ratio,
-   * which makes `slice` crop nothing at all, and it sits high where the eye
-   * lands. The gradient behind it and the scrim over it blend the edges, so it
-   * still reads as a background rather than a pasted-in picture.
+   * The artwork is drawn 10:7. The scenes render with `preserveAspectRatio`
+   * set to `meet`, so whatever box this class gives them, the whole scene is
+   * fitted inside it and the leftover area stays transparent. Nothing is ever
+   * cropped — cropping to fill the window is what made the scene look like a
+   * zoomed-in detail rather than a room you are sitting in.
    */
   .vm-scene {
     position: absolute;
     inset: 0;
   }
 
+  /* On a portrait window the scene is confined to the upper area so it clears
+     the bottom-anchored text panel. No mask or aspect-ratio juggling is needed
+     any more: `meet` fits the artwork inside whatever box it is given and
+     leaves the remainder transparent, so the theme gradient simply continues
+     around it and there are no hard edges to feather. */
   @media (max-aspect-ratio: 20/19) {
     .vm-scene {
-      inset: auto 0 auto 0;
-      /* Sits below the text rather than behind it, so neither has to fight
-         the other for contrast. */
-      /* High enough to clear the text panel, which is bottom-anchored and
-         takes roughly the lower half of a phone screen. */
-      top: 28%;
-      aspect-ratio: 10 / 7;
-      transform: translateY(-50%);
-      /* Each scene paints its own opaque backdrop, so as a band it would meet
-         the page gradient on two hard horizontal lines. Feathering the edges
-         lets it sit in the page instead of on top of it. */
-      -webkit-mask-image: linear-gradient(
-        to bottom,
-        transparent 0%,
-        black 15%,
-        black 82%,
-        transparent 100%
-      );
-      mask-image: linear-gradient(
-        to bottom,
-        transparent 0%,
-        black 15%,
-        black 82%,
-        transparent 100%
-      );
+      inset: 7% 0 40% 0;
     }
   }
 

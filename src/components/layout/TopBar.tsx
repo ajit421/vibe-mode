@@ -7,24 +7,6 @@ interface TopBarProps {
   onOpenShortcuts: () => void;
 }
 
-function Wordmark() {
-  return (
-    <span className="flex items-center gap-2.5">
-      <svg viewBox="0 0 64 64" className="size-7 shrink-0" aria-hidden="true">
-        <path
-          d="M32 9c-9.4 0-17 7.4-17 16.6 0 11.9 14.4 26.3 15.9 27.8a1.6 1.6 0 0 0 2.2 0C34.6 51.9 49 37.5 49 25.6 49 16.4 41.4 9 32 9Z"
-          fill="var(--c-primary)"
-        />
-        <circle cx="32" cy="25.5" r="10" fill="var(--c-background)" />
-        <path d="M28.6 20.2 38 25.5l-9.4 5.3V20.2Z" fill="var(--c-text)" />
-      </svg>
-      <span className="font-display text-sm font-semibold tracking-[0.22em] text-ink uppercase">
-        Vibe Mode
-      </span>
-    </span>
-  );
-}
-
 export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
   const { theme, hasEntered, setSelectorOpen, leaveToLanding } = useVibe();
   const Icon = theme.icon;
@@ -40,23 +22,30 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
         paddingRight: 'var(--safe-right)',
       }}
     >
-      {/* Scrim so page content scrolling underneath never collides with the
-          wordmark or the controls. */}
+      {/* Scrim so the scene never collides with the title or the controls. */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-canvas via-canvas/85 to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-canvas via-canvas/80 to-transparent"
         aria-hidden="true"
       />
-      <div className="relative mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
-        <button
-          type="button"
-          onClick={leaveToLanding}
-          className="rounded-lg transition-opacity hover:opacity-80"
-          aria-label="Vibe Mode — back to the mode picker"
-        >
-          <Wordmark />
-        </button>
+      <div className="relative mx-auto flex max-w-[1600px] items-start gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:px-8">
+        {/* The mode's name is the page title, so it is the `h1` and it is set
+            at title size. The old lockup sat here saying the product's name
+            instead, which told a visitor already inside a mode nothing. */}
+        {hasEntered && (
+          <button
+            type="button"
+            onClick={leaveToLanding}
+            className="min-w-0 rounded-lg text-left transition-opacity hover:opacity-80"
+            aria-label={`${theme.name} — back to all modes`}
+          >
+            <span className="vm-label block text-[0.6rem] text-muted">{theme.shortName}</span>
+            <h1 className="vm-glow-text truncate font-display text-[clamp(1.4rem,3.4vw,2.35rem)] leading-none font-bold tracking-tight text-ink uppercase">
+              {theme.name}
+            </h1>
+          </button>
+        )}
 
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           {hasEntered && (
             <button
               type="button"
