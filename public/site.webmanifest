@@ -1,0 +1,17 @@
+{
+  "name": "Vibe Mode",
+  "short_name": "Vibe Mode",
+  "description": "Pick where you are and the whole website becomes that world, with the music to match.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0a09",
+  "theme_color": "#0c0a09",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
