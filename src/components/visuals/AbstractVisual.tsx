@@ -13,6 +13,9 @@ export function AbstractVisual() {
   return (
     <svg
       viewBox="0 0 800 560"
+      // Fills the screen and crops, rather than letterboxing: this scene is
+      // the page background now, so it must cover whatever shape the window is.
+      preserveAspectRatio="xMidYMid slice"
       className="h-full w-full"
       role="img"
       aria-label={`${theme.name}: an abstract visual built from the mode's colours.`}

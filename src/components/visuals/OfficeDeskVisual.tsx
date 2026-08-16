@@ -25,6 +25,9 @@ export function OfficeDeskVisual() {
   return (
     <svg
       viewBox="0 0 800 560"
+      // Fills the screen and crops, rather than letterboxing: this scene is
+      // the page background now, so it must cover whatever shape the window is.
+      preserveAspectRatio="xMidYMid slice"
       className="h-full w-full"
       // `group`, not `img` — `img` makes descendants presentational, hiding the
       // Hotspots from screen readers while they stay keyboard-focusable.

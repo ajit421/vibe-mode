@@ -42,7 +42,12 @@ export function QuoteRotator() {
         </AnimatePresence>
       </div>
 
-      <IconButton label="Show another line" size="sm" onClick={next} className="mt-1">
+      <IconButton
+        label="Show another line"
+        size="sm"
+        onClick={next}
+        className="pointer-events-auto mt-1"
+      >
         <RefreshCw />
       </IconButton>
     </div>

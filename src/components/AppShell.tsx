@@ -5,6 +5,7 @@ import { usePlayer } from '@/state/player-context';
 import { useKeyboardShortcuts, type ShortcutMap } from '@/hooks/useKeyboardShortcuts';
 import { emitVibeEvent } from '@/utils/events';
 import { ThemeBackground } from '@/components/theme/ThemeBackground';
+import { SceneBackground } from '@/components/theme/SceneBackground';
 import { TransitionOverlay } from '@/components/theme/TransitionOverlay';
 import { ModeSelectorOverlay } from '@/components/theme/ModeSelectorOverlay';
 import { AmbientEffects } from '@/components/effects/AmbientEffects';
@@ -72,7 +73,9 @@ export function AppShell() {
     // `reducedMotion="always"` makes Motion skip transform animations while
     // still cross-fading, matching what the CSS layer does for keyframes.
     <MotionConfig reducedMotion={motionEnabled ? 'never' : 'always'}>
-      <div className="relative min-h-dvh">
+      {/* The whole app is one non-scrolling screen: the shell owns the viewport
+          height and every child fits inside it rather than extending the page. */}
+      <div className="relative flex h-dvh flex-col overflow-hidden">
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-100 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-canvas"
@@ -80,7 +83,9 @@ export function AppShell() {
           Skip to content
         </a>
 
+        {/* Back to front: base gradient, the mode's scene, ambient layers. */}
         <ThemeBackground />
+        <SceneBackground />
         <AmbientEffects />
 
         <TopBar
@@ -90,15 +95,19 @@ export function AppShell() {
 
         <main
           id="main"
-          className="relative z-10"
+          // Transparent still means clickable, so the screen wrappers would
+          // otherwise swallow every click meant for the scene behind them.
+          // Individual controls opt back in with `pointer-events-auto`.
+          className="pointer-events-none relative z-10 min-h-0 flex-1"
           style={{
             // No need to clear the player bar while it is parked off-screen.
-            paddingBottom: hasEntered ? 'calc(var(--player-height) + 2.5rem)' : '2rem',
+            paddingBottom: hasEntered ? 'var(--player-height)' : '0px',
           }}
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={hasEntered ? 'world' : 'landing'}
+              className="h-full"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}

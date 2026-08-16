@@ -52,7 +52,9 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
                 : `${playlist.name} — set ${envVarFor(playlist.id)} in .env, or add your own from Settings`
             }
             className={cn(
-              'group inline-flex items-center gap-2 rounded-full border transition-all duration-200',
+              // `pointer-events-auto`: in the world layout these sit inside a
+              // click-through column laid over the scene.
+              'group pointer-events-auto inline-flex items-center gap-2 rounded-full border transition-all duration-200',
               variant === 'hero' ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs',
               selected
                 ? 'border-primary/60 bg-primary/14 text-ink shadow-sm shadow-glow/20'

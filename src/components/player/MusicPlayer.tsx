@@ -215,7 +215,9 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
           <div
             className={cn(
               'relative shrink-0 overflow-hidden rounded-lg border border-line bg-canvas-2 transition-[width,height] duration-300',
-              expanded ? 'h-[74px] w-[132px] sm:h-[104px] sm:w-[185px]' : 'h-12 w-[85px]',
+              expanded
+                ? 'h-[74px] w-[132px] sm:h-[104px] sm:w-[185px]'
+                : 'h-11 w-[68px] sm:h-12 sm:w-[85px]',
             )}
           >
             {/* The embed has to stay in the layout and stay painted: YouTube
@@ -274,14 +276,20 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
 
           {/* Transport */}
           <div className="flex items-center gap-0.5 sm:gap-1">
-            <IconButton
-              label="Previous track"
-              onClick={player.previous}
-              disabled={controlsDisabled}
-              className="hidden sm:inline-flex"
-            >
-              <SkipBack />
-            </IconButton>
+            {/* Wrapped rather than given `hidden sm:inline-flex` directly:
+                `cn` is plain clsx, so a `hidden` passed in loses to the
+                `inline-flex` baked into IconButton's own base classes and the
+                button stays visible. `contents` keeps the flex row unchanged
+                at sm and up. */}
+            <span className="hidden sm:contents">
+              <IconButton
+                label="Previous track"
+                onClick={player.previous}
+                disabled={controlsDisabled}
+              >
+                <SkipBack />
+              </IconButton>
+            </span>
 
             {unconfigured ? (
               <IconButton

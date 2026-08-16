@@ -27,12 +27,17 @@ export function Hero() {
 
         <motion.h1
           {...rise(0.06)}
-          className="vm-glow-text mt-3 font-display text-[clamp(2.5rem,7vw,4.75rem)] leading-[0.94] font-bold text-ink"
+          // Sized against height as well as width — on a short window the
+          // headline has to give ground so the scene below stays on screen.
+          className="vm-glow-text mt-2 font-display text-[clamp(1.9rem,min(7vw,6.5vh),4.75rem)] leading-[0.94] font-bold text-ink lg:mt-3"
         >
           {theme.hero.title}
         </motion.h1>
 
-        <motion.p {...rise(0.12)} className="mt-4 max-w-lg text-base text-muted sm:text-lg">
+        <motion.p
+          {...rise(0.12)}
+          className="vm-hide-short mt-3 max-w-lg text-base text-muted sm:text-lg"
+        >
           {theme.hero.subtitle}
         </motion.p>
       </motion.div>

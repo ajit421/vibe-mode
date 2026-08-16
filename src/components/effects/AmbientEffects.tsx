@@ -268,7 +268,8 @@ export function AmbientEffects() {
   const active = Object.entries(effects).filter(([, enabled]) => enabled);
 
   return (
-    <div className="pointer-events-none fixed inset-0 -z-5 overflow-hidden" aria-hidden="true">
+    // Above the scene (`z-0`), below the interface (`z-10`).
+    <div className="pointer-events-none fixed inset-0 z-2 overflow-hidden" aria-hidden="true">
       {active.map(([name]) => {
         const key = name as keyof VibeEffects;
         const Static = STATIC_EFFECTS[key];

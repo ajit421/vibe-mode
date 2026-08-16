@@ -68,9 +68,15 @@
     min-width: 0;
   }
 
-  html {
+  /* The site is a single fixed screen. Locking both elements (rather than just
+     `body`) stops iOS Safari from rubber-banding the whole page, and dropping
+     `scrollbar-gutter` reclaims the 10px it used to reserve for a scrollbar
+     that can no longer appear. */
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
     -webkit-text-size-adjust: 100%;
-    scrollbar-gutter: stable;
   }
 
   body {
@@ -218,6 +224,32 @@
   .vm-range:hover::-moz-range-thumb,
   .vm-range:focus-visible::-moz-range-thumb {
     opacity: 1;
+  }
+
+  /* The scene layer.
+   *
+   * The artwork is drawn 10:7 landscape. Stretched edge-to-edge on a portrait
+   * phone, `slice` crops away about two thirds of its width and the scene stops
+   * being recognisable — the metro coach turns into a few streaks of light.
+   *
+   * So the box only goes full-bleed once the window is wide enough to deserve
+   * it. On a portrait window the box is given the artwork's own 10:7 ratio,
+   * which makes `slice` crop nothing at all, and it sits high where the eye
+   * lands. The gradient behind it and the scrim over it blend the edges, so it
+   * still reads as a background rather than a pasted-in picture.
+   */
+  .vm-scene {
+    position: absolute;
+    inset: 0;
+  }
+
+  @media (max-aspect-ratio: 20/19) {
+    .vm-scene {
+      inset: auto 0 auto 0;
+      top: 42%;
+      aspect-ratio: 10 / 7;
+      transform: translateY(-50%);
+    }
   }
 
   /* Icon buttons are sized for a mouse. On a touch screen the smallest of them
@@ -586,6 +618,23 @@
       rgba(0, 0, 0, 0.16) 3px,
       rgba(0, 0, 0, 0) 4px
     );
+  }
+
+  /* One screen means a height budget, and a short window (a laptop at 1366x768,
+     a phone in landscape, a browser with three toolbars) simply has no room for
+     the decorative readouts. They drop out in the order we would sacrifice them
+     by hand, so what remains — the scene, the title and the playlist — always
+     gets enough space to stay legible instead of everything being squeezed. */
+  @media (max-height: 700px) {
+    .vm-hide-short {
+      display: none;
+    }
+  }
+
+  @media (max-height: 820px) {
+    .vm-hide-shorter {
+      display: none;
+    }
   }
 
   /* Hide scrollbars on the horizontal mode rail without losing scrolling. */
