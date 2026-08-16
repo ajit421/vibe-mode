@@ -22,24 +22,36 @@ import { StatusBar } from '@/components/layout/StatusBar';
  */
 export function World() {
   return (
-    <div className="pointer-events-none mx-auto flex h-full max-w-[1600px] flex-col gap-3 px-4 pt-14 pb-2 sm:px-6 sm:pt-16 lg:gap-4 lg:pt-20">
-      <div className="flex min-h-0 flex-1 flex-col justify-start gap-3 lg:justify-center">
-        {/* A fixed measure, not a percentage: the column has to stay inside the
-            opaque part of the scrim, and a percentage of a very wide window
-            walks straight out of it. */}
-        <div className="flex min-w-0 flex-col gap-2.5 lg:max-w-[34rem] lg:gap-4">
+    <div className="pointer-events-none mx-auto flex h-full max-w-[1600px] flex-col gap-3 px-4 pt-14 pb-4 sm:px-6 sm:pt-16 lg:gap-4 lg:px-8 lg:pt-20 lg:pb-7">
+      <div className="flex min-h-0 flex-1 flex-col justify-end">
+        {/* The text carries its own surface rather than asking the scene to dim
+            itself into a backdrop. A small, deliberate panel costs the artwork
+            one corner; a gradient wide enough to make loose text readable costs
+            it half the frame. `w-fit` keeps the panel as tight as its content,
+            and `pointer-events-auto` is safe here because the panel is opaque
+            anyway — nothing behind it is clickable. */}
+        <div className="pointer-events-auto vm-panel flex w-fit min-w-0 max-w-full flex-col rounded-2xl px-5 py-4 sm:px-6 sm:py-5 lg:max-w-[38rem]">
           {/* Nothing here re-enables pointer events at block level — the text
               is not interactive, and a transparent box over the scene would
               block its hotspots. The controls inside the quote row and the
-              playlist chips opt themselves back in. */}
+              playlist chips opt themselves back in.
+
+              Spacing is deliberately uneven: title and quote belong together,
+              so they sit close, and the playlist sits further down as its own
+              thing. Even gaps between four blocks is what made this read as a
+              stack of widgets rather than a page. */}
           <Hero />
-          <div className="vm-hide-short">
+
+          <div className="vm-hide-short mt-5 lg:mt-7">
             <QuoteRotator />
           </div>
-          <PlaylistChips />
+
+          <div className="mt-7 lg:mt-9">
+            <PlaylistChips />
+          </div>
 
           {/* Flavour, and the first thing to go when height is scarce. */}
-          <div className="vm-hide-short hidden lg:block">
+          <div className="vm-hide-short mt-6 hidden lg:block">
             <StatsPanel />
           </div>
         </div>

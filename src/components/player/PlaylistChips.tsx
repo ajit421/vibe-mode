@@ -55,6 +55,8 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
               // `pointer-events-auto`: in the world layout these sit inside a
               // click-through column laid over the scene.
               'group pointer-events-auto inline-flex items-center gap-2 rounded-full border transition-all duration-200',
+              // Press feedback, matching the scene hotspots and the mode cards.
+              'active:scale-[0.96]',
               variant === 'hero' ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs',
               selected
                 ? 'border-primary/60 bg-primary/14 text-ink shadow-sm shadow-glow/20'

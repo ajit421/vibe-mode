@@ -8,10 +8,11 @@ import { useVibe } from '@/state/vibe-context';
  */
 export function TransitionOverlay() {
   const { incomingTheme } = useVibe();
+  const IncomingIcon = incomingTheme?.icon;
 
   return (
     <AnimatePresence>
-      {incomingTheme && (
+      {incomingTheme && IncomingIcon && (
         <motion.div
           key={incomingTheme.id}
           className="pointer-events-none fixed inset-0 z-95 flex items-center justify-center overflow-hidden"
@@ -52,9 +53,12 @@ export function TransitionOverlay() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ delay: 0.16, duration: 0.3 }}
           >
-            <span className="text-4xl sm:text-5xl" aria-hidden="true">
-              {incomingTheme.emoji}
-            </span>
+            <IncomingIcon
+              className="size-9 sm:size-10"
+              strokeWidth={1.25}
+              style={{ color: incomingTheme.colors.primary }}
+              aria-hidden="true"
+            />
             <span
               className="vm-label text-[0.7rem]"
               style={{ color: incomingTheme.colors.primary }}

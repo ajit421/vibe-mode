@@ -14,8 +14,11 @@ export function QuoteRotator() {
   if (!total) return null;
 
   return (
+    // `max-w-fit` keeps the refresh control tucked against the end of the
+    // line. Left to fill the column it drifts off into the artwork and reads
+    // as a stray icon belonging to nothing.
     <div
-      className="flex items-start gap-2"
+      className="flex max-w-fit items-start gap-2"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}

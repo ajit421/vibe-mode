@@ -76,9 +76,6 @@ export function ThemeCard({
           >
             {theme.name}
           </span>
-          <span className="ml-auto text-lg" aria-hidden="true">
-            {theme.emoji}
-          </span>
         </div>
 
         <span className="text-[0.82rem] leading-relaxed" style={{ color: theme.colors.muted }}>

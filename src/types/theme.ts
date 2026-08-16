@@ -129,7 +129,11 @@ export interface VibeTheme {
   shortName: string;
   /** One line, shown on the mode card. */
   description: string;
-  emoji: string;
+  /**
+   * The mode's mark. A line icon, deliberately — emoji render as a different
+   * typeface on every platform and pull the whole interface toward looking
+   * like a toy.
+   */
   icon: LucideIcon;
   /** Extra ids that should resolve to this theme, for old or misspelt links. */
   aliases?: string[];

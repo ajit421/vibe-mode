@@ -7,7 +7,6 @@ export const metro: VibeTheme = {
   name: 'Metro Mode',
   shortName: 'Metro',
   description: 'Tunnel lights, a seat you did not expect, eleven minutes to yourself.',
-  emoji: '🚇',
   icon: TrainFront,
   aliases: ['subway'],
 

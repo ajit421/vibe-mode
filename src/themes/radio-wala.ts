@@ -7,7 +7,6 @@ export const radioWala: VibeTheme = {
   name: 'Radio Wala',
   shortName: 'Radio',
   description: 'Dial ghumao, purane gaane, thoda sa static.',
-  emoji: '📻',
   icon: Radio,
   aliases: ['radio', 'fm', 'mirchi'],
 

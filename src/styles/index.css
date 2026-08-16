@@ -154,8 +154,14 @@
     border-color: color-mix(in oklab, var(--c-border) 85%, transparent);
   }
 
+  /* A legibility shadow, not a neon halo. The headline now sits directly on
+     the artwork, so it needs to separate from whatever is behind it — a
+     coloured glow bleeding out of the letterforms did the opposite, and read
+     as decoration for its own sake. */
   .vm-glow-text {
-    text-shadow: 0 0 18px color-mix(in oklab, var(--c-glow) 45%, transparent);
+    text-shadow:
+      0 1px 2px color-mix(in oklab, var(--c-background) 70%, transparent),
+      0 4px 24px color-mix(in oklab, var(--c-background) 60%, transparent);
   }
 
   /* Range input styled to match the theme. `--vm-fill` is the 0–100 percentage
@@ -226,6 +232,22 @@
     opacity: 1;
   }
 
+  /* Scene hotspots. `transform-box: fill-box` matters here: without it an SVG
+     transform-origin resolves against the whole user-space canvas, so a press
+     scale would slide the element across the scene instead of squashing it in
+     place. */
+  .vm-hotspot {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition:
+      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 180ms ease;
+  }
+
+  .vm-hotspot:active {
+    transform: scale(0.965);
+  }
+
   /* The scene layer.
    *
    * The artwork is drawn 10:7 landscape. Stretched edge-to-edge on a portrait
@@ -246,9 +268,30 @@
   @media (max-aspect-ratio: 20/19) {
     .vm-scene {
       inset: auto 0 auto 0;
-      top: 42%;
+      /* Sits below the text rather than behind it, so neither has to fight
+         the other for contrast. */
+      /* High enough to clear the text panel, which is bottom-anchored and
+         takes roughly the lower half of a phone screen. */
+      top: 28%;
       aspect-ratio: 10 / 7;
       transform: translateY(-50%);
+      /* Each scene paints its own opaque backdrop, so as a band it would meet
+         the page gradient on two hard horizontal lines. Feathering the edges
+         lets it sit in the page instead of on top of it. */
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        black 15%,
+        black 82%,
+        transparent 100%
+      );
+      mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        black 15%,
+        black 82%,
+        transparent 100%
+      );
     }
   }
 
@@ -563,6 +606,31 @@
   }
   to {
     transform: translate3d(220%, 0, 0);
+  }
+}
+
+/* Press feedback for a scene hotspot: a ring pushing out from the tap point,
+   with a soft flash inside it. Transform/opacity only, so it stays on the
+   compositor even over a full-screen scene. */
+@keyframes vm-ripple {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(3.4);
+    opacity: 0;
+  }
+}
+
+@keyframes vm-ripple-fill {
+  0% {
+    transform: scale(0.15);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
   }
 }
 

@@ -13,7 +13,11 @@ export interface VibePreferences {
 export const DEFAULT_PREFERENCES: VibePreferences = {
   motion: true,
   ambient: true,
-  hud: true,
+  // Off by default. The clock strip and the stats panel are the two densest
+  // blocks on the screen, and with the scene now filling the background they
+  // made the first impression read as a dashboard rather than a place. They
+  // are one toggle away in Settings for anyone who wants them.
+  hud: false,
 };
 
 export interface VibeContextValue {

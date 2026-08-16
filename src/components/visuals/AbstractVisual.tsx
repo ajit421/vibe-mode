@@ -92,9 +92,6 @@ export function AbstractVisual() {
       >
         {theme.shortName.toUpperCase()}
       </text>
-      <text x="400" y="150" textAnchor="middle" fontSize="44" opacity="0.9">
-        {theme.emoji}
-      </text>
     </svg>
   );
 }

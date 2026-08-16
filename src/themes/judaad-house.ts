@@ -7,7 +7,6 @@ export const judaadHouse: VibeTheme = {
   name: 'Judaad House',
   shortName: 'House',
   description: 'Rented room, three engineers, one extension board doing all the work.',
-  emoji: '🏠',
   icon: Home,
   aliases: ['jugaad-house', 'house', 'home'],
 

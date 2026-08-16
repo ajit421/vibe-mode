@@ -36,6 +36,7 @@ interface MusicPlayerProps {
 export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
   const player = usePlayer();
   const { theme, playlist, motionEnabled, hasEntered } = useVibe();
+  const ThemeIcon = theme.icon;
   const { push } = useToast();
   const [expanded, setExpanded] = useState(false);
   const containerRef = useRef<HTMLElement>(null);
@@ -85,7 +86,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
       : null;
 
   // A pulled or region-locked video still resolves a videoId but has no still,
-  // so fall back to the mode's emoji rather than leaving a broken image.
+  // so fall back to the mode's icon rather than leaving a broken image.
   const [artworkFailed, setArtworkFailed] = useState(false);
   useEffect(() => setArtworkFailed(false), [thumbnailUrl]);
 
@@ -144,7 +145,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
                   <div>
                     <p className="vm-label text-muted">Now playing in</p>
                     <p className="mt-1 flex items-center gap-2 font-display text-lg font-semibold text-ink">
-                      <span aria-hidden="true">{theme.emoji}</span>
+                      <ThemeIcon className="size-4 text-primary" aria-hidden="true" />
                       {theme.name}
                     </p>
                     {playlist?.description && (
@@ -245,9 +246,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
               />
             ) : (
               <div className="absolute inset-0 grid place-items-center bg-canvas-2">
-                <span className="text-lg opacity-60" aria-hidden="true">
-                  {theme.emoji}
-                </span>
+                <ThemeIcon className="size-5 text-muted" strokeWidth={1.25} aria-hidden="true" />
               </div>
             )}
 

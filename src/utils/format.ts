@@ -30,7 +30,15 @@ export function tidyTrackTitle(title: string): string {
     title
       .replace(/\s*[([](?:official\s*)?(?:music\s*)?(?:video|audio|lyric[s]?|visualizer)[^)\]]*[)\]]/gi, '')
       .replace(/\s*[|｜]\s*(?:official|lyrics?|full\s*video|hd|4k)\b.*$/gi, '')
+      // Uploaders sprinkle emoji through titles as decoration. They are the one
+      // thing in the player we do not control the typography of, and a stray
+      // colour glyph mid-title undoes the rest of the interface.
+      // Matches whole sequences, not code points: a family or a flag is several
+      // pictographs joined by zero-width joiners, and removing them one at a
+      // time leaves the joiners behind as invisible debris in the string.
+      .replace(/\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic})*/gu, '')
       .replace(/\s{2,}/g, ' ')
+      .replace(/\s+([),\]])/g, '$1')
       .trim() || title
   );
 }

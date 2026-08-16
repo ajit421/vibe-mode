@@ -7,7 +7,6 @@ export const college: VibeTheme = {
   name: 'College Wala',
   shortName: 'College',
   description: 'Last bench, attendance 61%, one earphone each.',
-  emoji: '🎓',
   icon: GraduationCap,
   aliases: ['clg', 'campus'],
 

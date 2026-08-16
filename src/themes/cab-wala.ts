@@ -7,7 +7,6 @@ export const cabWala: VibeTheme = {
   name: 'Cab Wala',
   shortName: 'Cab',
   description: 'Back seat, wet glass, the city smearing past at 1am.',
-  emoji: '🚕',
   icon: Car,
   aliases: ['cab', 'taxi', 'ride'],
 

@@ -7,7 +7,6 @@ export const gadiWala: VibeTheme = {
   name: 'Gadi Wala',
   shortName: 'Gadi',
   description: 'Koi bhi gadi, full volume, sirf famous gaane.',
-  emoji: '🚙',
   icon: CarFront,
   aliases: ['gadi', 'car', 'roadtrip'],
 

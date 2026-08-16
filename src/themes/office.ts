@@ -7,7 +7,6 @@ export const office: VibeTheme = {
   name: 'Office Mode',
   shortName: 'Office',
   description: 'Second monitor, third coffee, one tab that is actually work.',
-  emoji: '💼',
   icon: Briefcase,
   aliases: ['work', 'desk'],
 

@@ -64,30 +64,30 @@ export function SceneBackground() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Readability scrim — see the note above. */}
+      {/* An even tint across the whole frame, not a wash down one side.
+          Sacrificing half the artwork to make one column readable is what made
+          the scene look half-hidden; a uniform knock-back keeps every part of
+          it equally visible and simply calms the whole thing. */}
       <div
-        className="pointer-events-none absolute inset-0 lg:hidden"
+        className="pointer-events-none absolute inset-0"
         aria-hidden="true"
-        style={{
-          background:
-            'linear-gradient(to bottom, var(--c-background) 0%, color-mix(in oklab, var(--c-background) 78%, transparent) 34%, color-mix(in oklab, var(--c-background) 30%, transparent) 62%, transparent 100%)',
-        }}
+        style={{ background: 'color-mix(in oklab, var(--c-background) 18%, transparent)' }}
       />
-      <div
-        className="pointer-events-none absolute inset-0 hidden lg:block"
-        aria-hidden="true"
-        style={{
-          background:
-            'linear-gradient(to right, var(--c-background) 0%, var(--c-background) 24%, color-mix(in oklab, var(--c-background) 86%, transparent) 38%, color-mix(in oklab, var(--c-background) 40%, transparent) 54%, transparent 72%)',
-        }}
-      />
-      {/* Keeps the player bar and the top bar sitting on something calm. */}
+      {/* Only what the two fixed bars need. The text carries its own surface
+          (see `World`), so the scene does not have to be dimmed into a
+          readable backdrop — which is what left half of it looking hidden. */}
       <div
         className="pointer-events-none absolute inset-0"
         aria-hidden="true"
         style={{
           background:
-            'linear-gradient(to bottom, color-mix(in oklab, var(--c-background) 55%, transparent) 0%, transparent 18%, transparent 74%, color-mix(in oklab, var(--c-background) 62%, transparent) 100%)',
+            'linear-gradient(to bottom,' +
+            ' color-mix(in oklab, var(--c-background) 62%, transparent) 0%,' +
+            ' color-mix(in oklab, var(--c-background) 8%, transparent) 12%,' +
+            ' transparent 32%,' +
+            ' transparent 62%,' +
+            ' color-mix(in oklab, var(--c-background) 38%, transparent) 82%,' +
+            ' color-mix(in oklab, var(--c-background) 78%, transparent) 100%)',
         }}
       />
     </div>

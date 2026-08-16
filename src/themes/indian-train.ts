@@ -7,7 +7,6 @@ export const indianTrain: VibeTheme = {
   name: 'Indian Train',
   shortName: 'Train',
   description: 'Window seat, fields going by, chai every forty minutes.',
-  emoji: '🚂',
   icon: TramFront,
   aliases: ['train', 'railway'],
 
