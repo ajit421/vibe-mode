@@ -331,6 +331,62 @@
   }
 }
 
+/* Horizontal loop inside an SVG, measured in user units so the distance can be
+   tuned per element with --vm-x. Content must repeat every |--vm-x| units. */
+@keyframes vm-slide-x {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(var(--vm-x, -400px), 0, 0);
+  }
+}
+
+/* Road markings rushing toward the viewer. Each dash animates from the
+   vanishing point outward, so it grows the way perspective demands. */
+@keyframes vm-road-dash {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.18);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate3d(0, var(--vm-road-y, 160px), 0) scale(3);
+    opacity: 0;
+  }
+}
+
+/* Streetlights and signs sweeping past either side of the windscreen. */
+@keyframes vm-approach {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.2);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--vm-ax, -320px), var(--vm-ay, 150px), 0) scale(2.6);
+    opacity: 0;
+  }
+}
+
+@keyframes vm-wipe {
+  0%,
+  58% {
+    transform: rotate(5deg);
+  }
+  72% {
+    transform: rotate(-68deg);
+  }
+  88%,
+  100% {
+    transform: rotate(5deg);
+  }
+}
+
 @keyframes vm-dash {
   to {
     stroke-dashoffset: var(--vm-dash-to, -240);
