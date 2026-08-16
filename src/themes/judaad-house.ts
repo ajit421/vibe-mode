@@ -86,7 +86,7 @@ export const judaadHouse: VibeTheme = {
     '> ELECTRICAL: don’t touch the blue wire',
   ],
 
-  effects: { grain: true, vignette: true, dust: true, fanShadow: true },
+  effects: { grain: true, vignette: true, dust: true },
 
   seo: {
     title: 'Judaad House — Three Engineers. One House. Infinite Jugaad.',

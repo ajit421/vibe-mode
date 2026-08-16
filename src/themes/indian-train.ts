@@ -81,7 +81,7 @@ export const indianTrain: VibeTheme = {
     '> Attention: this train is running 40 minutes late, as tradition demands.',
   ],
 
-  effects: { landscape: true, grain: true, vignette: true, dust: true },
+  effects: { grain: true, vignette: true, dust: true },
 
   seo: {
     title: 'Indian Train — Window Seat, Chai and a Long Way to Go.',

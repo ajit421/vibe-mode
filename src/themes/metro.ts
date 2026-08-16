@@ -81,7 +81,7 @@ export const metro: VibeTheme = {
     '> Interchange for Nostalgia Line at the next stop.',
   ],
 
-  effects: { tunnelLights: true, vignette: true, grain: true, haze: true },
+  effects: { vignette: true, grain: true, haze: true },
 
   seo: {
     title: 'Metro Mode — Press Play and Watch the City Move.',

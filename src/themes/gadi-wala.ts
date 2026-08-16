@@ -81,7 +81,7 @@ export const gadiWala: VibeTheme = {
     '> Peeche wali seat pe dance chal raha hai',
   ],
 
-  effects: { traffic: true, grain: true, vignette: true, haze: true },
+  effects: { grain: true, vignette: true, haze: true },
 
   seo: {
     title: 'Gadi Wala — Full Volume, Sab Gaane Famous.',

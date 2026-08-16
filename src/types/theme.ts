@@ -99,16 +99,12 @@ export interface VibeEffects {
   vignette?: boolean;
   /** Slow floating dust motes caught in lamp light. */
   dust?: boolean;
-  /** Rain running down glass. */
-  rain?: boolean;
-  /** Streaking tunnel lights passing a metro window. */
-  tunnelLights?: boolean;
-  /** Parallax scenery band for train windows. */
-  landscape?: boolean;
-  /** Road markings and streetlight smears. */
-  traffic?: boolean;
-  /** Slow-turning ceiling-fan shadow. */
-  fanShadow?: boolean;
+  /**
+   * The layers that used to sweep across the whole frame — tunnel lights,
+   * a parallax scenery band, traffic smears, a turning fan shadow — are gone.
+   * Each scene now carries its own motion, properly contained inside the
+   * artwork, and a second set of streaks over the top only fought it.
+   */
   /** Soft daylight shafts. */
   daylight?: boolean;
   /** Drifting city haze. */

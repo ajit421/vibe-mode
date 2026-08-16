@@ -1,89 +1,79 @@
-import { Suspense, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
-import { getVisual } from '@/components/visuals/registry';
-
-function SceneSkeleton() {
-  return (
-    <div className="absolute inset-0 grid place-items-center">
-      <div className="flex items-end gap-1.5" aria-hidden="true">
-        {[0, 1, 2, 3, 4].map((index) => (
-          <span
-            key={index}
-            className="w-1.5 rounded-full bg-primary/60"
-            style={{
-              height: 12 + (index % 3) * 14,
-              animation: `vm-pulse ${0.9 + index * 0.12}s ease-in-out ${index * 0.08}s infinite`,
-            }}
-          />
-        ))}
-      </div>
-      <span className="sr-only">Loading the scene…</span>
-    </div>
-  );
-}
+import { backgroundImageFor } from '@/themes/backgrounds';
 
 /**
- * The active mode's scene, filling the whole window behind the interface.
+ * The active mode's background picture, filling the window behind the
+ * interface.
  *
- * Each world is code-split, so switching modes fetches only that world's
- * artwork the first time you visit it, and the two scenes cross-fade.
+ * The image is configured per mode in `.env` (see `themes/backgrounds.ts`) —
+ * nothing about it lives in code. A mode with no image, or one whose image
+ * fails to load, falls back to its colour gradient, which is a complete
+ * background in its own right; there is never a broken frame.
  *
- * Two things make this work as a background rather than a picture:
+ * Two things make this read as a background rather than a picture:
  *
- *  - it sits *above* the base gradient but below the ambient layers and the
- *    content, and it stays interactive — the per-mode hotspots are still
- *    clickable, which is why the layout above it lets clicks through where it
- *    has no controls of its own;
- *  - the scrim. A detailed illustration behind body copy destroys contrast, so
- *    the interface side of the screen is washed back toward the mode's own
- *    background colour. It fades bottom-up on a phone (text sits at the top)
- *    and left-to-right from `lg`, where the text column is on the left.
+ *  - the scrim. A detailed image behind body copy destroys contrast, so the
+ *    whole frame is knocked back evenly and the two fixed bars get a little
+ *    more cover. The landing screen is damped much further — see below.
+ *  - the feathered edges, so the image melts into the gradient instead of
+ *    ending on a hard rectangle.
  */
 export function SceneBackground() {
   const { theme, motionEnabled, hasEntered } = useVibe();
-  const Visual = useMemo(() => getVisual(theme.hero.visual), [theme.hero.visual]);
+  const src = backgroundImageFor(theme.id);
+
+  // A URL that 404s should degrade to the gradient, not to a broken image.
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+
+  const showImage = Boolean(src) && !failed;
 
   return (
     // `z-0`, deliberately not a negative z-index. A child painted behind its
-    // own positioned parent cannot be clicked *through* that parent, so a
-    // negative value here silently kills every hotspot in the scene.
+    // own positioned parent cannot be clicked *through* that parent, and the
+    // interface above relies on this layer staying in normal stacking order.
     <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
       <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={theme.id}
-          className="vm-scene pointer-events-auto"
-          initial={motionEnabled ? { opacity: 0, scale: 1.03 } : { opacity: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <Suspense fallback={<SceneSkeleton />}>
-            <Visual />
-          </Suspense>
-        </motion.div>
+        {showImage && (
+          <motion.img
+            key={`${theme.id}:${src}`}
+            src={src ?? undefined}
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+            onError={() => setFailed(true)}
+            className="vm-scene object-cover"
+            initial={motionEnabled ? { opacity: 0, scale: 1.02 } : { opacity: 0 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          />
+        )}
       </AnimatePresence>
 
       {/* An even tint across the whole frame, not a wash down one side.
-          Sacrificing half the artwork to make one column readable is what made
-          the scene look half-hidden; a uniform knock-back keeps every part of
-          it equally visible and simply calms the whole thing.
+          Sacrificing half the image to make one column readable is what made
+          this look half-hidden; a uniform knock-back keeps every part of it
+          equally visible and simply calms the whole thing.
 
           The landing screen is damped much further. Its headline and cards sit
-          straight on the background with no panel of their own, and the scene
+          straight on the background with no panel of their own, and the image
           behind them is just whichever mode happens to be stored — arbitrary,
-          and not worth costing the chooser its legibility. The mode cards carry
-          their own previews, so nothing is lost by holding it back to a wash. */}
+          and not worth costing the chooser its legibility. */}
       <div
         className="pointer-events-none absolute inset-0 transition-[background-color] duration-700"
         aria-hidden="true"
         style={{
-          background: `color-mix(in oklab, var(--c-background) ${hasEntered ? 18 : 72}%, transparent)`,
+          background: `color-mix(in oklab, var(--c-background) ${
+            hasEntered ? (showImage ? 22 : 0) : 72
+          }%, transparent)`,
         }}
       />
-      {/* Only what the two fixed bars need. The text carries its own surface
-          (see `World`), so the scene does not have to be dimmed into a
-          readable backdrop — which is what left half of it looking hidden. */}
+
+      {/* Only what the two fixed bars need. The text carries its own surface,
+          so the image does not have to be dimmed into a readable backdrop. */}
       <div
         className="pointer-events-none absolute inset-0"
         aria-hidden="true"

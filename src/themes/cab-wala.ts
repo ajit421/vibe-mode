@@ -81,7 +81,9 @@ export const cabWala: VibeTheme = {
     '> Wipers on. Volume up.',
   ],
 
-  effects: { traffic: true, rain: true, vignette: true, grain: true, haze: true },
+  // No rain: falling streaks across the whole frame fight the scene instead of
+  // sitting behind it. The wet-glass look lives in the artwork itself.
+  effects: { vignette: true, grain: true, haze: true },
 
   seo: {
     title: 'Cab Wala — The City at 1am, With Your Own Soundtrack.',
