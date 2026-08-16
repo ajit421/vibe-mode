@@ -12,10 +12,10 @@ export function StatsPanel() {
   if (!preferences.hud || !stats.length) return null;
 
   return (
-    // No panel chrome of its own — it sits inside one now, and a panel nested
-    // in a panel reads as a widget dropped into the page. Desktop only: these
-    // rows are the first thing a narrow screen has no room for.
-    <dl className="hidden gap-2.5 border-t border-line/50 pt-4 lg:grid">
+    // Carries its own surface, because the quote beside it comes and goes and
+    // a shared wrapper would be left framing nothing. Desktop only: these rows
+    // are the first thing a narrow screen has no room for.
+    <dl className="vm-panel pointer-events-auto hidden gap-2.5 rounded-2xl px-5 py-4 lg:grid">
       {stats.map((stat, index) => (
         <motion.div
           key={stat.label}

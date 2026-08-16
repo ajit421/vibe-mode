@@ -25,11 +25,16 @@ export function World() {
   return (
     <div className="pointer-events-none mx-auto flex h-full max-w-[1600px] flex-col gap-3 px-4 pt-14 pb-4 sm:px-6 sm:pt-16 lg:gap-4 lg:px-8 lg:pt-20 lg:pb-7">
       <div className="flex min-h-0 flex-1 flex-col justify-end">
-        {/* `gap`, not margins on a wrapper: `StatsPanel` renders nothing when
-            the status readouts are off, and a wrapper div around it would still
-            contribute its own spacing to this column. With no wrapper there is
-            no flex item, so there is no gap either. */}
-        <div className="vm-panel vm-hide-short pointer-events-auto flex w-fit min-w-0 max-w-full flex-col gap-5 rounded-2xl px-5 py-4 sm:px-6 sm:py-5 lg:max-w-[38rem]">
+        {/* Each block brings its own surface and removes itself when it has
+            nothing to say. There is deliberately no shared panel around them:
+            the quote is usually absent and the stats are usually off, so a
+            wrapper would spend most of its life as an empty box over the
+            artwork. `gap` only applies between blocks that actually render. */}
+        {/* No `vm-hide-short` here. Both blocks are off by default now, so
+            neither is clutter a short window needs protecting from — and when
+            someone has turned one on, hiding it because the window is short
+            overrides a choice they made on purpose. */}
+        <div className="flex w-fit min-w-0 max-w-full flex-col items-start gap-3 lg:max-w-[38rem]">
           <QuoteRotator />
           <StatsPanel />
         </div>

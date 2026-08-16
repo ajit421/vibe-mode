@@ -94,6 +94,13 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             checked={preferences.hud}
             onChange={(value) => setPreference('hud', value)}
           />
+
+          <Switch
+            label="Quotes"
+            description="Keep the mode's line on screen. Off, it still appears for a moment whenever you click."
+            checked={preferences.quotes}
+            onChange={(value) => setPreference('quotes', value)}
+          />
         </section>
 
         <section className="flex flex-col gap-3 border-t border-line/60 pt-5">

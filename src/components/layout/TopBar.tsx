@@ -44,7 +44,7 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
             <span className="vm-label block truncate text-[0.6rem] text-primary/85">
               {theme.hero.kicker}
             </span>
-            <h1 className="vm-glow-text truncate font-display text-[clamp(1.4rem,3.4vw,2.35rem)] leading-none font-bold tracking-tight text-ink uppercase">
+            <h1 className="vm-glow-text truncate font-display text-[clamp(1.75rem,4.6vw,3.5rem)] leading-none font-bold tracking-tight text-ink uppercase">
               {theme.name}
             </h1>
           </button>
