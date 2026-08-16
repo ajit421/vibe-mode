@@ -38,7 +38,12 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
             className="min-w-0 rounded-lg text-left transition-opacity hover:opacity-80"
             aria-label={`${theme.name} — back to all modes`}
           >
-            <span className="vm-label block text-[0.6rem] text-muted">{theme.shortName}</span>
+            {/* The mode's status line lives up here with the name it belongs
+                to, rather than down in the panel. Truncated rather than
+                wrapped — it must stay one line beside the title. */}
+            <span className="vm-label block truncate text-[0.6rem] text-primary/85">
+              {theme.hero.kicker}
+            </span>
             <h1 className="vm-glow-text truncate font-display text-[clamp(1.4rem,3.4vw,2.35rem)] leading-none font-bold tracking-tight text-ink uppercase">
               {theme.name}
             </h1>

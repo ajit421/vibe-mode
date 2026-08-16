@@ -42,7 +42,6 @@ export const college: VibeTheme = {
   hero: {
     kicker: 'SEMESTER 5 · LAST BENCH · 4TH PERIOD',
     title: 'COLLEGE WALA',
-    subtitle: 'Attendance short. Playlist full.',
     visual: 'college-desk',
   },
 

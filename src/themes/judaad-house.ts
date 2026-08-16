@@ -42,7 +42,6 @@ export const judaadHouse: VibeTheme = {
   hero: {
     kicker: '3 ENGINEERS · 1 HOUSE · 0 PROPER SOLUTIONS',
     title: 'JUDAAD HOUSE',
-    subtitle: 'Three engineers. One rented house. Infinite jugaad.',
     visual: 'judaad-desk',
   },
 

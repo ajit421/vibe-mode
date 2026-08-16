@@ -63,10 +63,9 @@ export interface VibeBackground {
 }
 
 export interface VibeHero {
-  /** Small line above the title — e.g. "NEXT STATION". */
+  /** The mode's status line, shown under its name in the top bar. */
   kicker: string;
   title: string;
-  subtitle: string;
   /**
    * Which central visual to render. Resolved through the registry in
    * `src/components/visuals/registry.ts`. An unknown id falls back to a

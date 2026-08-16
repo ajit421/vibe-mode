@@ -42,7 +42,6 @@ export const cabWala: VibeTheme = {
   hero: {
     kicker: 'TRIP IN PROGRESS · 12.4 KM',
     title: 'CAB WALA',
-    subtitle: 'Destination: somewhere. ETA: doesn’t matter. Music: matters.',
     visual: 'cab-window',
   },
 

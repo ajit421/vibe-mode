@@ -12,7 +12,10 @@ export function StatsPanel() {
   if (!preferences.hud || !stats.length) return null;
 
   return (
-    <dl className="vm-panel grid gap-2.5 rounded-xl px-4 py-3.5">
+    // No panel chrome of its own — it sits inside one now, and a panel nested
+    // in a panel reads as a widget dropped into the page. Desktop only: these
+    // rows are the first thing a narrow screen has no room for.
+    <dl className="hidden gap-2.5 border-t border-line/50 pt-4 lg:grid">
       {stats.map((stat, index) => (
         <motion.div
           key={stat.label}

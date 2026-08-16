@@ -42,7 +42,6 @@ export const office: VibeTheme = {
   hero: {
     kicker: 'STATUS: WORKING · DO NOT DISTURB',
     title: 'OFFICE MODE',
-    subtitle: 'Productivity: questionable. Music: required.',
     visual: 'office-desk',
   },
 

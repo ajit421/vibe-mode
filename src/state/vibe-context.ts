@@ -8,6 +8,12 @@ export interface VibePreferences {
   ambient: boolean;
   /** The status bar and the little stats panel. */
   hud: boolean;
+  /**
+   * Keep the mode's one-liner on screen permanently. With this off it still
+   * appears for a moment whenever you click, so the writing is never lost —
+   * it just stops being a fixture of the layout.
+   */
+  quotes: boolean;
 }
 
 export const DEFAULT_PREFERENCES: VibePreferences = {
@@ -18,6 +24,10 @@ export const DEFAULT_PREFERENCES: VibePreferences = {
   // made the first impression read as a dashboard rather than a place. They
   // are one toggle away in Settings for anyone who wants them.
   hud: false,
+  // Off by default, for the same reason as `hud`: on a screen whose whole point
+  // is the scene, a permanent block of text over it is the thing you notice
+  // first. It still surfaces on click.
+  quotes: false,
 };
 
 export interface VibeContextValue {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useVibe } from '@/state/vibe-context';
+import { emitVibeEvent } from '@/utils/events';
 import { cn } from '@/utils/cn';
 
 interface HotspotProps {
@@ -87,12 +88,14 @@ export function Hotspot({ label, onActivate, children, className }: HotspotProps
       )}
       onClick={(event) => {
         ripple(event.clientX, event.clientY);
+        emitVibeEvent('interact');
         onActivate();
       }}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         ripple();
+        emitVibeEvent('interact');
         onActivate();
       }}
     >

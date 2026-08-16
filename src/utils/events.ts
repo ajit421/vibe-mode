@@ -6,7 +6,12 @@
  * through the tree for a handful of one-off flourishes, the shell emits and
  * the active visual listens.
  */
-export type VibeEventName = 'announce' | 'reroute' | 'tune';
+export type VibeEventName =
+  | 'announce'
+  | 'reroute'
+  | 'tune'
+  /** Someone poked the scene. Any hotspot fires this alongside its own event. */
+  | 'interact';
 
 const TARGET_PREFIX = 'vibe:';
 
