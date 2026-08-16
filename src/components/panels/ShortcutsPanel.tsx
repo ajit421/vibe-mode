@@ -28,6 +28,19 @@ const PER_MODE: Record<string, [string, string][]> = {
     ['Click the lamp', 'Lights off'],
   ],
   office: [['Click the monitor', 'Read the next line of the log']],
+  'radio-wala': [
+    ['T', 'Tune to the next station'],
+    ['Click the dial', 'Same thing, by hand'],
+    ['Click a knob', 'Volume, tone, band'],
+  ],
+  'gadi-wala': [
+    ['Click the stereo', 'Change what is playing'],
+    ['Click the volume knob', 'Louder. Always louder.'],
+  ],
+  college: [
+    ['Click the blackboard', 'Read what you missed'],
+    ['Click the phone', 'Share an earphone'],
+  ],
 };
 
 function Row({ keys, action }: { keys: string; action: string }) {

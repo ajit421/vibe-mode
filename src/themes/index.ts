@@ -4,6 +4,9 @@ import { metro } from './metro';
 import { indianTrain } from './indian-train';
 import { cabWala } from './cab-wala';
 import { office } from './office';
+import { radioWala } from './radio-wala';
+import { gadiWala } from './gadi-wala';
+import { college } from './college';
 
 /* ══════════════════════════════════════════════════════════════════════════
  *  THEME REGISTRY
@@ -17,7 +20,16 @@ import { office } from './office';
  *  Order matters: it is the order shown in the picker and the order the
  *  number-key shortcuts (1…9) follow.
  * ══════════════════════════════════════════════════════════════════════════ */
-export const THEMES: readonly VibeTheme[] = [judaadHouse, metro, indianTrain, cabWala, office];
+export const THEMES: readonly VibeTheme[] = [
+  judaadHouse,
+  metro,
+  indianTrain,
+  cabWala,
+  office,
+  radioWala,
+  gadiWala,
+  college,
+];
 
 export const DEFAULT_THEME_ID = judaadHouse.id;
 

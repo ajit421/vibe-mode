@@ -6,7 +6,7 @@
  * through the tree for a handful of one-off flourishes, the shell emits and
  * the active visual listens.
  */
-export type VibeEventName = 'announce' | 'reroute' | 'speed';
+export type VibeEventName = 'announce' | 'reroute' | 'tune';
 
 const TARGET_PREFIX = 'vibe:';
 

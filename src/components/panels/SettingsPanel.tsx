@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, RotateCcw, TriangleAlert } from 'lucide-react';
+import { Check, RotateCcw, TriangleAlert, Undo2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Switch } from '@/components/ui/Switch';
 import { Slider } from '@/components/ui/Slider';
@@ -8,6 +8,7 @@ import { useVibe } from '@/state/vibe-context';
 import { usePlayer } from '@/state/player-context';
 import { useToast } from '@/state/toast-context';
 import { extractPlaylistId } from '@/music/resolve';
+import { envVarFor } from '@/music/playlists';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -29,6 +30,8 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const { push } = useToast();
 
   const currentOverride = playlist ? (playlistOverrides[playlist.id] ?? '') : '';
+  // `playlist` already has the .env value merged in by `playlistsFor`.
+  const envDefault = playlist?.youtubePlaylistId || playlist?.videoIds?.length;
   const [draft, setDraft] = useState(currentOverride);
   const [invalid, setInvalid] = useState(false);
 
@@ -116,19 +119,13 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <PlaylistChips variant="hero" />
 
           <div className="mt-2">
-            <label
-              htmlFor="playlist-override"
-              className="text-sm font-medium text-ink"
-            >
-              YouTube playlist ID
+            <label htmlFor="playlist-override" className="text-sm font-medium text-ink">
+              Play your own playlist
             </label>
             <p className="mt-0.5 text-xs text-muted">
-              Paste a playlist link or ID to point “{playlist?.name ?? 'this playlist'}” somewhere
-              else. Stored in this browser only — for a permanent change, edit{' '}
-              <code className="rounded bg-ink/8 px-1 py-0.5 font-mono text-[0.7rem]">
-                src/music/playlists.ts
-              </code>
-              .
+              Paste any YouTube playlist link or ID to play it here instead of “
+              {playlist?.name ?? 'this playlist'}”. Saved in this browser only — nobody else sees
+              it, and clearing the field goes back to the default.
             </p>
 
             <div className="mt-2.5 flex gap-2">
@@ -166,6 +163,39 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               <p className="mt-2 flex items-center gap-1.5 text-xs text-primary">
                 <TriangleAlert className="size-3.5 shrink-0" />
                 That doesn’t look like a playlist ID. Look for the <code>list=</code> part of the URL.
+              </p>
+            )}
+
+            {currentOverride && (
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <span className="vm-label rounded-full bg-accent/12 px-2 py-1 text-accent">
+                  Your playlist is active
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!playlist) return;
+                    setPlaylistOverride(playlist.id, '');
+                    setDraft('');
+                    push('Back to the default playlist.', 'SETTINGS');
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-primary/50 hover:text-ink"
+                >
+                  <Undo2 className="size-3.5" />
+                  Use the default
+                </button>
+              </div>
+            )}
+
+            {/* Where the default comes from, named exactly so it can be set. */}
+            {playlist && (
+              <p className="mt-3 text-xs text-muted">
+                The default for this playlist is read from{' '}
+                <code className="rounded bg-ink/8 px-1 py-0.5 font-mono text-[0.7rem] text-ink/80">
+                  {envVarFor(playlist.id)}
+                </code>{' '}
+                in <code className="font-mono text-[0.7rem]">.env</code>
+                {envDefault ? '.' : ' — not set yet.'}
               </p>
             )}
           </div>

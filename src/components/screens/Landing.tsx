@@ -37,13 +37,10 @@ export function Landing() {
       </motion.div>
 
       <motion.p {...rise(0.32)} className="mt-8 font-mono text-xs text-muted/80">
-        Press{' '}
-        {themes.slice(0, 5).map((theme, index) => (
-          <span key={theme.id}>
-            <kbd className="rounded border border-line px-1.5 py-0.5">{index + 1}</kbd>
-            {index < 4 ? ' ' : ''}
-          </span>
-        ))}{' '}
+        Press <kbd className="rounded border border-line px-1.5 py-0.5">1</kbd>–
+        <kbd className="rounded border border-line px-1.5 py-0.5">
+          {Math.min(themes.length, 9)}
+        </kbd>{' '}
         to jump straight in · <kbd className="rounded border border-line px-1.5 py-0.5">?</kbd> for
         shortcuts
       </motion.p>

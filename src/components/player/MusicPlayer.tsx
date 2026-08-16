@@ -24,6 +24,7 @@ import { useToast } from '@/state/toast-context';
 import { IconButton } from '@/components/ui/IconButton';
 import { Slider } from '@/components/ui/Slider';
 import { PlaylistChips } from './PlaylistChips';
+import { envVarFor } from '@/music/playlists';
 import { formatTime } from '@/utils/format';
 import { buildShareUrl } from '@/utils/url';
 import { cn } from '@/utils/cn';
@@ -93,7 +94,9 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
       : (track?.title ?? (status === 'loading' ? 'Loading…' : 'Press play to start the vibe'));
 
   const secondaryLine = unconfigured
-    ? `Add a YouTube playlist ID for “${playlist?.name ?? theme.name}”`
+    ? playlist
+      ? `Set ${envVarFor(playlist.id)} in .env, or add your own from Settings`
+      : `No playlists configured for ${theme.name}`
     : errored
       ? errorMessage
       : [playlist?.name, trackCount > 0 ? `Track ${trackIndex + 1} of ${trackCount}` : null]

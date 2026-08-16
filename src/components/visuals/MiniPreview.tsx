@@ -85,10 +85,88 @@ export function MiniPreview({ theme, still }: MiniPreviewProps) {
         </>
       )}
 
+      {theme.hero.visual === 'radio-set' && (
+        <>
+          <rect x="16" y="16" width="88" height="44" rx="6" fill={theme.colors.surface} stroke={primary} strokeOpacity="0.5" />
+          <rect x="22" y="22" width="34" height="32" rx="3" fill={secondary} opacity="0.28" />
+          <g stroke={secondary} strokeWidth="1" opacity="0.4">
+            {[0, 1, 2, 3].map((index) => (
+              <path key={index} d={`M22 ${28 + index * 8} h34`} />
+            ))}
+          </g>
+          <rect x="62" y="22" width="36" height="16" rx="2" fill={primary} opacity="0.75" />
+          <path d="M74 22 v16" stroke="#c0392b" strokeWidth="1.5" className={still ? undefined : 'vm-blink'} />
+          <circle cx="68" cy="50" r="5" fill={theme.colors.background} stroke={primary} strokeOpacity="0.6" />
+          <circle cx="86" cy="50" r="5" fill={theme.colors.background} stroke={primary} strokeOpacity="0.6" />
+          <path d="M96 16 L110 4" stroke={accent} strokeWidth="1.5" />
+        </>
+      )}
+
+      {theme.hero.visual === 'gadi-stereo' && (
+        <>
+          <path d="M0 40 q 60 -18 120 0 l0 32 L0 72z" fill={theme.colors.surface} />
+          <rect x="34" y="20" width="52" height="28" rx="4" fill={theme.colors.background} stroke={primary} strokeOpacity="0.6" />
+          <g>
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => (
+              <rect
+                key={index}
+                x={38 + index * 6}
+                y="30"
+                width="3"
+                height="14"
+                rx="1.5"
+                fill={index % 3 === 0 ? accent : primary}
+                style={
+                  still
+                    ? { transformBox: 'fill-box', transformOrigin: 'center bottom', transform: 'scaleY(0.6)' }
+                    : {
+                        transformBox: 'fill-box',
+                        transformOrigin: 'center bottom',
+                        animation: `vm-eq ${0.7 + (index % 4) * 0.18}s ease-in-out ${index * 0.06}s infinite`,
+                      }
+                }
+              />
+            ))}
+          </g>
+          <circle cx="100" cy="56" r="9" fill="none" stroke={secondary} strokeWidth="2" />
+          <circle cx="20" cy="56" r="11" fill="none" stroke={primary} strokeWidth="2" />
+          <g stroke={accent} strokeWidth="1.5" fill="none" opacity="0.7">
+            <path d="M0 14 l8 6 l8 -6 l8 6 l8 -6 l8 6 l8 -6" />
+          </g>
+        </>
+      )}
+
+      {theme.hero.visual === 'college-desk' && (
+        <>
+          <rect x="14" y="8" width="92" height="34" rx="3" fill={secondary} opacity="0.22" />
+          <rect x="14" y="8" width="92" height="34" rx="3" fill="none" stroke={secondary} strokeOpacity="0.4" />
+          <g stroke={theme.colors.text} strokeWidth="1.4" opacity="0.55">
+            <path d="M22 18 h44M22 26 h30" />
+          </g>
+          <text x="70" y="30" fontSize="9" fontFamily="var(--f-mono)" fill={primary} opacity="0.9">
+            61%
+          </text>
+          <path d="M0 48 h120v24H0z" fill={theme.colors.surface} />
+          <rect x="24" y="42" width="42" height="22" rx="2" fill="#f4f1e2" opacity="0.9" />
+          <g stroke="#b9cbe0" strokeWidth="0.8">
+            <path d="M28 48 h34M28 54 h34M28 60 h24" />
+          </g>
+          <rect x="78" y="42" width="14" height="22" rx="3" fill={theme.colors.background} stroke={accent} strokeOpacity="0.6" />
+          <path d="M85 64 c -10 4 -18 2 -24 6" stroke={theme.colors.text} strokeWidth="1" fill="none" opacity="0.6" />
+        </>
+      )}
+
       {/* Anything without bespoke art still gets a themed thumbnail. */}
-      {!['judaad-desk', 'metro-coach', 'train-window', 'cab-window', 'office-desk'].includes(
-        theme.hero.visual,
-      ) && (
+      {![
+        'judaad-desk',
+        'metro-coach',
+        'train-window',
+        'cab-window',
+        'office-desk',
+        'radio-set',
+        'gadi-stereo',
+        'college-desk',
+      ].includes(theme.hero.visual) && (
         <>
           <circle cx="60" cy="34" r="20" fill="none" stroke={primary} strokeOpacity="0.5" strokeWidth="2" />
           {[0, 1, 2, 3, 4, 5, 6].map((index) => (

@@ -24,6 +24,12 @@ const LOADERS: Record<string, VisualLoader> = {
     import('./CabWindowVisual').then((module) => ({ default: module.CabWindowVisual })),
   'office-desk': () =>
     import('./OfficeDeskVisual').then((module) => ({ default: module.OfficeDeskVisual })),
+  'radio-set': () =>
+    import('./RadioSetVisual').then((module) => ({ default: module.RadioSetVisual })),
+  'gadi-stereo': () =>
+    import('./GadiStereoVisual').then((module) => ({ default: module.GadiStereoVisual })),
+  'college-desk': () =>
+    import('./CollegeDeskVisual').then((module) => ({ default: module.CollegeDeskVisual })),
 };
 
 const CACHE = new Map<string, LazyExoticComponent<ComponentType>>();

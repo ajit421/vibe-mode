@@ -21,7 +21,7 @@ export function ModePicker({ onSelect, layout = 'rail', className }: ModePickerP
       className={cn(
         layout === 'rail'
           ? // Horizontal, snapping rail on phones; a real grid from `sm` up.
-            'vm-no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:snap-none sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-3 xl:grid-cols-5'
+            'vm-no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:snap-none sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-3 xl:grid-cols-4'
           : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3',
         layout === 'rail' && 'sm:gap-4',
         className,

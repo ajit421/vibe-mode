@@ -1,6 +1,7 @@
 import { ListMusic, TriangleAlert } from 'lucide-react';
 import { useVibe } from '@/state/vibe-context';
 import { resolvePlaylistSource } from '@/music/resolve';
+import { envVarFor } from '@/music/playlists';
 import { cn } from '@/utils/cn';
 
 interface PlaylistChipsProps {
@@ -19,7 +20,7 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
   if (theme.playlists.length === 0) {
     return (
       <p className="font-mono text-xs text-muted">
-        No playlists configured for this mode yet — see src/music/playlists.ts
+        No playlists defined for this mode yet — see src/music/playlists.ts
       </p>
     );
   }
@@ -40,7 +41,11 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
             type="button"
             onClick={() => selectPlaylist(playlist.id)}
             aria-pressed={selected}
-            title={configured ? playlist.description : `${playlist.name} — no playlist ID set yet`}
+            title={
+              configured
+                ? playlist.description
+                : `${playlist.name} — set ${envVarFor(playlist.id)} in .env, or add your own from Settings`
+            }
             className={cn(
               'group inline-flex items-center gap-2 rounded-full border transition-all duration-200',
               variant === 'hero' ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs',

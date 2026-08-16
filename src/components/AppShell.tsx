@@ -20,6 +20,7 @@ import { World } from '@/components/screens/World';
 const MODE_KEYS: Record<string, ShortcutMap> = {
   metro: { a: () => emitVibeEvent('announce') },
   'cab-wala': { r: () => emitVibeEvent('reroute') },
+  'radio-wala': { t: () => emitVibeEvent('tune') },
 };
 
 export function AppShell() {

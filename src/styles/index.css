@@ -463,6 +463,35 @@
   }
 }
 
+/* Sound rings pushing out of a speaker cone. */
+@keyframes vm-ring {
+  0% {
+    transform: scale(0.45);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Spectrum-analyser bar on a car stereo — scales from its own base. */
+@keyframes vm-eq {
+  0%,
+  100% {
+    transform: scaleY(0.22);
+  }
+  25% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.45);
+  }
+  75% {
+    transform: scaleY(0.82);
+  }
+}
+
 @keyframes vm-caret {
   0%,
   49% {
