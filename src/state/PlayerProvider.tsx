@@ -101,6 +101,58 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => clearRefreshTimers, [clearRefreshTimers]);
 
+  /**
+   * Some tracks are licensed so they cannot be played outside YouTube. The
+   * player reports nothing for those — no error event, it simply refuses to
+   * start — so pressing play appears to do nothing at all. Watch for that and
+   * move on rather than leaving the user with a dead button.
+   */
+  const watchdog = useRef<number | null>(null);
+  const blockedSkips = useRef(0);
+
+  const clearWatchdog = useCallback(() => {
+    if (watchdog.current) window.clearTimeout(watchdog.current);
+    watchdog.current = null;
+  }, []);
+
+  const armWatchdog = useCallback(() => {
+    clearWatchdog();
+
+    // A restricted track reports BUFFERING and stays there indefinitely, so
+    // buffering alone cannot mean "still loading" — it only buys extra time,
+    // and only up to this deadline. Generous enough not to punish a slow
+    // connection, short enough that a dead track doesn't strand the listener.
+    const deadline = Date.now() + 9000;
+
+    const tick = () => {
+      const player = playerRef.current;
+      if (!player) return;
+
+      const state = player.getPlayerState?.();
+      if (state === YT_STATE.PLAYING) return;
+
+      if (state === YT_STATE.BUFFERING && Date.now() < deadline) {
+        watchdog.current = window.setTimeout(tick, 1200);
+        return;
+      }
+
+      if (blockedSkips.current >= MAX_CONSECUTIVE_ERRORS) {
+        setStatus('error');
+        setErrorMessage('These tracks can’t be played outside YouTube. Try another playlist.');
+        return;
+      }
+
+      blockedSkips.current += 1;
+      setErrorMessage('That track can’t play here — skipping…');
+      player.nextVideo();
+      armWatchdog();
+    };
+
+    watchdog.current = window.setTimeout(tick, 2500);
+  }, [clearWatchdog]);
+
+  useEffect(() => clearWatchdog, [clearWatchdog]);
+
   /* ── Create / re-target the YouTube player ────────────────────────────── */
   useEffect(() => {
     if (!host) return;
@@ -190,6 +242,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
               if (state === YT_STATE.PLAYING) {
                 errorStreak.current = 0;
+                blockedSkips.current = 0;
+                clearWatchdog();
                 setIsPlaying(true);
                 setHasStarted(true);
                 setStatus('ready');
@@ -243,7 +297,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [host, key, source, readTrack, settleTrackInfo, retryToken]);
+  }, [host, key, source, readTrack, settleTrackInfo, clearWatchdog, retryToken]);
 
   /* ── Tear the player down exactly once, on unmount ────────────────────── */
   useEffect(
@@ -286,17 +340,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /* ── Controls ─────────────────────────────────────────────────────────── */
   const play = useCallback(() => {
     playerRef.current?.playVideo?.();
-  }, []);
+    armWatchdog();
+  }, [armWatchdog]);
 
   const pause = useCallback(() => {
+    clearWatchdog();
     playerRef.current?.pauseVideo?.();
-  }, []);
+  }, [clearWatchdog]);
 
   const togglePlay = useCallback(() => {
     if (!playerRef.current) return;
-    if (wasPlayingRef.current) playerRef.current.pauseVideo();
-    else playerRef.current.playVideo();
-  }, []);
+    if (wasPlayingRef.current) {
+      clearWatchdog();
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
+      armWatchdog();
+    }
+  }, [armWatchdog, clearWatchdog]);
 
   const next = useCallback(() => {
     playerRef.current?.nextVideo?.();

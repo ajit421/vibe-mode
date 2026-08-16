@@ -97,11 +97,12 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
     ? playlist
       ? `Set ${envVarFor(playlist.id)} in .env, or add your own from Settings`
       : `No playlists configured for ${theme.name}`
-    : errored
-      ? errorMessage
-      : [playlist?.name, trackCount > 0 ? `Track ${trackIndex + 1} of ${trackCount}` : null]
-          .filter(Boolean)
-          .join(' · ');
+    : // A transient message (e.g. skipping an un-embeddable track) still needs
+      // to surface even while the player is otherwise healthy.
+      (errorMessage ??
+      [playlist?.name, trackCount > 0 ? `Track ${trackIndex + 1} of ${trackCount}` : null]
+        .filter(Boolean)
+        .join(' · '));
 
   return (
     <motion.footer
