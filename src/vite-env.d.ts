@@ -38,6 +38,20 @@ interface ImportMetaEnv {
   readonly VITE_IMAGE_RADIO_WALA?: string;
   readonly VITE_IMAGE_GADI_WALA?: string;
   readonly VITE_IMAGE_COLLEGE?: string;
+
+  /**
+   * Poster still for a mode whose background is a video — see `posterVarFor`.
+   * Used for the mode's card on the landing screen, which never loads the
+   * clip itself. Same story as above: declared for autocomplete only.
+   */
+  readonly VITE_POSTER_JUDAAD_HOUSE?: string;
+  readonly VITE_POSTER_METRO?: string;
+  readonly VITE_POSTER_INDIAN_TRAIN?: string;
+  readonly VITE_POSTER_CAB_WALA?: string;
+  readonly VITE_POSTER_OFFICE?: string;
+  readonly VITE_POSTER_RADIO_WALA?: string;
+  readonly VITE_POSTER_GADI_WALA?: string;
+  readonly VITE_POSTER_COLLEGE?: string;
 }
 
 interface ImportMeta {
