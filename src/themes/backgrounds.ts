@@ -47,14 +47,28 @@ export function imageVarFor(themeId: string): string {
  * the last line of defence — but it goes straight into an `src`, and letting
  * something like a `javascript:` or `data:` value reach that is exactly the
  * kind of thing that is cheap to prevent and unpleasant to discover later.
+ *
+ * Returns the value to use, or `null` if it is not usable.
+ *
+ * A bare relative path (`backgrounds/metro.png`) is accepted and normalised to
+ * a rooted one. It can only ever mean a file served from this site, so there is
+ * nothing to protect against — and rejecting it was a genuinely bad failure:
+ * the mode fell back to its gradient and looked exactly like a mode with no
+ * image configured, so a missing slash read as "I haven't set that one up yet"
+ * rather than as the typo it was.
  */
-function isSafeImageUrl(value: string): boolean {
-  if (value.startsWith('/') && !value.startsWith('//')) return true;
+function safeImageUrl(value: string): string | null {
+  // Protocol-relative (`//host/x.png`) is deliberately not treated as a path.
+  if (value.startsWith('/') && !value.startsWith('//')) return value;
+
   try {
     const { protocol } = new URL(value);
-    return protocol === 'http:' || protocol === 'https:';
+    return protocol === 'http:' || protocol === 'https:' ? value : null;
   } catch {
-    return false;
+    // Not an absolute URL. A value with no scheme and no leading slash is a
+    // path relative to `public/`, which is what dropping a file in there and
+    // typing its name naturally produces.
+    return /^[\w.-]+(?:\/[\w.-]+)*$/.test(value) ? `/${value}` : null;
   }
 }
 
@@ -65,5 +79,5 @@ function isSafeImageUrl(value: string): boolean {
 export function backgroundImageFor(themeId: string): string | null {
   const value = ENV[imageVarFor(themeId)]?.trim();
   if (!value) return null;
-  return isSafeImageUrl(value) ? value : null;
+  return safeImageUrl(value);
 }
