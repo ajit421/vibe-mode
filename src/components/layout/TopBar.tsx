@@ -39,9 +39,14 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
         paddingRight: 'var(--safe-right)',
       }}
     >
-      {/* Scrim so the scene never collides with the title or the controls. */}
+      {/* A light lift under the title and controls — deliberately not the solid
+          `from-canvas via-canvas/80` band this used to be. `SceneBackground`
+          already lays a gradient across the top, and the two together read as
+          a dark bar sitting on the artwork rather than as the artwork simply
+          getting out of the way. The title carries `vm-glow-text` and the
+          buttons carry `vm-panel`, so both are legible without it. */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-canvas via-canvas/80 to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-canvas/55 via-canvas/18 to-transparent"
         aria-hidden="true"
       />
       <div className="relative mx-auto flex max-w-[1600px] items-start gap-3 px-4 py-3 sm:px-6 sm:py-4 lg:px-8">

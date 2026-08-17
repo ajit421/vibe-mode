@@ -40,6 +40,11 @@ export function imageVarFor(themeId: string): string {
   return `VITE_IMAGE_${themeId.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
 }
 
+/** `'judaad-house'` → `'VITE_POSTER_JUDAAD_HOUSE'`. */
+export function posterVarFor(themeId: string): string {
+  return `VITE_POSTER_${themeId.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
+}
+
 /**
  * Only `http(s)` and site-relative paths are allowed through.
  *
@@ -73,11 +78,58 @@ function safeImageUrl(value: string): string | null {
 }
 
 /**
- * The background image for a mode, or `null` when none is configured or the
- * configured value is not a usable URL.
+ * Extensions we hand to a `<video>` rather than an `<img>`. Matched against
+ * the path only, so a URL with a query string still resolves.
  */
-export function backgroundImageFor(themeId: string): string | null {
+const VIDEO_EXTENSIONS = /\.(mp4|webm|ogv|m4v|mov)$/i;
+
+export interface ThemeBackground {
+  url: string;
+  kind: 'image' | 'video';
+}
+
+function pathOf(value: string): string {
+  try {
+    return new URL(value, 'https://x.invalid').pathname;
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * The background for a mode — a still or a short looping clip — or `null` when
+ * none is configured or the value is not a usable URL.
+ *
+ * The same `VITE_IMAGE_*` variable takes both, decided by the file extension,
+ * so switching a mode from a picture to a video is a one-line edit and needs
+ * no second variable to keep in sync.
+ */
+export function backgroundFor(themeId: string): ThemeBackground | null {
   const value = ENV[imageVarFor(themeId)]?.trim();
   if (!value) return null;
-  return safeImageUrl(value);
+
+  const url = safeImageUrl(value);
+  if (!url) return null;
+
+  return { url, kind: VIDEO_EXTENSIONS.test(pathOf(url)) ? 'video' : 'image' };
+}
+
+/**
+ * A still for a mode: its poster if one is set, otherwise the background
+ * itself when that is already an image.
+ *
+ * Used where a video would be the wrong thing to load — the mode cards, where
+ * eight autoplaying clips would cost far more than the thumbnails are worth.
+ * A video-backed mode with no poster simply falls back to its gradient, which
+ * is what an unconfigured mode shows too.
+ */
+export function backgroundStillFor(themeId: string): string | null {
+  const poster = ENV[posterVarFor(themeId)]?.trim();
+  if (poster) {
+    const url = safeImageUrl(poster);
+    if (url) return url;
+  }
+
+  const background = backgroundFor(themeId);
+  return background?.kind === 'image' ? background.url : null;
 }

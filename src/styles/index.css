@@ -248,63 +248,28 @@
     transform: scale(0.965);
   }
 
-  /* The scene layer.
+  /* The scene layer — full bleed, edge to edge.
    *
-   * The artwork is drawn 10:7. The scenes render with `preserveAspectRatio`
-   * set to `meet`, so whatever box this class gives them, the whole scene is
-   * fitted inside it and the leftover area stays transparent. Nothing is ever
-   * cropped — cropping to fill the window is what made the scene look like a
-   * zoomed-in detail rather than a room you are sitting in.
-   */
-  /* The box is given the artwork's own ratio and centred, so it matches the
-     rendered scene exactly. That matters for the mask below: each scene paints
-     an opaque backdrop, and where that backdrop stops it meets the page on a
-     hard seam. Feathering only works if the mask lines up with the artwork, so
-     the box cannot just be the whole viewport with the scene floating in it.
-
-     `margin: auto` against a full `inset`, not a transform — Motion writes an
-     inline `transform` here for the cross-fade and would overwrite it. */
+   * This used to sit in a centred 10:7 box so the whole artwork was visible
+   * with nothing cropped, feathered at the sides where it met the page. The
+   * cost was two dead bars down the left and right on any window wider than
+   * 10:7, which is most of them, and the background read as a picture placed
+   * on the page rather than the place you are in.
+   *
+   * So it fills the viewport and crops instead. Paired with `object-cover` on
+   * the element, the short edge fits and the long edge overflows — the middle
+   * of the frame is always what survives, which is where these backgrounds put
+   * their subject. No mask is needed now: there is no edge where the artwork
+   * stops and the page begins.
+   *
+   * Compose with room to lose: roughly the outer 15% of the wide edge can be
+   * cropped on an ultrawide window. The scrims in `SceneBackground` still do
+   * the legibility work over the top. */
   .vm-scene {
     position: absolute;
     inset: 0;
-    margin: auto;
+    width: 100%;
     height: 100%;
-    width: auto;
-    aspect-ratio: 10 / 7;
-    -webkit-mask-image: linear-gradient(
-      to right,
-      transparent 0%,
-      black 8%,
-      black 92%,
-      transparent 100%
-    );
-    mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
-  }
-
-  /* Portrait: width-driven and pinned to the upper area so the whole scene
-     clears the bottom-anchored text panel. The seams are horizontal here, so
-     the feather turns with it. */
-  @media (max-aspect-ratio: 20/19) {
-    .vm-scene {
-      inset: 7% 0 auto 0;
-      margin: 0;
-      width: 100%;
-      height: auto;
-      -webkit-mask-image: linear-gradient(
-        to bottom,
-        transparent 0%,
-        black 9%,
-        black 91%,
-        transparent 100%
-      );
-      mask-image: linear-gradient(
-        to bottom,
-        transparent 0%,
-        black 9%,
-        black 91%,
-        transparent 100%
-      );
-    }
   }
 
   /* Icon buttons are sized for a mouse. On a touch screen the smallest of them
@@ -655,6 +620,18 @@
 
   .vm-blink {
     animation: vm-blink 1.6s steps(1, end) infinite;
+  }
+
+  /* The cover art turning like a record while the track plays. Paused rather
+     than stopped when the music is, so the sleeve keeps whatever angle it had
+     instead of snapping back to upright. The global reduced-motion and
+     hidden-tab rules below already freeze it, same as every other animation. */
+  .vm-record {
+    animation: vm-spin 9s linear infinite;
+  }
+
+  .vm-record[data-spinning='false'] {
+    animation-play-state: paused;
   }
 
   .vm-caret {

@@ -6,6 +6,8 @@ import {
   ExternalLink,
   Link2,
   Loader2,
+  Maximize2,
+  Minimize2,
   Pause,
   Play,
   Repeat,
@@ -40,6 +42,10 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
   const ThemeIcon = theme.icon;
   const { push } = useToast();
   const [expanded, setExpanded] = useState(false);
+  // Shrinks the bar to a turning disc and a play button, so the artwork behind
+  // it gets the whole screen. Everything the bar drops is still reachable —
+  // restoring is one click, and the keyboard shortcuts never stop working.
+  const [minimised, setMinimised] = useState(false);
   const containerRef = useRef<HTMLElement>(null);
 
   const {
@@ -129,7 +135,19 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
       transition={{ type: 'spring', stiffness: 260, damping: 32 }}
       aria-label="Music player"
     >
-      <div className="vm-panel rounded-t-2xl border-x-0 border-b-0 shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.7)]">
+      <div
+        className={cn(
+          'vm-panel transition-[border-radius] duration-300',
+          minimised
+            ? // A pill centred over the bottom of the artwork rather than a bar
+              // pinned across it. `max-w` keeps it inside the viewport once the
+              // track name is long, and the name truncates rather than pushing
+              // the pill wider than the screen.
+              'mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-full shadow-[0_8px_30px_-8px_rgba(0,0,0,0.7)]'
+            : 'rounded-t-2xl border-x-0 border-b-0 shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.7)]',
+        )}
+        style={minimised ? { marginBottom: 'calc(1rem + var(--safe-bottom))' } : undefined}
+      >
         {/* ── Expanded drawer ────────────────────────────────────────────── */}
         <AnimatePresence initial={false}>
           {expanded && (
@@ -198,40 +216,52 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
         </AnimatePresence>
 
         {/* ── Progress ───────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-4 pt-2 sm:px-6">
-          <span className="w-10 shrink-0 text-right font-mono text-[0.65rem] text-muted tabular-nums">
-            {formatTime(progress)}
-          </span>
-          <Slider
-            label="Seek"
-            value={progress}
-            max={duration}
-            step={1}
-            disabled={controlsDisabled || duration === 0}
-            onChange={player.seek}
-            valueText={`${formatTime(progress)} of ${formatTime(duration)}`}
-            className="flex-1"
-          />
-          <span className="w-10 shrink-0 font-mono text-[0.65rem] text-muted tabular-nums">
-            {formatTime(duration)}
-          </span>
-        </div>
+        {/* Rendered conditionally rather than hidden: a `false` still occupies
+            its slot, so the row below keeps its position in the tree and the
+            embed inside it is never remounted. */}
+        {!minimised && (
+          <div className="flex items-center gap-3 px-4 pt-2 sm:px-6">
+            <span className="w-10 shrink-0 text-right font-mono text-[0.65rem] text-muted tabular-nums">
+              {formatTime(progress)}
+            </span>
+            <Slider
+              label="Seek"
+              value={progress}
+              max={duration}
+              step={1}
+              disabled={controlsDisabled || duration === 0}
+              onChange={player.seek}
+              valueText={`${formatTime(progress)} of ${formatTime(duration)}`}
+              className="flex-1"
+            />
+            <span className="w-10 shrink-0 font-mono text-[0.65rem] text-muted tabular-nums">
+              {formatTime(duration)}
+            </span>
+          </div>
+        )}
 
         {/* ── Main row ───────────────────────────────────────────────────── */}
         {/* The extra bottom padding clears the home indicator on notched
             phones — without it the transport buttons sit underneath it. */}
         <div
-          className="flex items-center gap-3 px-3 pb-3 sm:gap-4 sm:px-6"
-          style={{ paddingBottom: 'calc(0.75rem + var(--safe-bottom))' }}
+          className={cn(
+            'flex items-center',
+            minimised ? 'gap-2 p-2' : 'gap-3 px-3 pb-3 sm:gap-4 sm:px-6',
+          )}
+          style={minimised ? undefined : { paddingBottom: 'calc(0.75rem + var(--safe-bottom))' }}
         >
-          {/* Cover art. The YouTube player sits underneath, painted but fully
-              covered — see the note on the host div below. */}
+          {/* Cover art, turning like a record. Square and circular in every
+              state — a rotating rectangle just reads as broken.
+
+              This element must stay mounted and in the same place in the tree
+              no matter which state the bar is in. It holds the YouTube embed,
+              and `registerHost` swapping to a different node would tear the
+              player down and restart the track from zero — which is exactly
+              what minimising must not do. */}
           <div
             className={cn(
-              'relative shrink-0 overflow-hidden rounded-lg border border-line bg-canvas-2 transition-[width,height] duration-300',
-              expanded
-                ? 'h-[74px] w-[132px] sm:h-[104px] sm:w-[185px]'
-                : 'h-11 w-[68px] sm:h-12 sm:w-[85px]',
+              'relative shrink-0 overflow-hidden rounded-full border border-line bg-canvas-2 transition-[width,height] duration-300',
+              minimised ? 'size-14' : expanded ? 'size-[74px] sm:size-[104px]' : 'size-11 sm:size-12',
             )}
           >
             {/* The embed has to stay in the layout and stay painted: YouTube
@@ -255,7 +285,8 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
                 loading="lazy"
                 decoding="async"
                 onError={() => setArtworkFailed(true)}
-                className="absolute inset-0 h-full w-full object-cover"
+                data-spinning={isPlaying ? 'true' : 'false'}
+                className="vm-record absolute inset-0 h-full w-full rounded-full object-cover"
               />
             ) : (
               <div className="absolute inset-0 grid place-items-center bg-canvas-2">
@@ -263,15 +294,25 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
               </div>
             )}
 
+            {/* The spindle. Sells the record read at a glance, and gives the
+                spin a visible centre — a photo rotating about nothing in
+                particular just looks like a glitch. */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-1/2 size-[18%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-canvas/85 ring-1 ring-ink/15"
+            />
+
             {isBuffering && (
-              <span className="absolute inset-0 grid place-items-center bg-black/45">
+              <span className="absolute inset-0 grid place-items-center rounded-full bg-black/45">
                 <Loader2 className="size-4 animate-spin text-primary" />
               </span>
             )}
           </div>
 
-          {/* Track text */}
-          <div className="min-w-0 flex-1">
+          {/* Track text. Minimised keeps the name — a disc with no title tells
+              you something is playing but not what — and drops the second line,
+              which is the playlist and position rather than the song. */}
+          <div className={cn('min-w-0', minimised ? 'max-w-[42vw] sm:max-w-[20rem]' : 'flex-1')}>
             <p
               className={cn(
                 'truncate text-sm font-medium',
@@ -281,9 +322,11 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
             >
               {primaryLine}
             </p>
-            <p className="mt-0.5 truncate text-xs text-muted" title={secondaryLine ?? undefined}>
-              {secondaryLine}
-            </p>
+            {!minimised && (
+              <p className="mt-0.5 truncate text-xs text-muted" title={secondaryLine ?? undefined}>
+                {secondaryLine}
+              </p>
+            )}
           </div>
 
           {/* Transport */}
@@ -293,7 +336,10 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
                 `inline-flex` baked into IconButton's own base classes and the
                 button stays visible. `contents` keeps the flex row unchanged
                 at sm and up. */}
-            <span className="hidden sm:contents">
+            {/* Minimised shows it at every width: the pill is the only control
+                left on screen, so losing skip-back on a phone would mean the
+                shortcut keys are the only way back a track. */}
+            <span className={minimised ? 'contents' : 'hidden sm:contents'}>
               <IconButton
                 label="Previous track"
                 onClick={player.previous}
@@ -338,7 +384,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
 
           {/* Secondary controls — desktop only, everything here is also in
               Settings or the expanded drawer for small screens. */}
-          <div className="hidden items-center gap-1 lg:flex">
+          <div className={cn('hidden items-center gap-1', !minimised && 'lg:flex')}>
             <IconButton
               label="Shuffle"
               size="sm"
@@ -373,12 +419,27 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
             </div>
           </div>
 
+          {!minimised && (
+            <IconButton
+              label={expanded ? 'Collapse player' : 'Expand player'}
+              size="sm"
+              onClick={() => setExpanded((current) => !current)}
+            >
+              {expanded ? <ChevronDown /> : <ChevronUp />}
+            </IconButton>
+          )}
+
           <IconButton
-            label={expanded ? 'Collapse player' : 'Expand player'}
+            label={minimised ? 'Restore player' : 'Minimise player'}
             size="sm"
-            onClick={() => setExpanded((current) => !current)}
+            onClick={() => {
+              // The drawer belongs to the full bar; leaving it open would have
+              // it spring back the moment the player is restored.
+              if (!minimised) setExpanded(false);
+              setMinimised((current) => !current);
+            }}
           >
-            {expanded ? <ChevronDown /> : <ChevronUp />}
+            {minimised ? <Maximize2 /> : <Minimize2 />}
           </IconButton>
         </div>
       </div>

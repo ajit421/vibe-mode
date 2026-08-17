@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { Check, ListMusic } from 'lucide-react';
 import type { VibeTheme } from '@/types/theme';
-import { backgroundImageFor } from '@/themes/backgrounds';
+import { backgroundStillFor } from '@/themes/backgrounds';
 import { cn } from '@/utils/cn';
 
 interface ThemeCardProps {
@@ -23,7 +23,10 @@ export function ThemeCard({
   index,
 }: ThemeCardProps) {
   const Icon = theme.icon;
-  const preview = backgroundImageFor(theme.id);
+  // A still, never the clip: eight autoplaying videos on the landing screen
+  // would cost more bandwidth than the whole rest of the site. A video-backed
+  // mode shows its poster, or its gradient if it has none.
+  const preview = backgroundStillFor(theme.id);
 
   return (
     <motion.button
