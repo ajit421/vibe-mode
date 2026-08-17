@@ -24,6 +24,7 @@ import { useToast } from '@/state/toast-context';
 import { IconButton } from '@/components/ui/IconButton';
 import { Slider } from '@/components/ui/Slider';
 import { PlaylistChips } from './PlaylistChips';
+import { TrackList } from './TrackList';
 import { envVarFor } from '@/music/playlists';
 import { formatTime } from '@/utils/format';
 import { buildShareUrl } from '@/utils/url';
@@ -178,6 +179,18 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
                 <div>
                   <p className="vm-label mb-2 text-muted">Playlists in this mode</p>
                   <PlaylistChips variant="hero" />
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-baseline justify-between gap-3">
+                    <p className="vm-label text-muted">Tracklist</p>
+                    {trackCount > 0 && (
+                      <span className="font-mono text-[0.65rem] text-muted tabular-nums">
+                        {trackIndex + 1} / {trackCount}
+                      </span>
+                    )}
+                  </div>
+                  <TrackList />
                 </div>
               </div>
             </motion.div>

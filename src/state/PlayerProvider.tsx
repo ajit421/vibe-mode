@@ -34,6 +34,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [track, setTrack] = useState<PlayerTrack | null>(null);
   const [trackIndex, setTrackIndex] = useState(0);
   const [trackCount, setTrackCount] = useState(0);
+  const [trackIds, setTrackIds] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [shuffle, setShuffle] = useState(false);
@@ -68,6 +69,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   mutedRef.current = isMuted;
   const hasStartedRef = useRef(hasStarted);
   hasStartedRef.current = hasStarted;
+  const shuffleRef = useRef(shuffle);
+  shuffleRef.current = shuffle;
+  const repeatRef = useRef(repeat);
+  repeatRef.current = repeat;
 
   const readTrack = useCallback((player: YTPlayer) => {
     const data = player.getVideoData?.();
@@ -81,6 +86,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     const list = player.getPlaylist?.();
     setTrackCount(list?.length ?? 0);
+    // Replace the array only when the contents actually differ. `getPlaylist`
+    // hands back a fresh array every call, and this runs on a 400ms ticker —
+    // storing it blindly would re-render the whole tracklist several times a
+    // second and undo the title fetching.
+    setTrackIds((current) => {
+      const next = list ?? [];
+      if (current.length === next.length && current.every((id, i) => id === next[i])) {
+        return current;
+      }
+      return next;
+    });
     const index = player.getPlaylistIndex?.();
     if (typeof index === 'number' && index >= 0) setTrackIndex(index);
   }, []);
@@ -126,20 +142,59 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const armWatchdog = useCallback(() => {
     clearWatchdog();
 
-    // A restricted track reports BUFFERING and stays there indefinitely, so
-    // buffering alone cannot mean "still loading" — it only buys extra time,
-    // and only up to this deadline. Generous enough not to punish a slow
-    // connection, short enough that a dead track doesn't strand the listener.
-    const deadline = Date.now() + 9000;
+    // Progress, not elapsed time, decides whether a track is alive.
+    //
+    // This used to give every track a flat 9s from the moment play was pressed
+    // and skip it if it had not started by then. On a slow connection that
+    // punishes a perfectly good track: it is still downloading, the deadline
+    // passes, and the listener watches the player skip three tracks and then
+    // stop altogether with a message blaming the playlist.
+    //
+    // A track that is merely slow keeps buffering — its loaded fraction and,
+    // once it starts, its current time keep climbing. A track that is blocked
+    // parks itself and never moves. So we only count polls where *nothing*
+    // changed, and any sign of life resets the count.
+    let stalled = 0;
+    let lastLoaded = -1;
+    let lastTime = -1;
 
     const tick = () => {
       const player = playerRef.current;
       if (!player) return;
 
       const state = player.getPlayerState?.();
-      if (state === YT_STATE.PLAYING) return;
+      if (state === YT_STATE.PLAYING) {
+        clearWatchdog();
+        return;
+      }
 
-      if (state === YT_STATE.BUFFERING && Date.now() < deadline) {
+      // An autoplay block leaves the player parked in UNSTARTED/CUED. That is
+      // the browser refusing, not a bad track — skipping through the playlist
+      // would just hit the same wall on every one of them.
+      if (state === YT_STATE.UNSTARTED || state === YT_STATE.CUED) {
+        if (hasStartedRef.current) {
+          watchdog.current = window.setTimeout(tick, 1200);
+          return;
+        }
+        clearWatchdog();
+        setErrorMessage(null);
+        return;
+      }
+
+      const loaded = player.getVideoLoadedFraction?.() ?? 0;
+      const time = player.getCurrentTime?.() ?? 0;
+      const moving = loaded > lastLoaded + 0.0001 || time > lastTime + 0.0001;
+      lastLoaded = loaded;
+      lastTime = time;
+
+      if (moving) {
+        stalled = 0;
+        watchdog.current = window.setTimeout(tick, 1200);
+        return;
+      }
+
+      // ~8.4s of a completely motionless player before we call it dead.
+      if (++stalled < 7) {
         watchdog.current = window.setTimeout(tick, 1200);
         return;
       }
@@ -171,6 +226,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setIsPlaying(false);
       setTrack(null);
       setTrackCount(0);
+      setTrackIds([]);
       setProgress(0);
       setDuration(0);
       playerRef.current?.pauseVideo?.();
@@ -187,6 +243,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // under the incoming playlist's name while the swap is in flight.
     setTrack(null);
     setTrackCount(0);
+    setTrackIds([]);
     setTrackIndex(0);
 
     loadYouTubeIframeApi()
@@ -229,7 +286,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             origin: window.location.origin,
             ...(source.kind === 'playlist'
               ? { listType: 'playlist', list: source.playlistId }
-              : { playlist: source.videoIds.slice(1).join(',') }),
+              : // Every id goes in `playlist`, and `videoId` is left unset.
+                //
+                // The other arrangement — first id as `videoId`, the rest in
+                // `playlist` — also plays, but `getPlaylist()` then reports
+                // only the ids from `playlist`. The opening track was missing
+                // from the count and from the tracklist, so a hand-picked set
+                // of three videos announced itself as "Track 1 of 2".
+                { playlist: source.videoIds.join(',') }),
           },
           events: {
             onReady: (event: YTPlayerEvent) => {
@@ -249,6 +313,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               player.setVolume(clamp(volumeRef.current, 0, 100));
               if (mutedRef.current) player.mute();
               else player.unMute();
+
+              // Switching mode rebuilds the player from scratch, so every
+              // setting has to be re-applied to the new instance. Volume and
+              // mute were, but shuffle and repeat were not: the buttons stayed
+              // lit from React state while the fresh player knew nothing about
+              // them, so shuffle silently stopped working after the first mode
+              // change and only came back if you toggled it off and on again.
+              player.setShuffle?.(shuffleRef.current);
+              player.setLoop?.(repeatRef.current);
+
               setStatus('ready');
               setDuration(player.getDuration?.() ?? 0);
               readTrack(player);
@@ -290,7 +364,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               // One dud track shouldn't kill the session — hop over it.
               if (errorStreak.current <= MAX_CONSECUTIVE_ERRORS && remaining > 1) {
                 setErrorMessage(`${message} Skipping…`);
-                window.setTimeout(() => player.nextVideo(), 600);
+                // The watchdog is very likely armed for this same track. Left
+                // running it would fire its own `nextVideo()` alongside this
+                // one and jump two tracks at once, which reads as the player
+                // randomly losing its place.
+                clearWatchdog();
+                window.setTimeout(() => {
+                  player.nextVideo();
+                  armWatchdog();
+                }, 600);
                 return;
               }
 
@@ -300,8 +382,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             },
           },
         };
-
-        if (source.kind === 'videos') config.videoId = source.videoIds[0];
 
         playerRef.current = new YT.Player(mount, config);
       })
@@ -318,7 +398,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [host, key, readTrack, settleTrackInfo, clearWatchdog, retryToken]);
+    // `armWatchdog` and `clearWatchdog` are stable, so listing them cannot
+    // rebuild the iframe — which must only happen when the source really
+    // changes, or playback restarts from zero mid-track.
+  }, [host, key, readTrack, settleTrackInfo, clearWatchdog, armWatchdog, retryToken]);
 
   /* ── Tear the player down exactly once, on unmount ────────────────────── */
   useEffect(
@@ -380,18 +463,50 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [armWatchdog, clearWatchdog]);
 
+  // Asking for a track by hand is a fresh start: clear the blocked-track streak
+  // so an earlier run of bad tracks cannot make the very next press give up
+  // immediately, and re-arm the watchdog so a track that refuses to play is
+  // skipped past with a message instead of leaving a dead button.
   const next = useCallback(() => {
-    playerRef.current?.nextVideo?.();
-  }, []);
+    const player = playerRef.current;
+    if (!player) return;
+    blockedSkips.current = 0;
+    setErrorMessage(null);
+    player.nextVideo?.();
+    armWatchdog();
+  }, [armWatchdog]);
 
   const previous = useCallback(() => {
     const player = playerRef.current;
     if (!player) return;
+    blockedSkips.current = 0;
+    setErrorMessage(null);
     // Match the convention people expect: restart the track first, and only
     // jump back once you're near the beginning.
-    if ((player.getCurrentTime?.() ?? 0) > 3) player.seekTo(0, true);
-    else player.previousVideo();
-  }, []);
+    if ((player.getCurrentTime?.() ?? 0) > 3) {
+      player.seekTo(0, true);
+      return;
+    }
+    player.previousVideo();
+    armWatchdog();
+  }, [armWatchdog]);
+
+  const playTrackAt = useCallback(
+    (index: number) => {
+      const player = playerRef.current;
+      if (!player) return;
+      blockedSkips.current = 0;
+      errorStreak.current = 0;
+      setErrorMessage(null);
+      setStatus('ready');
+      // Optimistic, so the row highlights the instant it is clicked rather
+      // than after YouTube gets around to reporting the change.
+      setTrackIndex(index);
+      player.playVideoAt?.(index);
+      armWatchdog();
+    },
+    [armWatchdog],
+  );
 
   const seek = useCallback((seconds: number) => {
     const player = playerRef.current;
@@ -412,20 +527,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggleMute = useCallback(() => setIsMuted((current) => !current), [setIsMuted]);
 
+  // The player call stays outside the state updater. An updater has to be a
+  // pure function of the previous state — React is free to run it twice (it
+  // does exactly that in StrictMode), which fired `setShuffle` on the player
+  // twice per click and left it in the opposite state to the button.
   const toggleShuffle = useCallback(() => {
-    setShuffle((current) => {
-      const value = !current;
-      playerRef.current?.setShuffle?.(value);
-      return value;
-    });
+    const value = !shuffleRef.current;
+    setShuffle(value);
+    playerRef.current?.setShuffle?.(value);
   }, []);
 
   const toggleRepeat = useCallback(() => {
-    setRepeat((current) => {
-      const value = !current;
-      playerRef.current?.setLoop?.(value);
-      return value;
-    });
+    const value = !repeatRef.current;
+    setRepeat(value);
+    playerRef.current?.setLoop?.(value);
   }, []);
 
   const retry = useCallback(() => {
@@ -442,6 +557,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       track,
       trackIndex,
       trackCount,
+      trackIds,
       isPlaying,
       isBuffering,
       needsInteraction: !hasStarted,
@@ -456,6 +572,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       togglePlay,
       next,
       previous,
+      playTrackAt,
       seek,
       setVolume,
       toggleMute,
@@ -471,6 +588,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       track,
       trackIndex,
       trackCount,
+      trackIds,
       isPlaying,
       isBuffering,
       hasStarted,
@@ -485,6 +603,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       togglePlay,
       next,
       previous,
+      playTrackAt,
       seek,
       setVolume,
       toggleMute,

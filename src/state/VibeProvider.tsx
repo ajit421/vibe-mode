@@ -5,9 +5,12 @@ import { usePrefersReducedMotion } from '@/hooks/useMediaQuery';
 import { usePageHidden } from '@/hooks/usePageVisibility';
 import { STORAGE_KEYS, clearStoredPreferences, readStorage } from '@/utils/storage';
 import { readUrlState, syncUrlState } from '@/utils/url';
+import { extractPlaylistId, extractVideoId } from '@/music/resolve';
+import type { VibePlaylist } from '@/types/theme';
 import {
   DEFAULT_PREFERENCES,
   VibeContext,
+  type CustomPlaylist,
   type VibeContextValue,
   type VibePreferences,
 } from './vibe-context';
@@ -16,6 +19,48 @@ import {
 const SWAP_DELAY_MS = 380;
 /** Total length of the transition overlay. */
 const TRANSITION_MS = 900;
+
+/**
+ * Prefix that separates a listener's own playlists from the built-in ones.
+ * `playlistsFor` derives env variable names from playlist ids, so a custom id
+ * must never be mistakable for one a `VITE_PLAYLIST_*` variable could fill in.
+ */
+const CUSTOM_PREFIX = 'custom-';
+
+const newCustomId = (): string =>
+  `${CUSTOM_PREFIX}${
+    globalThis.crypto?.randomUUID?.().slice(0, 8) ??
+    Math.random().toString(36).slice(2, 10)
+  }`;
+
+/**
+ * Turns what someone pasted into something the player can load: a playlist
+ * link or id, or a comma-separated set of video links or ids. Returns null
+ * when none of it parses, so the caller can say so rather than saving a
+ * playlist that will never play.
+ */
+function normaliseSource(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const playlistId = extractPlaylistId(trimmed);
+  if (playlistId) return playlistId;
+
+  const videoIds = trimmed
+    .split(',')
+    .map((entry) => extractVideoId(entry))
+    .filter((entry): entry is string => entry !== null);
+
+  return videoIds.length ? videoIds.join(',') : null;
+}
+
+/** A saved custom playlist, shaped like the ones themes declare. */
+function toVibePlaylist(custom: CustomPlaylist): VibePlaylist {
+  const base = { id: custom.id, name: custom.name, description: 'Your own playlist.', mood: 'Yours' };
+  return custom.source.includes(',')
+    ? { ...base, videoIds: custom.source.split(',') }
+    : { ...base, youtubePlaylistId: custom.source };
+}
 
 interface Bootstrap {
   themeId: string;
@@ -66,6 +111,9 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     STORAGE_KEYS.playlistOverrides,
     {},
   );
+  const [customPlaylistsByTheme, setCustomPlaylistsByTheme] = useLocalStorage<
+    Record<string, CustomPlaylist[]>
+  >(STORAGE_KEYS.customPlaylists, {});
   const [selectedPlaylists, setSelectedPlaylists] = useLocalStorage<Record<string, string>>(
     STORAGE_KEYS.selectedPlaylists,
     {},
@@ -92,10 +140,22 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   );
   const motionEnabled = preferences.motion && !systemReducedMotion;
 
+  const customPlaylists = useMemo(
+    () => customPlaylistsByTheme[theme.id] ?? [],
+    [customPlaylistsByTheme, theme.id],
+  );
+
+  // The listener's own playlists sit after the built-in ones, so adding one
+  // never renumbers or displaces what the mode already offered.
+  const playlists = useMemo(
+    () => [...theme.playlists, ...customPlaylists.map(toVibePlaylist)],
+    [theme.playlists, customPlaylists],
+  );
+
   const playlist = useMemo(() => {
     const preferred = selectedPlaylists[theme.id];
-    return theme.playlists.find((item) => item.id === preferred) ?? theme.playlists[0];
-  }, [theme, selectedPlaylists]);
+    return playlists.find((item) => item.id === preferred) ?? playlists[0];
+  }, [playlists, selectedPlaylists, theme.id]);
 
   /* ── Theme switching, with a cinematic wipe in between ─────────────────── */
   const timers = useRef<number[]>([]);
@@ -150,6 +210,52 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     [theme.id, setSelectedPlaylists],
   );
 
+  const addCustomPlaylist = useCallback(
+    (name: string, source: string): string | null => {
+      const normalised = normaliseSource(source);
+      if (!normalised) return null;
+
+      const id = newCustomId();
+      const entry: CustomPlaylist = {
+        id,
+        name: name.trim() || 'My playlist',
+        source: normalised,
+      };
+
+      setCustomPlaylistsByTheme((current) => ({
+        ...current,
+        [theme.id]: [...(current[theme.id] ?? []), entry],
+      }));
+      // Adding one is a request to hear it, so make it the active choice.
+      setSelectedPlaylists((current) => ({ ...current, [theme.id]: id }));
+      return id;
+    },
+    [theme.id, setCustomPlaylistsByTheme, setSelectedPlaylists],
+  );
+
+  const removeCustomPlaylist = useCallback(
+    (playlistId: string) => {
+      setCustomPlaylistsByTheme((current) => ({
+        ...current,
+        [theme.id]: (current[theme.id] ?? []).filter((item) => item.id !== playlistId),
+      }));
+      // Leaving the deleted id selected would resolve to the mode's first
+      // playlist anyway, but the stale entry would linger in storage forever.
+      setSelectedPlaylists((current) => {
+        if (current[theme.id] !== playlistId) return current;
+        const next = { ...current };
+        delete next[theme.id];
+        return next;
+      });
+    },
+    [theme.id, setCustomPlaylistsByTheme, setSelectedPlaylists],
+  );
+
+  const isCustomPlaylist = useCallback(
+    (playlistId: string) => playlistId.startsWith(CUSTOM_PREFIX),
+    [],
+  );
+
   const setPreference = useCallback(
     <K extends keyof VibePreferences>(key: K, value: VibePreferences[K]) => {
       setPreferences((current) => ({ ...current, [key]: value }));
@@ -173,11 +279,19 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     clearStoredPreferences();
     setPreferences(DEFAULT_PREFERENCES);
     setPlaylistOverrides({});
+    setCustomPlaylistsByTheme({});
     setSelectedPlaylists({});
     setThemeId(DEFAULT_THEME_ID);
     setHasEntered(false);
     setSelectorOpen(false);
-  }, [setPreferences, setPlaylistOverrides, setSelectedPlaylists, setThemeId, setHasEntered]);
+  }, [
+    setPreferences,
+    setPlaylistOverrides,
+    setCustomPlaylistsByTheme,
+    setSelectedPlaylists,
+    setThemeId,
+    setHasEntered,
+  ]);
 
   /* ── Paint the theme onto <html> so CSS variables drive the whole UI ───── */
   useEffect(() => {
@@ -249,9 +363,14 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       themes: THEMES,
       theme,
       themeId: theme.id,
+      playlists,
       playlist,
       playlistId: playlist?.id ?? null,
       selectPlaylist,
+      customPlaylists,
+      addCustomPlaylist,
+      removeCustomPlaylist,
+      isCustomPlaylist,
       selectTheme,
       incomingTheme,
       isTransitioning: incomingTheme !== null,
@@ -270,8 +389,13 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     }),
     [
       theme,
+      playlists,
       playlist,
       selectPlaylist,
+      customPlaylists,
+      addCustomPlaylist,
+      removeCustomPlaylist,
+      isCustomPlaylist,
       selectTheme,
       incomingTheme,
       hasEntered,

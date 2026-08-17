@@ -30,14 +30,38 @@ export const DEFAULT_PREFERENCES: VibePreferences = {
   quotes: false,
 };
 
+/**
+ * A playlist the listener made themselves, saved in their browser.
+ *
+ * Unlike the built-in ones this *does* carry a YouTube id. The rule that ids
+ * never appear in code is about configuration the repo ships — this is a value
+ * a person typed into the running site, so it belongs to them and lives in
+ * their localStorage, next to the existing playlist overrides.
+ */
+export interface CustomPlaylist {
+  id: string;
+  name: string;
+  /** A playlist id, or a comma-separated set of video ids. */
+  source: string;
+}
+
 export interface VibeContextValue {
   themes: readonly VibeTheme[];
   theme: VibeTheme;
   themeId: string;
 
+  /** The mode's built-in playlists followed by the listener's own. */
+  playlists: VibePlaylist[];
   playlist: VibePlaylist | undefined;
   playlistId: string | null;
   selectPlaylist: (playlistId: string) => void;
+
+  /** The listener's own playlists for the active mode. */
+  customPlaylists: CustomPlaylist[];
+  /** Returns the new playlist's id, or null when the source was unusable. */
+  addCustomPlaylist: (name: string, source: string) => string | null;
+  removeCustomPlaylist: (playlistId: string) => void;
+  isCustomPlaylist: (playlistId: string) => boolean;
 
   selectTheme: (themeId: string) => void;
   /** The theme being transitioned *to*, while the wipe is on screen. */

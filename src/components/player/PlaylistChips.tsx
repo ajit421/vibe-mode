@@ -15,9 +15,10 @@ interface PlaylistChipsProps {
  * hidden, so it is obvious what is left to configure.
  */
 export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
-  const { theme, playlistId, selectPlaylist, playlistOverrides } = useVibe();
+  const { theme, playlists, playlistId, selectPlaylist, playlistOverrides, isCustomPlaylist } =
+    useVibe();
 
-  if (theme.playlists.length === 0) {
+  if (playlists.length === 0) {
     return (
       <p className="font-mono text-xs text-muted">
         No playlists defined for this mode yet — see src/music/playlists.ts
@@ -31,9 +32,10 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
       role="group"
       aria-label={`Playlists for ${theme.name}`}
     >
-      {theme.playlists.map((playlist) => {
+      {playlists.map((playlist) => {
         const selected = playlist.id === playlistId;
         const configured = resolvePlaylistSource(playlist, playlistOverrides[playlist.id]) !== null;
+        const own = isCustomPlaylist(playlist.id);
 
         return (
           <button
@@ -49,7 +51,11 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
             title={
               configured
                 ? playlist.description
-                : `${playlist.name} — set ${envVarFor(playlist.id)} in .env, or add your own from Settings`
+                : own
+                  ? // A custom playlist has no env variable behind it — the
+                    // only thing that can be wrong is what was pasted in.
+                    `${playlist.name} — that link didn’t resolve. Edit it in Settings.`
+                  : `${playlist.name} — set ${envVarFor(playlist.id)} in .env, or add your own from Settings`
             }
             className={cn(
               // `pointer-events-auto`: in the world layout these sit inside a

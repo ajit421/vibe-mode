@@ -50,6 +50,13 @@ export interface YTPlayer {
   getCurrentTime(): number;
   getDuration(): number;
   getPlayerState(): number;
+  /**
+   * 0–1, how much of the current track has been buffered. This is the only
+   * reliable way to tell a track that is merely slow from one that is never
+   * going to start: a slow track's buffer keeps growing, a blocked one's
+   * stays exactly where it is.
+   */
+  getVideoLoadedFraction(): number;
 
   getVideoData(): YTVideoData | undefined;
   getVideoUrl(): string;

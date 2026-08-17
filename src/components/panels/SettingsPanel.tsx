@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, RotateCcw, TriangleAlert, Undo2 } from 'lucide-react';
+import { Check, Plus, RotateCcw, Trash2, TriangleAlert, Undo2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Switch } from '@/components/ui/Switch';
 import { Slider } from '@/components/ui/Slider';
@@ -24,10 +24,30 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     systemReducedMotion,
     playlistOverrides,
     setPlaylistOverride,
+    customPlaylists,
+    addCustomPlaylist,
+    removeCustomPlaylist,
+    isCustomPlaylist,
     resetEverything,
   } = useVibe();
   const { volume, setVolume, isMuted, toggleMute } = usePlayer();
   const { push } = useToast();
+
+  const [newName, setNewName] = useState('');
+  const [newSource, setNewSource] = useState('');
+  const [newInvalid, setNewInvalid] = useState(false);
+
+  const createPlaylist = () => {
+    const id = addCustomPlaylist(newName, newSource);
+    if (!id) {
+      setNewInvalid(true);
+      return;
+    }
+    setNewInvalid(false);
+    setNewName('');
+    setNewSource('');
+    push(`“${newName.trim() || 'My playlist'}” added to ${theme.name}.`, 'PLAYLIST');
+  };
 
   const currentOverride = playlist ? (playlistOverrides[playlist.id] ?? '') : '';
   // `playlist` already has the .env value merged in by `playlistsFor`.
@@ -125,6 +145,90 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <h3 className="vm-label text-muted">Playlist for {theme.name}</h3>
           <PlaylistChips variant="hero" />
 
+          {/* ── Make your own ─────────────────────────────────────────────── */}
+          <div className="mt-2 rounded-xl border border-line/60 bg-canvas/40 p-3.5">
+            <p className="text-sm font-medium text-ink">Your own playlists</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Give it a name, paste a YouTube playlist link — or a few video links separated by
+              commas — and it joins the list above for {theme.name}. Saved in this browser only.
+            </p>
+
+            {customPlaylists.length > 0 && (
+              <ul className="mt-3 flex flex-col gap-1.5">
+                {customPlaylists.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-lg border border-line/60 bg-surface/50 px-2.5 py-1.5"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-xs text-ink">{item.name}</span>
+                    <code className="hidden max-w-[9rem] truncate font-mono text-[0.65rem] text-muted sm:block">
+                      {item.source}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeCustomPlaylist(item.id);
+                        push(`“${item.name}” removed.`, 'PLAYLIST');
+                      }}
+                      aria-label={`Delete ${item.name}`}
+                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-ink/8 hover:text-primary"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') createPlaylist();
+                }}
+                placeholder="Name — e.g. Late night drive"
+                aria-label="New playlist name"
+                className="min-w-0 rounded-lg border border-line bg-canvas/60 px-3 py-2 text-xs text-ink placeholder:text-muted/60 focus-visible:border-primary/60 sm:w-44"
+              />
+              <input
+                type="text"
+                inputMode="url"
+                spellCheck={false}
+                autoComplete="off"
+                value={newSource}
+                onChange={(event) => {
+                  setNewSource(event.target.value);
+                  setNewInvalid(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') createPlaylist();
+                }}
+                placeholder="Playlist link, or video links"
+                aria-label="New playlist source"
+                aria-invalid={newInvalid}
+                className="min-w-0 flex-1 rounded-lg border border-line bg-canvas/60 px-3 py-2 font-mono text-xs text-ink placeholder:text-muted/60 focus-visible:border-primary/60"
+              />
+              <button
+                type="button"
+                onClick={createPlaylist}
+                disabled={!newSource.trim()}
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-canvas transition-[filter] hover:brightness-110 disabled:opacity-40"
+              >
+                <Plus className="size-3.5" />
+                Add
+              </button>
+            </div>
+
+            {newInvalid && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-primary">
+                <TriangleAlert className="size-3.5 shrink-0" />
+                Couldn’t read a playlist or video out of that. Paste the full YouTube link.
+              </p>
+            )}
+          </div>
+
           <div className="mt-2">
             <label htmlFor="playlist-override" className="text-sm font-medium text-ink">
               Play your own playlist
@@ -194,8 +298,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               </div>
             )}
 
-            {/* Where the default comes from, named exactly so it can be set. */}
-            {playlist && (
+            {/* Where the default comes from, named exactly so it can be set.
+                A playlist the listener made has no env variable behind it, so
+                naming one would send them looking for a line that shouldn't
+                exist. */}
+            {playlist && !isCustomPlaylist(playlist.id) && (
               <p className="mt-3 text-xs text-muted">
                 The default for this playlist is read from{' '}
                 <code className="rounded bg-ink/8 px-1 py-0.5 font-mono text-[0.7rem] text-ink/80">

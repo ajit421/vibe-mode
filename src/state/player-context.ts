@@ -25,6 +25,12 @@ export interface PlayerContextValue {
   track: PlayerTrack | null;
   trackIndex: number;
   trackCount: number;
+  /**
+   * Every video id in the loaded playlist, in play order. Empty until the
+   * player has cued the list. Only ids — YouTube gives us a title for the
+   * *current* track and nothing else, so the tracklist fetches the rest.
+   */
+  trackIds: string[];
 
   isPlaying: boolean;
   isBuffering: boolean;
@@ -44,6 +50,8 @@ export interface PlayerContextValue {
   togglePlay: () => void;
   next: () => void;
   previous: () => void;
+  /** Jump straight to a position in the loaded playlist. */
+  playTrackAt: (index: number) => void;
   seek: (seconds: number) => void;
   setVolume: (volume: number) => void;
   toggleMute: () => void;

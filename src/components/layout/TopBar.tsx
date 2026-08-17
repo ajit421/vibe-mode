@@ -1,6 +1,20 @@
 import { CircleHelp, Settings2, Shuffle } from 'lucide-react';
 import { useVibe } from '@/state/vibe-context';
+import { useClock } from '@/hooks/useClock';
 import { IconButton } from '@/components/ui/IconButton';
+
+// Built once, not per render — constructing an Intl formatter is expensive and
+// this one repaints every second.
+const TIME = new Intl.DateTimeFormat(undefined, {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+const DATE = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: '2-digit',
+  month: 'short',
+});
 
 interface TopBarProps {
   onOpenSettings: () => void;
@@ -10,6 +24,9 @@ interface TopBarProps {
 export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
   const { theme, hasEntered, setSelectorOpen, leaveToLanding } = useVibe();
   const Icon = theme.icon;
+  // Ticks once a minute: the readout has no seconds, so a 1s interval would be
+  // fifty-nine wasted renders. `useClock` stops entirely on a hidden tab.
+  const now = useClock(30_000);
 
   return (
     // Insets live on the header so the inner row keeps its responsive padding
@@ -51,6 +68,22 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Date and time, always on — not behind the status-readout toggle.
+              The strip that toggle controls is a decorative block down in the
+              layout; this is the one fact you actually glance up for. The date
+              drops out before the time on a narrow screen. */}
+          <div className="vm-panel flex items-baseline gap-2 rounded-full px-3 py-1.5">
+            <time
+              dateTime={now.toISOString()}
+              className="font-mono text-xs font-medium text-ink tabular-nums"
+            >
+              {TIME.format(now)}
+            </time>
+            <span className="vm-label hidden text-[0.6rem] text-muted sm:inline">
+              {DATE.format(now)}
+            </span>
+          </div>
+
           {hasEntered && (
             <button
               type="button"
