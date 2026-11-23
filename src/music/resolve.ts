@@ -37,6 +37,41 @@ export function extractVideoId(input: string): string | null {
 }
 
 /**
+ * Turns what someone pasted into something the player can load: a playlist
+ * link or id, or a comma-separated set of video links or ids. Returns null
+ * when none of it parses, so the caller can say so rather than saving a
+ * playlist that will never play.
+ */
+export function normaliseSource(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const playlistId = extractPlaylistId(trimmed);
+  if (playlistId) return playlistId;
+
+  const videoIds = trimmed
+    .split(',')
+    .map((entry) => extractVideoId(entry))
+    .filter((entry): entry is string => entry !== null);
+
+  return videoIds.length ? videoIds.join(',') : null;
+}
+
+/**
+ * A normalised source as `VibePlaylist` fields. Decided by whether it parses
+ * as a playlist id — not by the presence of a comma, which got a single pasted
+ * video wrong: it was stored as a playlist id, failed to parse as one, and the
+ * playlist sat there "not configured" forever.
+ */
+export function sourceFields(
+  source: string,
+): Pick<VibePlaylist, 'youtubePlaylistId' | 'videoIds'> {
+  return extractPlaylistId(source)
+    ? { youtubePlaylistId: source, videoIds: undefined }
+    : { youtubePlaylistId: undefined, videoIds: source.split(',') };
+}
+
+/**
  * Works out what the player should actually load.
  *
  * Precedence: a runtime override (set in the Settings panel) beats the

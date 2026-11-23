@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   Copy,
   Download,
   Eye,
@@ -10,9 +11,11 @@ import {
   ImagePlus,
   Link2,
   Play,
+  Plus,
   RotateCcw,
   Trash2,
   TriangleAlert,
+  Undo2,
   Upload,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
@@ -23,12 +26,17 @@ import { backgroundStillFor, safeCustomImage } from '@/themes/backgrounds';
 import {
   COLOR_KEYS,
   EFFECT_KEYS,
+  HEADING_FONTS,
   MAX_IMAGE_LENGTH,
+  MODE_ICONS,
   TEXT_LIMITS,
   isAddedMode,
   isHidden,
+  pairsToLines,
+  type FontKey,
+  type IconKey,
 } from '@/themes/customize';
-import type { VibeColors, VibeEffects } from '@/types/theme';
+import type { VibeColors, VibeEffects, VibePlaylist } from '@/types/theme';
 import { cn } from '@/utils/cn';
 
 const COLOR_LABELS: Record<keyof VibeColors, string> = {
@@ -117,11 +125,15 @@ function ConfirmButton({
   confirmLabel,
   icon,
   onConfirm,
+  disabled,
+  className,
 }: {
   label: string;
   confirmLabel: string;
   icon: ReactNode;
   onConfirm: () => void;
+  disabled?: boolean;
+  className?: string;
 }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
@@ -138,7 +150,9 @@ function ConfirmButton({
         setArmed(false);
         onConfirm();
       }}
-      className={cn(SMALL_BUTTON, armed && 'border-primary/70 bg-primary/15 text-primary')}
+      disabled={disabled}
+      aria-label={armed ? confirmLabel : label}
+      className={cn(SMALL_BUTTON, className, armed && 'border-primary/70 bg-primary/15 text-primary')}
     >
       {icon}
       {armed ? confirmLabel : label}
@@ -154,6 +168,7 @@ interface CustomizePanelProps {
 export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
   const {
     allThemes,
+    deletedThemes,
     theme,
     customization,
     editMode,
@@ -269,6 +284,19 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
       <div className="grid gap-5 sm:grid-cols-[12.5rem_1fr]">
         {/* ── Every mode, hidden ones included ─────────────────────────── */}
         <nav aria-label="Modes" className="flex min-w-0 flex-col gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-canvas transition-[filter] hover:brightness-110"
+            onClick={() => {
+              const id = addMode(theme.id, true);
+              if (!id) return;
+              setSelectedId(id);
+              push('New mode added. Give it a name, a picture and some music.', 'CUSTOMIZE');
+            }}
+          >
+            <Plus className="size-4" />
+            New mode
+          </button>
           <ul className="flex flex-wrap gap-1.5 sm:flex-col sm:flex-nowrap">
             {allThemes.map((item) => {
               const ItemIcon = item.icon;
@@ -298,6 +326,31 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
               );
             })}
           </ul>
+
+          {deletedThemes.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5 border-t border-line/60 pt-3">
+              <p className="vm-label text-muted">Deleted</p>
+              <ul className="flex flex-col gap-1">
+                {deletedThemes.map((item) => (
+                  <li key={item.id} className="flex items-center gap-2 px-1 text-sm text-muted">
+                    <span className="min-w-0 flex-1 truncate line-through">{item.name}</span>
+                    <button
+                      type="button"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-ink hover:bg-ink/8"
+                      onClick={() => {
+                        editMode(item.id, { deleted: false });
+                        setSelectedId(item.id);
+                        push(`${item.name} is back.`, 'CUSTOMIZE');
+                      }}
+                    >
+                      <Undo2 className="size-3.5" />
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </nav>
 
         {/* ── Editor for the selected mode ─────────────────────────────── */}
@@ -345,28 +398,35 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
               <Copy className="size-3.5" />
               Make a copy
             </button>
-            {added ? (
-              <ConfirmButton
-                label="Delete"
-                confirmLabel="Sure? Delete"
-                icon={<Trash2 className="size-3.5" />}
-                onConfirm={() => {
-                  removeMode(mode.id);
-                  setSelectedId(theme.id);
-                  push(`“${mode.name}” deleted.`, 'CUSTOMIZE');
-                }}
-              />
-            ) : (
-              <ConfirmButton
-                label="Reset"
-                confirmLabel="Sure? Reset"
-                icon={<RotateCcw className="size-3.5" />}
-                onConfirm={() => {
-                  resetMode(mode.id);
-                  push(`${mode.name} is back to how it ships.`, 'CUSTOMIZE');
-                }}
-              />
-            )}
+            <ConfirmButton
+              label="Reset"
+              confirmLabel="Sure? Reset"
+              icon={<RotateCcw className="size-3.5" />}
+              onConfirm={() => {
+                resetMode(mode.id);
+                push(
+                  added ? `Your changes to ${mode.name} undone.` : `${mode.name} is back to how it ships.`,
+                  'CUSTOMIZE',
+                );
+              }}
+            />
+            <ConfirmButton
+              label="Delete"
+              confirmLabel="Sure? Delete"
+              icon={<Trash2 className="size-3.5" />}
+              // The last visible mode can't go — there'd be nowhere to be.
+              disabled={!hidden && visibleCount <= 1}
+              onConfirm={() => {
+                removeMode(mode.id);
+                setSelectedId(theme.id);
+                push(
+                  added
+                    ? `“${mode.name}” deleted.`
+                    : `“${mode.name}” deleted. Restore it from the list any time.`,
+                  'CUSTOMIZE',
+                );
+              }}
+            />
             {/* Last, so the buttons before it don't jump when it comes and goes. */}
             {mode.id !== theme.id && (
               <button type="button" className={SMALL_BUTTON} onClick={() => selectTheme(mode.id)}>
@@ -418,8 +478,56 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
                 onChange={(event) => editMode(mode.id, { quotes: event.target.value.split('\n') })}
               />
             </Field>
-            <p className="text-xs text-muted">Clear a field to get the original back.</p>
+            <p className="text-xs text-muted">
+              Anything can be emptied except the name, which goes back to the original when cleared.
+              Reset brings everything back.
+            </p>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted">Icon</span>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Icon">
+                {(Object.keys(MODE_ICONS) as IconKey[]).map((key) => {
+                  const Choice = MODE_ICONS[key];
+                  const on = Choice === mode.icon;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-label={key}
+                      aria-pressed={on}
+                      onClick={() => editMode(mode.id, { icon: key })}
+                      className={cn(
+                        'vm-tap grid size-9 place-items-center rounded-lg border transition-colors',
+                        on ? 'border-primary/70 bg-primary/15' : 'border-line/60 hover:border-primary/40',
+                      )}
+                    >
+                      <Choice className="size-4" style={{ color: on ? mode.colors.primary : undefined }} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <Field label="Heading font">
+              <select
+                className={INPUT}
+                value={edit.headingFont ?? ''}
+                onChange={(event) =>
+                  editMode(mode.id, { headingFont: (event.target.value || undefined) as FontKey | undefined })
+                }
+              >
+                <option value="">Original</option>
+                {(Object.keys(HEADING_FONTS) as FontKey[]).map((key) => (
+                  <option key={key} value={key}>
+                    {HEADING_FONTS[key].label}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </Section>
+
+          <PlaylistEditor modeId={mode.id} />
+
 
           <Section title="Background">
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -557,6 +665,36 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
               })}
             </div>
           </Section>
+
+          <Section title="Status readouts">
+            <p className="text-xs text-muted">
+              Shown when “Status readouts” is on in Settings. One per line; panel and bar lines are{' '}
+              <code className="font-mono">Label: value</code>.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Stats panel">
+                <textarea
+                  className={cn(INPUT, 'min-h-24 resize-y font-mono')}
+                  value={edit.stats?.join('\n') ?? pairsToLines(mode.stats)}
+                  onChange={(event) => editMode(mode.id, { stats: event.target.value.split('\n') })}
+                />
+              </Field>
+              <Field label="Status bar">
+                <textarea
+                  className={cn(INPUT, 'min-h-24 resize-y font-mono')}
+                  value={edit.hud?.join('\n') ?? pairsToLines(mode.hud)}
+                  onChange={(event) => editMode(mode.id, { hud: event.target.value.split('\n') })}
+                />
+              </Field>
+            </div>
+            <Field label="Ticker lines">
+              <textarea
+                className={cn(INPUT, 'min-h-20 resize-y font-mono')}
+                value={edit.ticker?.join('\n') ?? (mode.ticker ?? []).join('\n')}
+                onChange={(event) => editMode(mode.id, { ticker: event.target.value.split('\n') })}
+              />
+            </Field>
+          </Section>
         </div>
       </div>
 
@@ -589,6 +727,230 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
         </div>
       </section>
     </Modal>
+  );
+}
+
+/**
+ * Every playlist in one mode — the ones it ships with and the listener's own —
+ * each renamable, relinkable and removable, plus a form to add as many more
+ * as they like. Works on any mode, not just the one playing.
+ */
+function PlaylistEditor({ modeId }: { modeId: string }) {
+  const { allThemes, customization, editMode, addCustomPlaylist } = useVibe();
+  const { push } = useToast();
+  const [name, setName] = useState('');
+  const [link, setLink] = useState('');
+  const [invalid, setInvalid] = useState(false);
+
+  const mode = allThemes.find((item) => item.id === modeId);
+  if (!mode) return null;
+  const removedCount = customization.edits[modeId]?.removedPlaylists?.length ?? 0;
+  // In a mode the listener made, those playlists were never theirs to "bring
+  // back" — they belong to the mode it was built from, so say so.
+  const baseName = mode.baseId ? allThemes.find((item) => item.id === mode.baseId)?.name : undefined;
+  const plural = removedCount === 1 ? '' : 's';
+
+  const add = () => {
+    if (!addCustomPlaylist(name, link, modeId)) {
+      setInvalid(true);
+      return;
+    }
+    push(`“${name.trim() || 'My playlist'}” added to ${mode.name}.`, 'PLAYLIST');
+    setName('');
+    setLink('');
+    setInvalid(false);
+  };
+
+  return (
+    <Section title={`Playlists · ${mode.playlists.length}`}>
+      {mode.playlists.length === 0 ? (
+        <p className="text-xs text-muted">No playlists in this mode yet — add one below.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {mode.playlists.map((playlist) => (
+            <PlaylistRow key={`${modeId}:${playlist.id}`} modeId={modeId} playlist={playlist} />
+          ))}
+        </ul>
+      )}
+
+      {removedCount > 0 && (
+        <button
+          type="button"
+          className={cn(SMALL_BUTTON, 'self-start')}
+          onClick={() => editMode(modeId, { removedPlaylists: [] })}
+        >
+          <Undo2 className="size-3.5" />
+          {baseName
+            ? `Add the ${removedCount} playlist${plural} from ${baseName}`
+            : `Bring back ${removedCount} removed playlist${plural}`}
+        </button>
+      )}
+
+      <div className="flex flex-col gap-2 rounded-xl border border-dashed border-line p-3">
+        <p className="text-xs font-medium text-ink">Add a playlist</p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            className={cn(INPUT, 'sm:w-44')}
+            aria-label="New playlist name"
+            placeholder="Name — e.g. Late night drive"
+            maxLength={60}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') add();
+            }}
+          />
+          <input
+            className={cn(INPUT, 'font-mono')}
+            aria-label="New playlist link"
+            aria-invalid={invalid}
+            inputMode="url"
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="YouTube playlist link, or video links with commas"
+            value={link}
+            onChange={(event) => {
+              setLink(event.target.value);
+              setInvalid(false);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') add();
+            }}
+          />
+          <button
+            type="button"
+            className={cn(SMALL_BUTTON, 'shrink-0 justify-center border-primary/60 bg-primary text-canvas hover:brightness-110')}
+            disabled={!link.trim()}
+            onClick={add}
+          >
+            <Plus className="size-3.5" />
+            Add
+          </button>
+        </div>
+        {invalid && (
+          <p role="alert" className="flex items-center gap-1.5 text-xs text-primary">
+            <TriangleAlert className="size-3.5 shrink-0" />
+            Couldn’t find a playlist or video in that. Paste the full YouTube link.
+          </p>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function PlaylistRow({ modeId, playlist }: { modeId: string; playlist: VibePlaylist }) {
+  const { theme, playlistId, selectPlaylist, customization, updatePlaylist, removePlaylist, isCustomPlaylist } =
+    useVibe();
+  const { push } = useToast();
+  const own = isCustomPlaylist(playlist.id);
+  const currentLink = playlist.youtubePlaylistId ?? playlist.videoIds?.join(',') ?? '';
+  const relinked = !own && Boolean(customization.edits[modeId]?.playlistSources?.[playlist.id]);
+
+  // Drafts, committed on blur / Enter / Save — writing every keystroke would
+  // also try to save half a link, and an emptied name would snap back mid-edit.
+  const [name, setName] = useState(playlist.name);
+  const [link, setLink] = useState(currentLink);
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => setName(playlist.name), [playlist.name]);
+  useEffect(() => {
+    setLink(currentLink);
+    setInvalid(false);
+  }, [currentLink]);
+
+  const saveName = () => {
+    if (name.trim() === playlist.name) return;
+    // An emptied name goes back to the original (built-in) or stays as it was (yours).
+    if (!name.trim() && own) return setName(playlist.name);
+    updatePlaylist(modeId, playlist.id, { name: name.trim() });
+  };
+
+  const saveLink = () => {
+    if (link.trim() === currentLink) return;
+    if (!updatePlaylist(modeId, playlist.id, { source: link })) {
+      setInvalid(true);
+      return;
+    }
+    push(link.trim() ? `“${playlist.name}” now plays your link.` : `“${playlist.name}” is back to its default.`, 'PLAYLIST');
+  };
+
+  const playing = modeId === theme.id && playlistId === playlist.id;
+
+  return (
+    <li className="flex flex-col gap-2 rounded-xl border border-line/60 bg-canvas/40 p-2.5">
+      <div className="flex items-center gap-2">
+        <input
+          className={cn(INPUT, 'font-medium')}
+          aria-label="Playlist name"
+          maxLength={60}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onBlur={saveName}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') saveName();
+          }}
+        />
+        {modeId === theme.id && (
+          <button
+            type="button"
+            className={cn(SMALL_BUTTON, 'shrink-0', playing && 'border-primary/60 text-primary')}
+            aria-pressed={playing}
+            onClick={() => selectPlaylist(playlist.id)}
+          >
+            <Play className="size-3.5" />
+            {playing ? 'Playing' : 'Play'}
+          </button>
+        )}
+        <ConfirmButton
+          label="Remove"
+          confirmLabel="Sure?"
+          icon={<Trash2 className="size-3.5" />}
+          className="shrink-0"
+          onConfirm={() => {
+            removePlaylist(modeId, playlist.id);
+            push(`“${playlist.name}” removed.`, 'PLAYLIST');
+          }}
+        />
+      </div>
+      <div className="flex gap-2">
+        <input
+          className={cn(INPUT, 'font-mono')}
+          aria-label={`Link for ${playlist.name}`}
+          aria-invalid={invalid}
+          inputMode="url"
+          spellCheck={false}
+          autoComplete="off"
+          placeholder={own ? 'Playlist or video links' : 'Empty = the default link'}
+          value={link}
+          onChange={(event) => {
+            setLink(event.target.value);
+            setInvalid(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') saveLink();
+          }}
+        />
+        <button
+          type="button"
+          className={cn(SMALL_BUTTON, 'shrink-0')}
+          disabled={link.trim() === currentLink}
+          onClick={saveLink}
+        >
+          <Check className="size-3.5" />
+          Save
+        </button>
+      </div>
+      <p className="text-xs text-muted">
+        {own ? 'Yours' : relinked ? 'Built-in · playing your link' : 'Built-in · default link'}
+      </p>
+      {invalid && (
+        <p role="alert" className="flex items-center gap-1.5 text-xs text-primary">
+          <TriangleAlert className="size-3.5 shrink-0" />
+          {own && !link.trim()
+            ? 'Your own playlist needs a link — or remove it.'
+            : 'Couldn’t find a playlist or video in that. Paste the full YouTube link.'}
+        </p>
+      )}
+    </li>
   );
 }
 

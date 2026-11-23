@@ -6,6 +6,7 @@ import {
   buildThemes,
   findIn,
   isAddedMode,
+  isDeleted,
   isHidden,
   isRecord,
   newAddedId,
@@ -18,7 +19,7 @@ import { usePrefersReducedMotion } from '@/hooks/useMediaQuery';
 import { usePageHidden } from '@/hooks/usePageVisibility';
 import { STORAGE_KEYS, clearStoredPreferences, readStorage } from '@/utils/storage';
 import { readUrlState, syncUrlState } from '@/utils/url';
-import { extractPlaylistId, extractVideoId } from '@/music/resolve';
+import { extractPlaylistId, normaliseSource, sourceFields } from '@/music/resolve';
 import type { VibePlaylist, VibeTheme } from '@/types/theme';
 import {
   DEFAULT_PREFERENCES,
@@ -56,33 +57,15 @@ const newCustomId = (): string =>
     Math.random().toString(36).slice(2, 10)
   }`;
 
-/**
- * Turns what someone pasted into something the player can load: a playlist
- * link or id, or a comma-separated set of video links or ids. Returns null
- * when none of it parses, so the caller can say so rather than saving a
- * playlist that will never play.
- */
-function normaliseSource(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-
-  const playlistId = extractPlaylistId(trimmed);
-  if (playlistId) return playlistId;
-
-  const videoIds = trimmed
-    .split(',')
-    .map((entry) => extractVideoId(entry))
-    .filter((entry): entry is string => entry !== null);
-
-  return videoIds.length ? videoIds.join(',') : null;
-}
-
 /** A saved custom playlist, shaped like the ones themes declare. */
 function toVibePlaylist(custom: CustomPlaylist): VibePlaylist {
-  const base = { id: custom.id, name: custom.name, description: 'Your own playlist.', mood: 'Yours' };
-  return custom.source.includes(',')
-    ? { ...base, videoIds: custom.source.split(',') }
-    : { ...base, youtubePlaylistId: custom.source };
+  return {
+    id: custom.id,
+    name: custom.name,
+    description: 'Your own playlist.',
+    mood: 'Yours',
+    ...sourceFields(custom.source),
+  };
 }
 
 /* ── Backup import: every field is untrusted, so each is rebuilt, not copied ── */
@@ -132,10 +115,8 @@ interface Bootstrap {
 }
 
 function bootstrapState(): Bootstrap {
-  const themes = buildThemes(
-    THEMES,
-    sanitize(readStorage<unknown>(STORAGE_KEYS.customization, EMPTY_CUSTOMIZATION)),
-  );
+  const custom = sanitize(readStorage<unknown>(STORAGE_KEYS.customization, EMPTY_CUSTOMIZATION));
+  const themes = buildThemes(THEMES, custom).filter((item) => !isDeleted(custom, item.id));
   const url = readUrlState();
   const fromUrl = findIn(themes, url.mode);
   const fromStorage = findIn(themes, readStorage<string | null>(STORAGE_KEYS.selectedTheme, null));
@@ -204,7 +185,26 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   // Theme files are the defaults; the listener's record is laid over them here,
   // and everything downstream — picker, number keys, ?mode=, colours — reads
   // the result, so a customised mode behaves exactly like a shipped one.
-  const allThemes = useMemo(() => buildThemes(THEMES, customization), [customization]);
+  const built = useMemo(
+    () =>
+      buildThemes(THEMES, customization).map((item) => {
+        const own = customPlaylistsByTheme[item.id];
+        // The listener's own playlists sit after the built-in ones, so adding
+        // one never renumbers or displaces what the mode already offered.
+        return own?.length
+          ? { ...item, playlists: [...item.playlists, ...own.map(toVibePlaylist)] }
+          : item;
+      }),
+    [customization, customPlaylistsByTheme],
+  );
+  const allThemes = useMemo(
+    () => built.filter((item) => !isDeleted(customization, item.id)),
+    [built, customization],
+  );
+  const deletedThemes = useMemo(
+    () => built.filter((item) => isDeleted(customization, item.id)),
+    [built, customization],
+  );
   const themes = useMemo(
     () => allThemes.filter((item) => !isHidden(customization, item.id)),
     [allThemes, customization],
@@ -225,12 +225,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     [customPlaylistsByTheme, theme.id],
   );
 
-  // The listener's own playlists sit after the built-in ones, so adding one
-  // never renumbers or displaces what the mode already offered.
-  const playlists = useMemo(
-    () => [...theme.playlists, ...customPlaylists.map(toVibePlaylist)],
-    [theme.playlists, customPlaylists],
-  );
+  const playlists = theme.playlists;
 
   const playlist = useMemo(() => {
     const preferred = selectedPlaylists[theme.id];
@@ -290,50 +285,106 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     [theme.id, setSelectedPlaylists],
   );
 
+  const isCustomPlaylist = useCallback(
+    (playlistId: string) => playlistId.startsWith(CUSTOM_PREFIX),
+    [],
+  );
+
   const addCustomPlaylist = useCallback(
-    (name: string, source: string): string | null => {
+    (name: string, source: string, modeId: string = theme.id): string | null => {
       const normalised = normaliseSource(source);
       if (!normalised) return null;
 
       const id = newCustomId();
       const entry: CustomPlaylist = {
         id,
-        name: name.trim() || 'My playlist',
+        name: name.trim().slice(0, 60) || 'My playlist',
         source: normalised,
       };
 
       setCustomPlaylistsByTheme((current) => ({
         ...current,
-        [theme.id]: [...(current[theme.id] ?? []), entry],
+        [modeId]: [...(current[modeId] ?? []), entry],
       }));
       // Adding one is a request to hear it, so make it the active choice.
-      setSelectedPlaylists((current) => ({ ...current, [theme.id]: id }));
+      setSelectedPlaylists((current) => ({ ...current, [modeId]: id }));
       return id;
     },
     [theme.id, setCustomPlaylistsByTheme, setSelectedPlaylists],
   );
 
-  const removeCustomPlaylist = useCallback(
-    (playlistId: string) => {
-      setCustomPlaylistsByTheme((current) => ({
-        ...current,
-        [theme.id]: (current[theme.id] ?? []).filter((item) => item.id !== playlistId),
-      }));
+  const removePlaylist = useCallback(
+    (modeId: string, playlistId: string) => {
+      if (isCustomPlaylist(playlistId)) {
+        setCustomPlaylistsByTheme((current) => ({
+          ...current,
+          [modeId]: (current[modeId] ?? []).filter((item) => item.id !== playlistId),
+        }));
+      } else {
+        // A built-in one is only taken off this mode — "Bring back" undoes it.
+        setCustomization((current) => {
+          const previous = current.edits[modeId] ?? {};
+          const removed = [...new Set([...(previous.removedPlaylists ?? []), playlistId])];
+          return {
+            ...current,
+            edits: { ...current.edits, [modeId]: { ...previous, removedPlaylists: removed } },
+          };
+        });
+      }
       // Leaving the deleted id selected would resolve to the mode's first
       // playlist anyway, but the stale entry would linger in storage forever.
       setSelectedPlaylists((current) => {
-        if (current[theme.id] !== playlistId) return current;
+        if (current[modeId] !== playlistId) return current;
         const next = { ...current };
-        delete next[theme.id];
+        delete next[modeId];
         return next;
       });
     },
-    [theme.id, setCustomPlaylistsByTheme, setSelectedPlaylists],
+    [isCustomPlaylist, setCustomPlaylistsByTheme, setCustomization, setSelectedPlaylists],
   );
 
-  const isCustomPlaylist = useCallback(
-    (playlistId: string) => playlistId.startsWith(CUSTOM_PREFIX),
-    [],
+  const updatePlaylist = useCallback(
+    (modeId: string, playlistId: string, patch: { name?: string; source?: string }): boolean => {
+      // An empty link means "back to the default" for a built-in playlist, and
+      // is refused for the listener's own (it would have nothing to play).
+      const wantsSource = patch.source !== undefined;
+      const source = wantsSource && patch.source?.trim() ? normaliseSource(patch.source) : null;
+      if (wantsSource && patch.source?.trim() && !source) return false;
+
+      if (isCustomPlaylist(playlistId)) {
+        if (wantsSource && !source) return false;
+        setCustomPlaylistsByTheme((current) => ({
+          ...current,
+          [modeId]: (current[modeId] ?? []).map((item) =>
+            item.id === playlistId
+              ? {
+                  ...item,
+                  ...(patch.name !== undefined ? { name: patch.name.slice(0, 60) } : {}),
+                  ...(source ? { source } : {}),
+                }
+              : item,
+          ),
+        }));
+        return true;
+      }
+
+      setCustomization((current) => {
+        const previous = current.edits[modeId] ?? {};
+        const next: ModeEdit = { ...previous };
+        if (patch.name !== undefined) {
+          next.playlistNames = { ...previous.playlistNames, [playlistId]: patch.name.slice(0, 60) };
+        }
+        if (wantsSource) {
+          const sources = { ...previous.playlistSources };
+          if (source) sources[playlistId] = source;
+          else delete sources[playlistId];
+          next.playlistSources = sources;
+        }
+        return { ...current, edits: { ...current.edits, [modeId]: next } };
+      });
+      return true;
+    },
+    [isCustomPlaylist, setCustomPlaylistsByTheme, setCustomization],
   );
 
   const setPreference = useCallback(
@@ -360,11 +411,13 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   const editMode = useCallback(
     (id: string, patch: ModeEdit) => {
       setCustomization((current) => {
-        // Never hide the last visible mode — the picker would be empty and
-        // there would be no way back into a world.
-        if (patch.hidden) {
-          const visible = buildThemes(THEMES, current).filter((t) => !isHidden(current, t.id));
-          if (visible.length <= 1) return current;
+        // Never hide or delete the last visible mode — the picker would be
+        // empty and there would be no way back into a world.
+        if (patch.hidden || patch.deleted) {
+          const visible = buildThemes(THEMES, current).filter(
+            (t) => !isHidden(current, t.id) && !isDeleted(current, t.id),
+          );
+          if (visible.length <= 1 && visible[0]?.id === id) return current;
         }
         const previous = current.edits[id] ?? {};
         const next: ModeEdit = { ...previous, ...patch };
@@ -391,24 +444,45 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   );
 
   const addMode = useCallback(
-    (sourceId: string): string | null => {
+    (sourceId: string, blank = false): string | null => {
       const source = findIn(allThemes, sourceId);
       if (!source) return null;
       const id = newAddedId();
-      // Copying an added mode copies what the listener did to it; copying a
-      // built-in starts clean. Either way the copy is visible.
-      const inherited = customization.edits[source.id] ?? {};
-      const name = `${source.baseId ? '' : 'My '}${source.name}${source.baseId ? ' (copy)' : ''}`;
+
+      // A copy carries over what the listener did to the source. A blank mode
+      // borrows only its base's fonts and colours as a starting point and
+      // empties the rest, so it really is a new place, not a renamed old one.
+      const base = findIn(THEMES, source.baseId ?? source.id) ?? source;
+      const edit: ModeEdit = blank
+        ? {
+            name: 'New mode',
+            shortName: 'New',
+            kicker: '',
+            description: 'A place of my own.',
+            icon: 'sparkle',
+            image: null,
+            quotes: [],
+            stats: [],
+            hud: [],
+            ticker: [],
+            effects: {},
+            removedPlaylists: base.playlists.map((item) => item.id),
+          }
+        : {
+            ...customization.edits[source.id],
+            hidden: undefined,
+            name: `${source.baseId ? '' : 'My '}${source.name}${source.baseId ? ' (copy)' : ''}`.slice(
+              0,
+              TEXT_LIMITS.name,
+            ),
+          };
 
       setCustomization((current) => {
         const order = buildThemes(THEMES, current).map((t) => t.id);
         order.splice(order.indexOf(source.id) + 1, 0, id);
         return {
           added: [...current.added, { id, baseId: source.baseId ?? source.id }],
-          edits: {
-            ...current.edits,
-            [id]: { ...inherited, hidden: undefined, name: name.slice(0, TEXT_LIMITS.name) },
-          },
+          edits: { ...current.edits, [id]: edit },
           order,
         };
       });
@@ -419,41 +493,53 @@ export function VibeProvider({ children }: { children: ReactNode }) {
 
   const removeMode = useCallback(
     (id: string) => {
-      if (!isAddedMode(id)) return;
-      setCustomization((current) => {
-        const edits = { ...current.edits };
-        delete edits[id];
-        return {
-          added: current.added.filter((item) => item.id !== id),
-          edits,
-          order: current.order.filter((item) => item !== id),
-        };
-      });
-      // Its playlists and saved choice would otherwise sit in storage forever.
-      setCustomPlaylistsByTheme((current) => {
-        const next = { ...current };
-        delete next[id];
-        return next;
-      });
-      setSelectedPlaylists((current) => {
-        const next = { ...current };
-        delete next[id];
-        return next;
-      });
-      if (id === themeId) setThemeId(DEFAULT_THEME_ID);
+      const visible = themes.filter((item) => item.id !== id);
+      if (!visible.length) return;
+
+      if (isAddedMode(id)) {
+        setCustomization((current) => {
+          const edits = { ...current.edits };
+          delete edits[id];
+          return {
+            added: current.added.filter((item) => item.id !== id),
+            edits,
+            order: current.order.filter((item) => item !== id),
+          };
+        });
+        // Its playlists and saved choice would otherwise sit in storage forever.
+        setCustomPlaylistsByTheme((current) => {
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
+        setSelectedPlaylists((current) => {
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
+      } else {
+        // Built-in modes go to the bin rather than vanishing — the theme file
+        // is still there, so "Restore" costs nothing and saves a bad click.
+        editMode(id, { deleted: true });
+      }
+      if (id === themeId) setThemeId(visible[0].id);
     },
-    [themeId, setCustomization, setCustomPlaylistsByTheme, setSelectedPlaylists, setThemeId],
+    [themes, themeId, editMode, setCustomization, setCustomPlaylistsByTheme, setSelectedPlaylists, setThemeId],
   );
 
   const moveMode = useCallback(
     (id: string, delta: -1 | 1) => {
       setCustomization((current) => {
-        const order = buildThemes(THEMES, current).map((t) => t.id);
+        // Deleted modes are invisible in the list, so they are kept out of the
+        // swap — otherwise "Move up" past one would look like it did nothing.
+        const all = buildThemes(THEMES, current).map((t) => t.id);
+        const binned = all.filter((item) => isDeleted(current, item));
+        const order = all.filter((item) => !isDeleted(current, item));
         const from = order.indexOf(id);
         const to = from + delta;
         if (from < 0 || to < 0 || to >= order.length) return current;
         [order[from], order[to]] = [order[to], order[from]];
-        return { ...current, order };
+        return { ...current, order: [...order, ...binned] };
       });
     },
     [setCustomization],
@@ -572,6 +658,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     () => ({
       themes,
       allThemes,
+      deletedThemes,
       theme,
       themeId: theme.id,
       playlists,
@@ -580,7 +667,8 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       selectPlaylist,
       customPlaylists,
       addCustomPlaylist,
-      removeCustomPlaylist,
+      removePlaylist,
+      updatePlaylist,
       isCustomPlaylist,
       selectTheme,
       incomingTheme,
@@ -609,13 +697,15 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     [
       themes,
       allThemes,
+      deletedThemes,
       theme,
       playlists,
       playlist,
       selectPlaylist,
       customPlaylists,
       addCustomPlaylist,
-      removeCustomPlaylist,
+      removePlaylist,
+      updatePlaylist,
       isCustomPlaylist,
       selectTheme,
       incomingTheme,

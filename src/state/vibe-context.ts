@@ -64,6 +64,8 @@ export interface VibeContextValue {
   themes: readonly VibeTheme[];
   /** Every mode, hidden ones included — for the Customize panel. */
   allThemes: readonly VibeTheme[];
+  /** Built-in modes the listener deleted — restorable from the Customize panel. */
+  deletedThemes: readonly VibeTheme[];
   theme: VibeTheme;
   themeId: string;
 
@@ -75,9 +77,22 @@ export interface VibeContextValue {
 
   /** The listener's own playlists for the active mode. */
   customPlaylists: CustomPlaylist[];
-  /** Returns the new playlist's id, or null when the source was unusable. */
-  addCustomPlaylist: (name: string, source: string) => string | null;
-  removeCustomPlaylist: (playlistId: string) => void;
+  /**
+   * Adds one of the listener's own playlists to a mode (the active one unless
+   * `modeId` says otherwise). Returns its id, or null when the source was unusable.
+   */
+  addCustomPlaylist: (name: string, source: string, modeId?: string) => string | null;
+  /** Deletes the listener's own playlist, or takes a built-in one off that mode. */
+  removePlaylist: (modeId: string, playlistId: string) => void;
+  /**
+   * Renames or relinks any playlist in a mode. For a built-in one an empty
+   * `source` goes back to its default. False when the link can't be read.
+   */
+  updatePlaylist: (
+    modeId: string,
+    playlistId: string,
+    patch: { name?: string; source?: string },
+  ) => boolean;
   isCustomPlaylist: (playlistId: string) => boolean;
 
   selectTheme: (themeId: string) => void;
@@ -108,9 +123,16 @@ export interface VibeContextValue {
   editMode: (themeId: string, patch: ModeEdit) => void;
   /** Drops every edit to the mode — back to how it ships. */
   resetMode: (themeId: string) => void;
-  /** Copies a mode (edits included) and returns the copy's id. */
-  addMode: (sourceId: string) => string | null;
-  /** Deletes a mode the listener added. Built-in modes can only be hidden. */
+  /**
+   * Copies a mode (edits included) and returns the copy's id. With `blank`,
+   * makes an empty new mode instead — no picture, playlists, quotes or layers.
+   */
+  addMode: (sourceId: string, blank?: boolean) => string | null;
+  /**
+   * Deletes any mode. One the listener added is gone for good; a built-in one
+   * goes to the bin (`deletedThemes`) and `editMode(id, { deleted: false })`
+   * brings it back. The last visible mode can't be deleted.
+   */
   removeMode: (themeId: string) => void;
   moveMode: (themeId: string, delta: -1 | 1) => void;
   exportSettings: () => VibeBackup;

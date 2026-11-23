@@ -27,7 +27,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
     setPlaylistOverride,
     customPlaylists,
     addCustomPlaylist,
-    removeCustomPlaylist,
+    removePlaylist,
     isCustomPlaylist,
     resetEverything,
   } = useVibe();
@@ -184,7 +184,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
                     <button
                       type="button"
                       onClick={() => {
-                        removeCustomPlaylist(item.id);
+                        removePlaylist(theme.id, item.id);
                         push(`“${item.name}” removed.`, 'PLAYLIST');
                       }}
                       aria-label={`Delete ${item.name}`}

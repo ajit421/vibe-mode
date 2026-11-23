@@ -21,7 +21,7 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
   if (playlists.length === 0) {
     return (
       <p className="font-mono text-xs text-muted">
-        No playlists defined for this mode yet — see src/music/playlists.ts
+        No playlists in this mode yet — add one in Customize.
       </p>
     );
   }
