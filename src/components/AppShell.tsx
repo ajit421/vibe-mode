@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AnimatePresence, MotionConfig, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, m } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 import { usePlayer } from '@/state/player-context';
 import { useKeyboardShortcuts, type ShortcutMap } from '@/hooks/useKeyboardShortcuts';
@@ -97,7 +97,7 @@ export function AppShell() {
           }}
         >
           <AnimatePresence mode="wait" initial={false}>
-            <motion.div
+            <m.div
               key={hasEntered ? 'world' : 'landing'}
               className="h-full"
               initial={{ opacity: 0, y: 12 }}
@@ -106,7 +106,7 @@ export function AppShell() {
               transition={{ duration: 0.32, ease: 'easeOut' }}
             >
               {hasEntered ? <World /> : <Landing />}
-            </motion.div>
+            </m.div>
           </AnimatePresence>
         </main>
 

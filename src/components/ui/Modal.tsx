@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import { X } from 'lucide-react';
 import { IconButton } from './IconButton';
 
@@ -78,8 +78,8 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
       {/* The wrapper must be a motion component: AnimatePresence only
           propagates exit animations through motion children. */}
       {open && (
-        <motion.div className="fixed inset-0 z-90 flex items-end justify-center p-0 sm:items-center sm:p-6">
-          <motion.div
+        <m.div className="fixed inset-0 z-90 flex items-end justify-center p-0 sm:items-center sm:p-6">
+          <m.div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -87,7 +87,7 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
             transition={{ duration: 0.2 }}
             onClick={onClose}
           />
-          <motion.div
+          <m.div
             ref={panelRef}
             role="dialog"
             aria-modal="true"
@@ -117,8 +117,8 @@ export function Modal({ open, onClose, title, description, children, size = 'md'
               </IconButton>
             </div>
             <div className="px-5 py-5 sm:px-6">{children}</div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

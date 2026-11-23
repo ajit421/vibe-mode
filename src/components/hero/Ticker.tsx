@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 import { EMPTY_ITEMS, useRotator } from '@/hooks/useRotator';
 
@@ -15,7 +15,7 @@ export function Ticker() {
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
       <div className="relative min-w-0 flex-1">
         <AnimatePresence mode="wait" initial={false}>
-          <motion.p
+          <m.p
             key={`${theme.id}-${index}`}
             className="truncate font-mono text-xs text-muted"
             initial={motionEnabled ? { opacity: 0, y: 8 } : { opacity: 0 }}
@@ -24,7 +24,7 @@ export function Ticker() {
             transition={{ duration: 0.26 }}
           >
             {item}
-          </motion.p>
+          </m.p>
         </AnimatePresence>
       </div>
       <span

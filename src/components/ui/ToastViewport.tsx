@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import { useToast } from '@/state/toast-context';
 
 /**
@@ -17,7 +17,7 @@ export function ToastViewport() {
     >
       <AnimatePresence initial={false}>
         {toasts.map((toast) => (
-          <motion.button
+          <m.button
             key={toast.id}
             type="button"
             onClick={() => dismiss(toast.id)}
@@ -33,7 +33,7 @@ export function ToastViewport() {
               )}
               <span className="text-sm text-ink">{toast.message}</span>
             </span>
-          </motion.button>
+          </m.button>
         ))}
       </AnimatePresence>
     </div>

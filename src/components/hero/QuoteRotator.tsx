@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import { RefreshCw } from 'lucide-react';
 import { useVibe } from '@/state/vibe-context';
 import { useRotator } from '@/hooks/useRotator';
@@ -100,7 +100,7 @@ export function QuoteRotator() {
   return (
     <AnimatePresence>
       {visible && (
-        <motion.div
+        <m.div
           key="quote"
           // Its own surface, rather than a shared one in the layout: when this
           // is the only thing on screen, a panel that outlives it would sit
@@ -116,7 +116,7 @@ export function QuoteRotator() {
               {item}
             </span>
             <AnimatePresence mode="wait" initial={false}>
-              <motion.p
+              <m.p
                 key={`${theme.id}-${index}`}
                 className="font-display text-xl leading-snug font-medium text-ink/90 sm:text-2xl"
                 initial={motionEnabled ? { opacity: 0, y: 8 } : { opacity: 0 }}
@@ -128,7 +128,7 @@ export function QuoteRotator() {
                 <span className="text-primary">“</span>
                 {item}
                 <span className="text-primary">”</span>
-              </motion.p>
+              </m.p>
             </AnimatePresence>
           </div>
 
@@ -142,7 +142,7 @@ export function QuoteRotator() {
               <RefreshCw />
             </IconButton>
           )}
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

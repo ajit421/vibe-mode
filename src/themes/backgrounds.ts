@@ -18,7 +18,7 @@
  *  ── What the value can be ────────────────────────────────────────────────
  *  Either a file you dropped in `public/`:
  *
- *      VITE_IMAGE_METRO=/backgrounds/metro.png
+ *      VITE_IMAGE_METRO=/backgrounds/metro.avif
  *
  *  or a full URL on any host:
  *
@@ -55,7 +55,7 @@ export function posterVarFor(themeId: string): string {
  *
  * Returns the value to use, or `null` if it is not usable.
  *
- * A bare relative path (`backgrounds/metro.png`) is accepted and normalised to
+ * A bare relative path (`backgrounds/metro.avif`) is accepted and normalised to
  * a rooted one. It can only ever mean a file served from this site, so there is
  * nothing to protect against — and rejecting it was a genuinely bad failure:
  * the mode fell back to its gradient and looked exactly like a mode with no

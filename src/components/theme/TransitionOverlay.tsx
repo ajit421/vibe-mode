@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 
 /**
@@ -13,7 +13,7 @@ export function TransitionOverlay() {
   return (
     <AnimatePresence>
       {incomingTheme && IncomingIcon && (
-        <motion.div
+        <m.div
           key={incomingTheme.id}
           className="pointer-events-none fixed inset-0 z-95 flex items-center justify-center overflow-hidden"
           initial={{ opacity: 1 }}
@@ -23,7 +23,7 @@ export function TransitionOverlay() {
           aria-hidden="true"
         >
           {/* Colour sweep across the screen. */}
-          <motion.div
+          <m.div
             className="absolute inset-0"
             style={{
               background: `linear-gradient(100deg, ${incomingTheme.colors.background} 0%, ${incomingTheme.colors.backgroundAlt} 45%, ${incomingTheme.colors.background} 100%)`,
@@ -35,7 +35,7 @@ export function TransitionOverlay() {
           />
 
           {/* Leading edge glow. */}
-          <motion.div
+          <m.div
             className="absolute inset-y-0 w-40"
             style={{
               background: `linear-gradient(90deg, transparent, ${incomingTheme.colors.primary}55, transparent)`,
@@ -46,7 +46,7 @@ export function TransitionOverlay() {
             transition={{ duration: 0.7, ease: 'easeOut' }}
           />
 
-          <motion.div
+          <m.div
             className="relative flex flex-col items-center gap-3 text-center"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -71,8 +71,8 @@ export function TransitionOverlay() {
             >
               {incomingTheme.name}
             </span>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

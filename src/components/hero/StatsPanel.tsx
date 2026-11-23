@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { m } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 
 /**
@@ -17,7 +17,7 @@ export function StatsPanel() {
     // are the first thing a narrow screen has no room for.
     <dl className="vm-panel pointer-events-auto hidden gap-2.5 rounded-2xl px-5 py-4 lg:grid">
       {stats.map((stat, index) => (
-        <motion.div
+        <m.div
           key={stat.label}
           className="flex items-center gap-3"
           initial={motionEnabled ? { opacity: 0, x: -8 } : false}
@@ -32,7 +32,7 @@ export function StatsPanel() {
             <dd className="flex items-center gap-2.5">
               <span className="flex gap-[3px]" aria-hidden="true">
                 {Array.from({ length: 10 }, (_, cell) => (
-                  <motion.span
+                  <m.span
                     key={cell}
                     className="h-3 w-[5px] rounded-[1px]"
                     style={{
@@ -50,7 +50,7 @@ export function StatsPanel() {
               <span className="w-24 text-right font-mono text-xs text-muted">{stat.value}</span>
             </dd>
           )}
-        </motion.div>
+        </m.div>
       ))}
     </dl>
   );

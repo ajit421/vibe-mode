@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 import { usePageHidden } from '@/hooks/usePageVisibility';
 import { backgroundFor, backgroundStillFor } from '@/themes/backgrounds';
@@ -67,7 +67,7 @@ export function SceneBackground() {
       <AnimatePresence mode="wait" initial={false}>
         {showImage &&
           (isVideo ? (
-            <motion.video
+            <m.video
               key={`${theme.id}:${src}`}
               ref={videoRef}
               src={src ?? undefined}
@@ -90,12 +90,16 @@ export function SceneBackground() {
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
             />
           ) : (
-            <motion.img
+            <m.img
               key={`${theme.id}:${src}`}
               src={src ?? undefined}
               alt=""
               aria-hidden="true"
               decoding="async"
+              // The full-screen picture is the page's LCP; it shouldn't queue
+              // behind the eight lazy card thumbnails. Lowercase and spread
+              // because React 18 has no `fetchPriority` prop (React 19 does).
+              {...{ fetchpriority: 'high' }}
               onError={() => setFailed(true)}
               className="vm-scene object-cover"
               initial={motionEnabled ? { opacity: 0, scale: 1.02 } : { opacity: 0 }}

@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { m } from 'motion/react';
 import { Check, ListMusic } from 'lucide-react';
 import type { VibeTheme } from '@/types/theme';
 import { backgroundStillFor } from '@/themes/backgrounds';
@@ -29,7 +29,7 @@ export function ThemeCard({
   const preview = backgroundStillFor(theme.id);
 
   return (
-    <motion.button
+    <m.button
       type="button"
       onClick={() => onSelect(theme.id)}
       aria-pressed={selected}
@@ -124,6 +124,6 @@ export function ThemeCard({
         }}
         aria-hidden="true"
       />
-    </motion.button>
+    </m.button>
   );
 }

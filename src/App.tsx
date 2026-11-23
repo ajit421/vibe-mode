@@ -1,3 +1,4 @@
+import { LazyMotion, domAnimation } from 'motion/react';
 import { VibeProvider } from '@/state/VibeProvider';
 import { ToastProvider } from '@/state/ToastProvider';
 import { PlayerProvider } from '@/state/PlayerProvider';
@@ -6,14 +7,21 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <VibeProvider>
-        <ToastProvider>
-          <PlayerProvider>
-            <AppShell />
-          </PlayerProvider>
-        </ToastProvider>
-      </VibeProvider>
-    </ErrorBoundary>
+    // `m.*` + `domAnimation` instead of `motion.*`: ships only the fade/slide/
+    // hover features this app uses, roughly halving the animation bundle. Nothing
+    // uses `layout` or `drag`; if something ever needs them, switch to `domMax`.
+    // `strict` makes a stray `motion.*` throw in dev instead of silently
+    // pulling the full bundle back in.
+    <LazyMotion features={domAnimation} strict>
+      <ErrorBoundary>
+        <VibeProvider>
+          <ToastProvider>
+            <PlayerProvider>
+              <AppShell />
+            </PlayerProvider>
+          </ToastProvider>
+        </VibeProvider>
+      </ErrorBoundary>
+    </LazyMotion>
   );
 }

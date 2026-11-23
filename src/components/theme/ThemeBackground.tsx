@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 
 /**
@@ -12,7 +12,7 @@ export function ThemeBackground() {
     // Furthest back — the scene sits above this at `-z-20`.
     <div className="pointer-events-none fixed inset-0 -z-30 overflow-hidden bg-canvas">
       <AnimatePresence initial={false}>
-        <motion.div
+        <m.div
           key={theme.id}
           className="absolute inset-0"
           style={{ backgroundImage: theme.background.gradient }}

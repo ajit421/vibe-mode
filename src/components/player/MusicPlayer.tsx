@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, m } from 'motion/react';
 import {
   ChevronDown,
   ChevronUp,
@@ -127,7 +127,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
         .join(' · '));
 
   return (
-    <motion.footer
+    <m.footer
       ref={containerRef}
       className="fixed inset-x-0 bottom-0 z-60"
       initial={false}
@@ -151,7 +151,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
         {/* ── Expanded drawer ────────────────────────────────────────────── */}
         <AnimatePresence initial={false}>
           {expanded && (
-            <motion.div
+            <m.div
               key="drawer"
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
@@ -211,7 +211,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
                   <TrackList />
                 </div>
               </div>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
 
@@ -443,6 +443,6 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
           </IconButton>
         </div>
       </div>
-    </motion.footer>
+    </m.footer>
   );
 }

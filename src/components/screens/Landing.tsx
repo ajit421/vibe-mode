@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { m } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 import { ModePicker } from '@/components/theme/ModePicker';
 
@@ -21,28 +21,28 @@ export function Landing() {
     <div className="pointer-events-auto mx-auto flex h-full max-w-[1600px] flex-col justify-center gap-1 overflow-hidden px-4 pt-16 pb-4 sm:px-6">
       {/* `vh`-aware clamps: the headline and the gaps give ground on a short
           window so the mode cards below always stay on screen. */}
-      <motion.h1
+      <m.h1
         {...rise(0.07)}
         className="vm-glow-text mt-2 max-w-4xl font-display text-[clamp(1.75rem,5.5vh,5rem)] leading-[0.95] font-bold text-ink sm:mt-3"
       >
         Where are you
         <br />
         right now?
-      </motion.h1>
+      </m.h1>
 
-      <motion.p
+      <m.p
         {...rise(0.14)}
         className="vm-hide-short mt-3 max-w-xl text-base text-muted sm:text-lg"
       >
         Pick the place. The site becomes it — colours, sounds, small details and a playlist that
         belongs there.
-      </motion.p>
+      </m.p>
 
-      <motion.div {...rise(0.2)} className="mt-5 min-h-0 shrink sm:mt-7">
+      <m.div {...rise(0.2)} className="mt-5 min-h-0 shrink sm:mt-7">
         <ModePicker onSelect={enter} layout="rail" />
-      </motion.div>
+      </m.div>
 
-      <motion.p
+      <m.p
         {...rise(0.32)}
         className="vm-hide-shorter mt-5 font-mono text-xs text-muted/80"
       >
@@ -52,7 +52,7 @@ export function Landing() {
         </kbd>{' '}
         to jump straight in · <kbd className="rounded border border-line px-1.5 py-0.5">?</kbd> for
         shortcuts
-      </motion.p>
+      </m.p>
     </div>
   );
 }
