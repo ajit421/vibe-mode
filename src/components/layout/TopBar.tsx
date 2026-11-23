@@ -1,4 +1,4 @@
-import { CircleHelp, Settings2, Shuffle } from 'lucide-react';
+import { CircleHelp, Palette, Settings2, Shuffle } from 'lucide-react';
 import { useVibe } from '@/state/vibe-context';
 import { useClock } from '@/hooks/useClock';
 import { IconButton } from '@/components/ui/IconButton';
@@ -19,10 +19,11 @@ const DATE = new Intl.DateTimeFormat(undefined, {
 interface TopBarProps {
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
+  onOpenCustomize: () => void;
 }
 
-export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
-  const { theme, hasEntered, setSelectorOpen, leaveToLanding } = useVibe();
+export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: TopBarProps) {
+  const { theme, hasEntered, setSelectorOpen, leaveToLanding, preferences } = useVibe();
   const Icon = theme.icon;
   // Ticks once a minute: the readout has no seconds, so a 1s interval would be
   // fifty-nine wasted renders. `useClock` stops entirely on a hidden tab.
@@ -77,17 +78,19 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
               The strip that toggle controls is a decorative block down in the
               layout; this is the one fact you actually glance up for. The date
               drops out before the time on a narrow screen. */}
-          <div className="vm-panel flex items-baseline gap-2 rounded-full px-3 py-1.5">
-            <time
-              dateTime={now.toISOString()}
-              className="font-mono text-xs font-medium text-ink tabular-nums"
-            >
-              {TIME.format(now)}
-            </time>
-            <span className="vm-label hidden text-[0.6rem] text-muted sm:inline">
-              {DATE.format(now)}
-            </span>
-          </div>
+          {preferences.clock && (
+            <div className="vm-panel flex items-baseline gap-2 rounded-full px-3 py-1.5">
+              <time
+                dateTime={now.toISOString()}
+                className="font-mono text-xs font-medium text-ink tabular-nums"
+              >
+                {TIME.format(now)}
+              </time>
+              <span className="vm-label hidden text-[0.6rem] text-muted sm:inline">
+                {DATE.format(now)}
+              </span>
+            </div>
+          )}
 
           {hasEntered && (
             <button
@@ -111,6 +114,9 @@ export function TopBar({ onOpenSettings, onOpenShortcuts }: TopBarProps) {
 
           <IconButton label="Keyboard shortcuts" size="sm" onClick={onOpenShortcuts}>
             <CircleHelp />
+          </IconButton>
+          <IconButton label="Customize modes" size="sm" onClick={onOpenCustomize}>
+            <Palette />
           </IconButton>
           <IconButton label="Settings" size="sm" onClick={onOpenSettings}>
             <Settings2 />

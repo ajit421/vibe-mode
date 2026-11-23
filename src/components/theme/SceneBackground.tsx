@@ -24,7 +24,7 @@ import { backgroundFor, backgroundStillFor } from '@/themes/backgrounds';
 export function SceneBackground() {
   const { theme, motionEnabled, hasEntered } = useVibe();
   const tabHidden = usePageHidden();
-  const background = backgroundFor(theme.id);
+  const background = backgroundFor(theme);
   const src = background?.url ?? null;
   const isVideo = background?.kind === 'video';
 
@@ -57,7 +57,7 @@ export function SceneBackground() {
   const showImage = Boolean(src) && !failed;
   // Shown under a video until its first frame paints, so the mode never
   // flashes an empty black rectangle on load.
-  const poster = isVideo ? (backgroundStillFor(theme.id) ?? undefined) : undefined;
+  const poster = isVideo ? (backgroundStillFor(theme) ?? undefined) : undefined;
 
   return (
     // `z-0`, deliberately not a negative z-index. A child painted behind its

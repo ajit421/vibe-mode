@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Plus, RotateCcw, Trash2, TriangleAlert, Undo2 } from 'lucide-react';
+import { Check, Palette, Plus, RotateCcw, Trash2, TriangleAlert, Undo2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Switch } from '@/components/ui/Switch';
 import { Slider } from '@/components/ui/Slider';
@@ -13,9 +13,10 @@ import { envVarFor } from '@/music/playlists';
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
+  onOpenCustomize: () => void;
 }
 
-export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelProps) {
   const {
     theme,
     playlist,
@@ -121,6 +122,22 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             checked={preferences.quotes}
             onChange={(value) => setPreference('quotes', value)}
           />
+
+          <Switch
+            label="Clock"
+            description="The time and date in the top corner."
+            checked={preferences.clock}
+            onChange={(value) => setPreference('clock', value)}
+          />
+
+          <button
+            type="button"
+            onClick={onOpenCustomize}
+            className="inline-flex items-center gap-2 self-start rounded-lg border border-line px-3.5 py-2 text-xs font-medium text-ink transition-colors hover:border-primary/50"
+          >
+            <Palette className="size-3.5 text-primary" />
+            Customize modes — names, colours, pictures, quotes, order…
+          </button>
         </section>
 
         <section className="flex flex-col gap-3 border-t border-line/60 pt-5">
@@ -329,7 +346,8 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             Reset everything
           </button>
           <p className="mt-2 text-xs text-muted">
-            Clears the saved mode, playlist choices, volume and overrides from this browser.
+            Clears the saved mode, playlist choices, volume, overrides and every mode customisation
+            from this browser.
           </p>
         </section>
       </div>

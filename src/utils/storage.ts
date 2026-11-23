@@ -9,6 +9,8 @@ export const STORAGE_KEYS = {
   playlistOverrides: `${PREFIX}.playlistOverrides`,
   /** Playlists the listener made themselves, grouped by theme id. */
   customPlaylists: `${PREFIX}.customPlaylists`,
+  /** The listener's edits to modes, the modes they added, order and visibility. */
+  customization: `${PREFIX}.customization`,
   hasEntered: `${PREFIX}.hasEntered`,
 } as const;
 

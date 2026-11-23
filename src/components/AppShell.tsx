@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, MotionConfig, m } from 'motion/react';
 import { useVibe } from '@/state/vibe-context';
 import { usePlayer } from '@/state/player-context';
@@ -16,6 +16,14 @@ import { ToastViewport } from '@/components/ui/ToastViewport';
 import { Landing } from '@/components/screens/Landing';
 import { World } from '@/components/screens/World';
 
+// Only people who customise need the editor, so it is its own chunk, fetched on
+// first open — everyone else never downloads it.
+const CustomizePanel = lazy(() =>
+  import('@/components/panels/CustomizePanel').then((module) => ({
+    default: module.CustomizePanel,
+  })),
+);
+
 // The per-mode keys (A to announce, R to reroute, T to tune) are gone with the
 // drawn scenes — they drove animations inside those illustrations, and there is
 // nothing left for them to talk to now that the background is a picture.
@@ -26,8 +34,14 @@ export function AppShell() {
   const player = usePlayer();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  // Once loaded it stays mounted, so the modal can animate out when closed.
+  const [customizeLoaded, setCustomizeLoaded] = useState(false);
+  useEffect(() => {
+    if (customizeOpen) setCustomizeLoaded(true);
+  }, [customizeOpen]);
 
-  const anyOverlayOpen = settingsOpen || shortcutsOpen || selectorOpen;
+  const anyOverlayOpen = settingsOpen || shortcutsOpen || customizeOpen || selectorOpen;
 
   const shortcuts = useMemo<ShortcutMap>(() => {
     const map: ShortcutMap = {
@@ -40,6 +54,7 @@ export function AppShell() {
       escape: () => {
         setSettingsOpen(false);
         setShortcutsOpen(false);
+        setCustomizeOpen(false);
         setSelectorOpen(false);
       },
     };
@@ -83,6 +98,7 @@ export function AppShell() {
         <TopBar
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenShortcuts={() => setShortcutsOpen(true)}
+          onOpenCustomize={() => setCustomizeOpen(true)}
         />
 
         <main
@@ -115,7 +131,19 @@ export function AppShell() {
         <ToastViewport />
         <TransitionOverlay />
         <ModeSelectorOverlay />
-        <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        <SettingsPanel
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          onOpenCustomize={() => {
+            setSettingsOpen(false);
+            setCustomizeOpen(true);
+          }}
+        />
+        {(customizeOpen || customizeLoaded) && (
+          <Suspense fallback={null}>
+            <CustomizePanel open={customizeOpen} onClose={() => setCustomizeOpen(false)} />
+          </Suspense>
+        )}
         <ShortcutsPanel open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       </div>
     </MotionConfig>

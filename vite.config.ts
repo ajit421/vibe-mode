@@ -1,5 +1,5 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
-import react from '@vitejs/plugin-react';
+import preact from '@preact/preset-vite';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
@@ -50,7 +50,10 @@ function warnOnMissingConfig(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), warnOnMissingConfig()],
+  // Preact, not React: ~4 KB instead of ~43 KB gzipped. The preset aliases
+  // `react`/`react-dom` to `preact/compat`, so source keeps importing from
+  // 'react' and type-checks against @types/react — nothing in src/ changes.
+  plugins: [preact(), tailwindcss(), warnOnMissingConfig()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -64,7 +67,7 @@ export default defineConfig({
         // Keep the animation library out of the entry chunk so the shell paints fast.
         manualChunks: {
           motion: ['motion/react'],
-          react: ['react', 'react-dom'],
+          preact: ['preact', 'preact/compat', 'preact/hooks'],
         },
       },
     },

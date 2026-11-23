@@ -146,4 +146,17 @@ export interface VibeTheme {
   ticker?: string[];
   effects?: VibeEffects;
   seo?: VibeSeo;
+
+  /**
+   * Runtime-only — filled in from the listener's own customisation (see
+   * `themes/customize.ts`), never written in a theme file: repo-shipped
+   * backgrounds come from `.env`. A URL or uploaded still wins over `.env`;
+   * `null` means they removed the picture and want the gradient.
+   */
+  customImage?: string | null;
+  /**
+   * Runtime-only — set on a mode the listener added: the built-in mode it was
+   * copied from, whose `.env` background and poster it borrows.
+   */
+  baseId?: string;
 }

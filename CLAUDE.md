@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Vibe Mode** — a single-page React app. You pick a "mode" (a place: metro, train, office, hostel-ish house…) and the whole site becomes that world: colours, typography, background image, ambient motion, quotes, and a YouTube playlist that goes with it. No router, no state library, no UI kit.
+**Vibe Mode** — a single-page React-API app that ships on **Preact** (`@preact/preset-vite` aliases `react`/`react-dom` → `preact/compat`; source still imports from `'react'` and type-checks against `@types/react`). Don't add React-only APIs `preact/compat` lacks, or libraries that bundle their own copy of React. You pick a "mode" (a place: metro, train, office, hostel-ish house…) and the whole site becomes that world: colours, typography, background image, ambient motion, quotes, and a YouTube playlist that goes with it. No router, no state library, no UI kit.
 
 ## Commands
 
@@ -58,6 +58,14 @@ Precedence for a playlist: listener override (Settings → localStorage) > `.env
 Adding a mode is **two steps**: create the file, add it to `THEMES`. The mode picker, number-key shortcut, `?mode=` URL resolution, SEO title, playlist wiring and colour scheme are all derived from that array at runtime. Array *order* determines picker order and which number key (1–9) jumps to it. `aliases` let old or misspelt `?mode=` values keep resolving.
 
 Read [src/types/theme.ts](src/types/theme.ts) first — it is the contract, and its doc comments explain what each optional block does.
+
+### Listener customisation layers over the theme files
+
+Visitors can rename, recolour, re-picture, re-quote, hide, reorder, copy and delete modes from the Customize panel (palette icon in the top bar, lazy-loaded). That lives in [src/themes/customize.ts](src/themes/customize.ts): a `Customization` record in localStorage (`vibe-mode.customization`) that `buildThemes(THEMES, customization)` lays over the theme files. The theme files are never mutated — they are the defaults, and "reset" deletes an entry.
+
+- `VibeProvider` exposes `themes` (visible, listener's order — what pickers, number keys and `?mode=` use) and `allThemes` (hidden included). Resolve ids with `findIn(list, id)`, not the static `findTheme`, or a listener's own mode won't survive a reload.
+- `customImage` / `baseId` on `VibeTheme` are **runtime-only** — never set them in a theme file. A listener-added mode (`my-xxxxxxxx`) borrows its `baseId`'s `.env` background, poster and playlists.
+- Everything from storage or an imported backup goes through `sanitizeCustomization` (hex-only colours, `safeCustomImage` for pictures, known ids only). Keep any new editable field behind that sanitiser.
 
 ### Theming works through CSS custom properties, not components
 

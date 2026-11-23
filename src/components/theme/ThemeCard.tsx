@@ -26,7 +26,7 @@ export function ThemeCard({
   // A still, never the clip: eight autoplaying videos on the landing screen
   // would cost more bandwidth than the whole rest of the site. A video-backed
   // mode shows its poster, or its gradient if it has none.
-  const preview = backgroundStillFor(theme.id);
+  const preview = backgroundStillFor(theme);
 
   return (
     <m.button

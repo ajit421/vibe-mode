@@ -28,6 +28,8 @@
  *  perfectly good background on its own — no broken image, no empty frame.
  * ══════════════════════════════════════════════════════════════════════════ */
 
+import type { VibeTheme } from '@/types/theme';
+
 /**
  * Vite inlines the whole `import.meta.env` object at build time, not just the
  * property accesses it can see, so looking a key up dynamically is safe and
@@ -78,6 +80,24 @@ function safeImageUrl(value: string): string | null {
 }
 
 /**
+ * The only `data:` URLs let through: the base64 stills the Customize panel
+ * encodes itself from a picture the listener uploads. Raster image types only —
+ * never SVG, which can carry script — and never from `.env`, which still goes
+ * through `safeImageUrl` alone.
+ */
+const UPLOADED_IMAGE = /^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/;
+
+/**
+ * Checks a background the listener set themselves (Customize panel, or an
+ * imported backup — so untrusted). Same rules as `.env` values, plus uploads.
+ */
+export function safeCustomImage(value: string): string | null {
+  const trimmed = value.trim();
+  if (UPLOADED_IMAGE.test(trimmed)) return trimmed;
+  return trimmed ? safeImageUrl(trimmed) : null;
+}
+
+/**
  * Extensions we hand to a `<video>` rather than an `<img>`. Matched against
  * the path only, so a URL with a query string still resolves.
  */
@@ -96,6 +116,12 @@ function pathOf(value: string): string {
   }
 }
 
+/** The parts of a theme that decide its background. */
+type BackgroundSource = Pick<VibeTheme, 'id' | 'baseId' | 'customImage'>;
+
+/** Whose `.env` variables a mode reads: a listener-added mode borrows its base's. */
+const envKeyOf = (theme: BackgroundSource): string => theme.baseId ?? theme.id;
+
 /**
  * The background for a mode — a still or a short looping clip — or `null` when
  * none is configured or the value is not a usable URL.
@@ -103,12 +129,16 @@ function pathOf(value: string): string {
  * The same `VITE_IMAGE_*` variable takes both, decided by the file extension,
  * so switching a mode from a picture to a video is a one-line edit and needs
  * no second variable to keep in sync.
+ *
+ * A picture the listener chose (`customImage`) wins over `.env`; `null` there
+ * means they removed the picture on purpose, so the gradient shows.
  */
-export function backgroundFor(themeId: string): ThemeBackground | null {
-  const value = ENV[imageVarFor(themeId)]?.trim();
-  if (!value) return null;
+export function backgroundFor(theme: BackgroundSource): ThemeBackground | null {
+  if (theme.customImage === null) return null;
 
-  const url = safeImageUrl(value);
+  const url = theme.customImage
+    ? safeCustomImage(theme.customImage)
+    : safeImageUrl(ENV[imageVarFor(envKeyOf(theme))]?.trim() ?? '');
   if (!url) return null;
 
   return { url, kind: VIDEO_EXTENSIONS.test(pathOf(url)) ? 'video' : 'image' };
@@ -123,13 +153,15 @@ export function backgroundFor(themeId: string): ThemeBackground | null {
  * A video-backed mode with no poster simply falls back to its gradient, which
  * is what an unconfigured mode shows too.
  */
-export function backgroundStillFor(themeId: string): string | null {
-  const poster = ENV[posterVarFor(themeId)]?.trim();
+export function backgroundStillFor(theme: BackgroundSource): string | null {
+  // The `.env` poster belongs to the `.env` background; once the listener has
+  // picked their own (or removed it), that poster would show the wrong thing.
+  const poster = theme.customImage === undefined ? ENV[posterVarFor(envKeyOf(theme))]?.trim() : '';
   if (poster) {
     const url = safeImageUrl(poster);
     if (url) return url;
   }
 
-  const background = backgroundFor(themeId);
+  const background = backgroundFor(theme);
   return background?.kind === 'image' ? background.url : null;
 }

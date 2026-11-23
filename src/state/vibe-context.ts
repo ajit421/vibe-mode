@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { VibePlaylist, VibeTheme } from '@/types/theme';
+import type { Customization, ModeEdit } from '@/themes/customize';
 
 export interface VibePreferences {
   /** Master switch for animation. Also forced off by the OS setting. */
@@ -14,11 +15,14 @@ export interface VibePreferences {
    * it just stops being a fixture of the layout.
    */
   quotes: boolean;
+  /** The time and date pill in the top bar. */
+  clock: boolean;
 }
 
 export const DEFAULT_PREFERENCES: VibePreferences = {
   motion: true,
   ambient: true,
+  clock: true,
   // Off by default. The clock strip and the stats panel are the two densest
   // blocks on the screen, and with the scene now filling the background they
   // made the first impression read as a dashboard rather than a place. They
@@ -45,8 +49,21 @@ export interface CustomPlaylist {
   source: string;
 }
 
+/** Everything a listener set, as one downloadable file. */
+export interface VibeBackup {
+  app: 'vibe-mode';
+  version: 1;
+  customization: Customization;
+  preferences: Partial<VibePreferences>;
+  customPlaylists: Record<string, CustomPlaylist[]>;
+  playlistOverrides: Record<string, string>;
+}
+
 export interface VibeContextValue {
+  /** The modes a visitor can pick, in their order — hidden ones left out. */
   themes: readonly VibeTheme[];
+  /** Every mode, hidden ones included — for the Customize panel. */
+  allThemes: readonly VibeTheme[];
   theme: VibeTheme;
   themeId: string;
 
@@ -84,6 +101,21 @@ export interface VibeContextValue {
 
   playlistOverrides: Record<string, string>;
   setPlaylistOverride: (playlistId: string, value: string) => void;
+
+  /* ── Listener customisation of the modes themselves ─────────────────── */
+  customization: Customization;
+  /** Merges into the mode's edits; `colors` merge key by key. */
+  editMode: (themeId: string, patch: ModeEdit) => void;
+  /** Drops every edit to the mode — back to how it ships. */
+  resetMode: (themeId: string) => void;
+  /** Copies a mode (edits included) and returns the copy's id. */
+  addMode: (sourceId: string) => string | null;
+  /** Deletes a mode the listener added. Built-in modes can only be hidden. */
+  removeMode: (themeId: string) => void;
+  moveMode: (themeId: string, delta: -1 | 1) => void;
+  exportSettings: () => VibeBackup;
+  /** False when the file isn't a Vibe Mode backup; bad fields are dropped, not fatal. */
+  importSettings: (raw: unknown) => boolean;
 
   resetEverything: () => void;
 }
