@@ -235,7 +235,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    // A new playlist starts with a clean slate: a streak of blocked tracks in
+    // the old one must not make the first stuck track here give up at once.
     errorStreak.current = 0;
+    blockedSkips.current = 0;
     setStatus('loading');
     setErrorMessage(null);
     setProgress(0);
@@ -371,6 +374,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                 // randomly losing its place.
                 clearWatchdog();
                 window.setTimeout(() => {
+                  // The playlist may have changed meanwhile, destroying this player.
+                  if (playerRef.current !== player) return;
                   player.nextVideo();
                   armWatchdog();
                 }, 600);
@@ -546,6 +551,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const retry = useCallback(() => {
     errorStreak.current = 0;
+    blockedSkips.current = 0;
     setErrorMessage(null);
     setRetryToken((token) => token + 1);
   }, []);

@@ -74,7 +74,11 @@ export interface SharedMode {
 }
 
 /** What a restored file turned out to be, or null when it wasn't a Vibe Mode file. */
-export type ImportResult = { kind: 'backup' } | { kind: 'mode'; id: string } | null;
+export type ImportResult =
+  | { kind: 'backup' }
+  /** `pictureDropped`: the file had a picture, but there was no room left to save it. */
+  | { kind: 'mode'; id: string; pictureDropped: boolean }
+  | null;
 
 export interface VibeContextValue {
   /** The modes a visitor can pick, in their order — hidden ones left out. */

@@ -49,6 +49,10 @@
       />
     </noscript>
 
+    <!-- The site's playlists and pictures (themes/defaults.ts): fetched while the
+         script downloads, so a first visit isn't left on gradients for long. -->
+    <link rel="preload" href="/api/config" as="fetch" crossorigin="anonymous" />
+
     <link rel="preconnect" href="https://www.youtube.com" />
     <link rel="preconnect" href="https://i.ytimg.com" />
   </head>

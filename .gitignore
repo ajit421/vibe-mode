@@ -5,6 +5,8 @@ dist-ssr
 .env.local
 .env.*.local
 .env.example
+# Playlist IDs on their way into D1 (scripts/env-to-defaults.mjs) — never committed.
+defaults.seed.sql
 *.local
 .DS_Store
 .vscode/*

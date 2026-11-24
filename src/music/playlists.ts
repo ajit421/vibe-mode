@@ -1,6 +1,4 @@
 import type { VibePlaylist } from '@/types/theme';
-import { ENV, envName } from '@/utils/env';
-import { normaliseSource, sourceFields } from '@/music/resolve';
 
 /* ══════════════════════════════════════════════════════════════════════════
  *  PLAYLIST CONFIGURATION
@@ -8,40 +6,20 @@ import { normaliseSource, sourceFields } from '@/music/resolve';
  *  ⚠️  NO YOUTUBE IDs IN THIS FILE. EVER.
  *
  *  This file describes *what* each playlist is — its name, blurb and mood.
- *  The actual YouTube ID always comes from `.env`. The type below makes that
- *  a compile error rather than a convention, so it cannot drift.
+ *  What it actually plays is a `playlist` row in the `defaults` table in D1,
+ *  keyed by the playlist `id` below and served by `/api/config` (see
+ *  `themes/defaults.ts`). The type below makes pasting an ID here a compile
+ *  error rather than a convention, so it cannot drift.
  *
- *  ── Where the ID comes from ──────────────────────────────────────────────
- *  The env variable name is derived from the playlist `id`:
+ *  The row's value is a playlist id or link (Public or Unlisted — private
+ *  ones cannot be embedded), or one or more video ids or links, comma-separated.
  *
- *      id: 'metro-vibes'   →   VITE_PLAYLIST_METRO_VIBES
- *      id: 'gadi-hits'     →   VITE_PLAYLIST_GADI_HITS
- *
- *  So adding a playlist here needs no wiring at all — just add the matching
- *  line to `.env` (and to `.env.example` so the next person knows about it).
- *
- *  ── What goes in .env ────────────────────────────────────────────────────
- *      VITE_PLAYLIST_METRO_VIBES=PLb8zHNlPrRVJx9K2mHy0uzZ
- *
- *  Take that value from the playlist URL:
- *
- *      https://www.youtube.com/playlist?list=PLb8zHNlPrRVJx9K2mHy0uzZ
- *                                            └──────── this bit ────────┘
- *
- *  The playlist must be Public or Unlisted — private ones cannot be embedded.
- *
- *  One or more videos work too (ids or links, comma-separated), which is
- *  useful before you have made a real playlist:
- *
- *      VITE_PLAYLIST_METRO_VIBES=dQw4w9WgXcQ,jNQXAC9IVRw
- *
- *  ── Overriding without touching anything ─────────────────────────────────
  *  Listeners can relink, rename or remove any playlist from the in-app
  *  Customize panel (palette icon in the top bar). That is stored in their
- *  browser only and wins over `.env`; emptying the link goes back to it.
+ *  browser only and wins over the default; emptying the link goes back to it.
  *
  *  Anything left unset degrades gracefully: the mode still looks and behaves
- *  correctly, and the player explains exactly which variable is missing.
+ *  correctly, and the player says the playlist isn't set up yet.
  * ══════════════════════════════════════════════════════════════════════════ */
 
 /**
@@ -49,9 +27,6 @@ import { normaliseSource, sourceFields } from '@/music/resolve';
  * TypeScript rejects an attempt to paste one in here.
  */
 export type PlaylistDefinition = Omit<VibePlaylist, 'youtubePlaylistId' | 'videoIds'>;
-
-/** `'metro-vibes'` → `'VITE_PLAYLIST_METRO_VIBES'`. */
-export const envVarFor = (playlistId: string): string => envName('VITE_PLAYLIST', playlistId);
 
 /**
  * Playlists grouped by theme id. Adding a new theme? Add a matching key here.
@@ -180,19 +155,9 @@ export const PLAYLISTS: Record<string, PlaylistDefinition[]> = {
 };
 
 /**
- * Returns a theme's playlists with the IDs from `.env` filled in.
- * Unknown theme ids return an empty array — never throws.
+ * A theme's playlists, as described here — what they play is filled in at
+ * runtime from the site's defaults. Unknown theme ids return an empty array.
  */
 export function playlistsFor(themeId: string): VibePlaylist[] {
-  const list = PLAYLISTS[themeId];
-  if (!list) return [];
-
-  return list.map((playlist) => {
-    // Same parser as a link typed into the site, so `.env` accepts the same
-    // things: a playlist id or link, or one or more video ids or links. The
-    // old "a comma means videos" rule read a single video as a playlist id,
-    // which never parsed — the playlist just sat there "not set up".
-    const source = normaliseSource(ENV[envVarFor(playlist.id)] ?? '');
-    return source ? { ...playlist, ...sourceFields(source) } : playlist;
-  });
+  return PLAYLISTS[themeId] ?? [];
 }

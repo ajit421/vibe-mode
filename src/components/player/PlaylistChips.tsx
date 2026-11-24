@@ -1,7 +1,6 @@
 import { ListMusic, TriangleAlert } from 'lucide-react';
 import { useVibe } from '@/state/vibe-context';
 import { resolvePlaylistSource } from '@/music/resolve';
-import { envVarFor } from '@/music/playlists';
 import { cn } from '@/utils/cn';
 
 interface PlaylistChipsProps {
@@ -52,11 +51,11 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
               configured
                 ? playlist.description
                 : own
-                  ? // A custom playlist has no env variable behind it — the
+                  ? // A custom playlist has no defaults row behind it — the
                     // only thing that can be wrong is what was pasted in.
                     `${playlist.name} — that link didn’t resolve. Fix it in Customize.`
                   : import.meta.env.DEV
-                    ? `${playlist.name} — set ${envVarFor(playlist.id)} in .env, or add its link in Customize`
+                    ? `${playlist.name} — add a 'playlist' row '${playlist.id}' to the D1 defaults table, or its link in Customize`
                     : `${playlist.name} — not set up yet. Add its link in Customize.`
             }
             className={cn(

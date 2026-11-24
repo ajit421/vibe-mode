@@ -148,15 +148,22 @@ export interface VibeTheme {
   seo?: VibeSeo;
 
   /**
+   * Runtime-only — the site's default background and poster for this mode,
+   * from the `defaults` table in D1 (see `themes/defaults.ts`). Never written
+   * in a theme file: no image URL or path lives in source.
+   */
+  defaultImage?: string;
+  defaultPoster?: string;
+  /**
    * Runtime-only — filled in from the listener's own customisation (see
-   * `themes/customize.ts`), never written in a theme file: repo-shipped
-   * backgrounds come from `.env`. A URL or uploaded still wins over `.env`;
-   * `null` means they removed the picture and want the gradient.
+   * `themes/customize.ts`), never written in a theme file. A URL or uploaded
+   * still wins over `defaultImage`; `null` means they removed the picture and
+   * want the gradient.
    */
   customImage?: string | null;
   /**
    * Runtime-only — set on a mode the listener added: the built-in mode it was
-   * copied from, whose `.env` background and poster it borrows.
+   * copied from, whose default background, poster and playlists it borrows.
    */
   baseId?: string;
 }

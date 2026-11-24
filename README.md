@@ -25,7 +25,7 @@ It's less a music website and more a digital memory machine.
 ## Contents
 
 1. [Quick start](#quick-start)
-2. [Playlists live in `.env`](#playlists-live-in-env) ← **start here**
+2. [Playlists and pictures live in D1](#playlists-and-pictures-live-in-d1) ← **start here**
 3. [Customize — for visitors](#customize--for-visitors)
 4. [Tech stack](#tech-stack)
 5. [How to add a new theme](#how-to-add-a-new-theme)
@@ -45,8 +45,7 @@ Requires **Node 20+**.
 
 ```bash
 npm install
-cp .env.example .env     # then fill in your playlists — see below
-npm run dev              # http://localhost:5173
+npm run dev              # http://localhost:5173 — reads playlists from the live site
 ```
 
 | Command | What it does |
@@ -58,81 +57,67 @@ npm run dev              # http://localhost:5173
 | `npm run typecheck` | TypeScript only, no build |
 | `npm test` | Vitest — the customisation sanitiser and link parsing |
 | `npm run og` | Regenerate `public/og.png`, the social preview card |
+| `npm run preview:cf` | Build, then run the site *with* its Functions against a local D1 database (:8788) |
+| `npm run db:migrate` | Apply `migrations/` to the live D1 database |
+| `npm run env-to-defaults` | One-time: turn an old `.env` into `defaults.seed.sql` |
 
 The site works before you add any playlists. Every mode still looks and
-behaves correctly — the player just names the variable it's waiting for.
+behaves correctly — in development the player names the row it's waiting for.
 
 ---
 
-## Playlists live in `.env`
+## Playlists and pictures live in D1
 
-**There are no YouTube IDs anywhere in the source code, and there is no way to
-add one.** `src/music/playlists.ts` describes what each playlist *is* — its
-name, blurb and mood — and its type physically has no ID field, so pasting one
-in there is a compile error rather than a style violation:
+**There are no YouTube IDs and no picture paths anywhere in the source code,
+and there is no `.env`.** `src/music/playlists.ts` describes what each playlist
+*is* — its name, blurb and mood — and its type physically has no ID field, so
+pasting one in there is a compile error rather than a style violation:
 
 ```ts
 export type PlaylistDefinition = Omit<VibePlaylist, 'youtubePlaylistId' | 'videoIds'>;
 ```
 
-Every ID comes from `.env`.
+What each playlist plays, and each mode's background, is a row in the
+`defaults` table of the `vibe-mode` D1 database (schema:
+`migrations/0001_defaults.sql`). The Function `functions/api/config.ts` serves
+it as `/api/config`, and the page lays it over the theme files
+(`src/themes/defaults.ts`). Change a row and visitors get it on their next
+load — **no rebuild, no redeploy**.
 
-### 1. Get the ID
+| kind | id | value |
+| --- | --- | --- |
+| `playlist` | playlist id, e.g. `metro-vibes` | playlist id or link, or comma-separated video ids/links |
+| `image` | mode id, e.g. `metro` | `/backgrounds/metro.avif` or a full `https://` URL; `.mp4`/`.webm`/… play as a looping video |
+| `poster` | mode id | still for a video-backed mode's card |
 
-Open your playlist on YouTube and look at the URL:
+### Changing one
 
-```
-https://www.youtube.com/playlist?list=PLb8zHNlPrRVJx9K2mHy0uzZ
-                                      └──────── this bit ────────┘
-```
+In the Cloudflare dashboard: **Storage & databases → D1 → vibe-mode → Console**:
 
-It usually starts with `PL` (a normal playlist), `OLAK5uy_` (an album) or `RD`
-(a radio mix).
-
-> The playlist must be **Public** or **Unlisted**. Private playlists cannot be
-> embedded, and the player will say so.
-
-### 2. Put it in `.env`
-
-```bash
-VITE_PLAYLIST_METRO_VIBES=PLb8zHNlPrRVJx9K2mHy0uzZ
-```
-
-Restart `npm run dev` — Vite only reads `.env` on boot. That's the whole job.
-
-### Which variable is which?
-
-The name is derived from the playlist `id`, so you never have to look it up:
-
-```
-id: 'metro-vibes'   →   VITE_PLAYLIST_METRO_VIBES
-id: 'gadi-hits'     →   VITE_PLAYLIST_GADI_HITS
+```sql
+INSERT OR REPLACE INTO defaults (kind, id, value)
+VALUES ('playlist', 'metro-vibes', 'PLb8zHNlPrRVJx9K2mHy0uzZ');
 ```
 
-And if you forget, the app tells you: in development, an unconfigured playlist
-prints the exact variable name in the player bar. (Visitors on the live site
-see "add its link in Customize" instead — `.env` means nothing to them.)
+Or from a terminal, the same SQL with
+`npx wrangler d1 execute vibe-mode --remote --command "…"`.
 
-`.env.example` lists all sixteen, grouped by mode.
+The playlist ID is the `list=` part of its URL. It must be **Public** or
+**Unlisted** — private playlists cannot be embedded, and the player will say so.
+No playlist yet? One or more video IDs or links, comma-separated, work too.
 
-### No playlist yet? Use individual videos
+### First load and offline
 
-One or more video IDs or links, comma-separated, work too — a single video
-included:
+The browser keeps the last answer from `/api/config` in localStorage and
+paints with it straight away, then refreshes it. `index.html` preloads
+`/api/config`, so a first-ever visit shows colour gradients only for a moment.
+If the database can't be reached, the page keeps what it had — nothing breaks.
 
-```bash
-VITE_PLAYLIST_METRO_VIBES=dQw4w9WgXcQ,jNQXAC9IVRw,9bZkp7q19f0
-```
+### Moving from `.env`
 
-### Why `.env` rather than a config file?
-
-- One place to look, and it's the place already excluded from git
-- Different playlists per deploy — staging and production from one codebase
-- Nobody's personal playlists end up in a commit or a pull request
-
-> Vite inlines every `VITE_*` variable into the public JS bundle. That's fine
-> for playlist IDs, which are public by nature — but never put a secret, key
-> or credential in there.
+`npm run env-to-defaults` reads an old `.env` and writes `defaults.seed.sql`
+(gitignored), which `npx wrangler d1 execute vibe-mode --remote
+--file=defaults.seed.sql` loads. After that, `.env` can be deleted.
 
 ---
 
@@ -160,7 +145,7 @@ Precedence for a playlist's link, highest first:
 
 ```
 1. The visitor's own link       (Customize → localStorage)
-2. .env                         (VITE_PLAYLIST_*)
+2. The site's default           (D1 `defaults` table, kind 'playlist')
 3. Nothing                      → friendly setup prompt, mode still works
 ```
 
@@ -174,13 +159,14 @@ Precedence for a playlist's link, highest first:
 - **Motion** (`motion/react`, formerly Framer Motion) — transitions
 - **Lucide React** — icons
 - **YouTube IFrame Player API** — playback
+- **Cloudflare D1** — the site's default playlists and pictures, via one Pages Function
 - **localStorage** — preferences and every visitor customisation
 - **A small service worker** (`public/sw.js`) — installable app, instant repeat
   visits; production only
 
 No state library, no router, no UI kit. First load is about **70 kB of JS
 gzipped**; the Customize panel is its own chunk, fetched on first open.
-Backgrounds are AVIF pictures (or a looping video) set per mode in `.env`.
+Backgrounds are AVIF pictures (or a looping video) set per mode in D1.
 
 ---
 
@@ -263,12 +249,13 @@ background until you give it a picture.
 
 ### Step 3 (optional) — give it a picture
 
-Backgrounds come from `.env`, like playlists — no paths in source:
+Backgrounds come from D1, like playlists — no paths in source. Drop the file
+in `public/backgrounds/`, deploy, then add its row:
 
-```bash
-VITE_IMAGE_HOSTEL=/backgrounds/hostel.avif      # a file in public/
-VITE_IMAGE_HOSTEL=/backgrounds/hostel.mp4       # a short looping clip works too
-VITE_POSTER_HOSTEL=/backgrounds/hostel.avif     # still for the card, for a video
+```sql
+INSERT OR REPLACE INTO defaults (kind, id, value) VALUES
+  ('image',  'hostel', '/backgrounds/hostel.avif'),   -- or .mp4 for a looping clip
+  ('poster', 'hostel', '/backgrounds/hostel.avif');   -- only needed for a video
 ```
 
 ### Step 4 — playlists
@@ -286,14 +273,14 @@ hostel: [
 ],
 ```
 
-Then add the derived variable to `.env` and `.env.example`:
+Then add its row, keyed by that id:
 
-```bash
-VITE_PLAYLIST_HOSTEL_LATENIGHT=PLyourPlaylistId
+```sql
+INSERT OR REPLACE INTO defaults (kind, id, value)
+VALUES ('playlist', 'hostel-latenight', 'PLyourPlaylistId');
 ```
 
-No other wiring — the variable name is computed from the playlist id at
-runtime. `playlistsFor('hostel')` returns `[]` for an unknown key rather than
+No other wiring — rows are matched to playlists and modes by id at runtime. `playlistsFor('hostel')` returns `[]` for an unknown key rather than
 throwing, so the mode works even before you do this.
 
 ---
@@ -314,7 +301,8 @@ src/
 │   ├── radio-wala.ts
 │   ├── gadi-wala.ts
 │   ├── college.ts
-│   ├── backgrounds.ts        picture/video per mode, from .env
+│   ├── backgrounds.ts        picks and checks each mode's picture/video
+│   ├── defaults.ts           the site's playlists + pictures from /api/config (D1)
 │   ├── customize.ts          visitor edits laid over the theme files + sanitiser
 │   └── index.ts              the registry
 ├── music/
@@ -336,7 +324,7 @@ src/
 │   ├── panels/               settings, shortcuts, customize (lazy)
 │   ├── layout/               top bar, status bar
 │   └── ui/                   button, modal, slider, switch, toasts
-├── utils/                    storage, backup, env, url, format, cn
+├── utils/                    storage, backup, url, format, cn
 └── styles/index.css          theme token bridge + ambient keyframes
 ```
 
@@ -363,25 +351,11 @@ no class swapping, no re-render of the tree to restyle it.
 > already Tailwind's font-size utility and a colour of the same name would
 > shadow it.
 
-### How the env lookup works
-
-Vite inlines the *whole* `import.meta.env` object at build time, not just the
-property accesses it can statically see. That means a dynamic lookup is safe,
-which is what lets the variable name be derived from the playlist id instead of
-maintained in a hand-written map:
-
-```ts
-// src/utils/env.ts — one rule for every derived name
-export const ENV = import.meta.env as unknown as Record<string, string | undefined>;
-export const envName = (prefix: string, id: string) =>
-  `${prefix}_${id.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
-```
-
 ### Open for extension
 
 - **Effects** (`components/effects/AmbientEffects.tsx`) — maps each key of
   `theme.effects` → an ambient layer. Unknown keys are ignored.
-- **Backgrounds** — env-keyed by theme id, as above.
+- **Backgrounds** — a D1 `image` row keyed by theme id, as above.
 
 A theme and its picture can be added independently, and neither can break an
 existing mode.
@@ -408,7 +382,12 @@ The site lives at `vibe-mode.pages.dev`. `wrangler.jsonc` points Pages at
 for the service worker, and a few security headers. With no `404.html`, Pages
 serves `index.html` for unknown paths, so `?mode=` links survive a hard refresh.
 
-**From your machine** (uses your local `.env`):
+The build needs no configuration at all — playlists and pictures are read at
+runtime from the `vibe-mode` D1 database, bound to the Functions as `DB` in
+`wrangler.jsonc`. `public/_routes.json` sends only `/api/*` and
+`/backgrounds/*.mp4` to Functions, so pictures stay free static hits.
+
+**From your machine:**
 
 ```bash
 npx wrangler login   # once
@@ -416,10 +395,8 @@ npm run deploy
 ```
 
 **From git:** connect the repo in the Cloudflare dashboard under
-**Workers & Pages → vibe-mode → Settings → Builds**. `.env` is gitignored, so
-copy the same `VITE_*` variables into that project's build environment
-variables (Production and Preview). Without them the site still builds and
-works; every mode just shows the setup prompt.
+**Workers & Pages → vibe-mode → Settings → Builds**. No build variables are
+needed. A schema change in `migrations/` goes out with `npm run db:migrate`.
 
 ---
 

@@ -5,7 +5,9 @@ import {
   TEXT_LIMITS,
   UPLOADED,
   buildThemes,
+  carryUpload,
   findIn,
+  fitsUploadBudget,
   isAddedMode,
   isDeleted,
   isHidden,
@@ -18,6 +20,7 @@ import {
   type ModeEdit,
   type Uploads,
 } from '@/themes/customize';
+import { cachedDefaults, fetchDefaults, withDefaults } from '@/themes/defaults';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePrefersReducedMotion } from '@/hooks/useMediaQuery';
 import { usePageHidden } from '@/hooks/usePageVisibility';
@@ -46,9 +49,6 @@ function pick(themes: readonly VibeTheme[], id: string | null | undefined): Vibe
   return findIn(themes, id) ?? findIn(themes, DEFAULT_THEME_ID) ?? themes[0] ?? THEMES[0];
 }
 
-/** Room for uploaded pictures: under the ~5 MB browsers give a site, with space left for the rest. */
-const UPLOAD_BUDGET = 3_500_000;
-
 /** How long before the incoming world is swapped in behind the wipe. */
 const SWAP_DELAY_MS = 380;
 /** Total length of the transition overlay. */
@@ -56,8 +56,8 @@ const TRANSITION_MS = 900;
 
 /**
  * Prefix that separates a listener's own playlists from the built-in ones.
- * `playlistsFor` derives env variable names from playlist ids, so a custom id
- * must never be mistakable for one a `VITE_PLAYLIST_*` variable could fill in.
+ * The site's defaults are keyed by playlist id, so a custom id must never be
+ * mistakable for one a `defaults` row could fill in.
  */
 const CUSTOM_PREFIX = 'custom-';
 
@@ -176,12 +176,31 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   const systemReducedMotion = usePrefersReducedMotion();
   const tabHidden = usePageHidden();
 
-  // Theme files are the defaults; the listener's record is laid over them here,
-  // and everything downstream — picker, number keys, ?mode=, colours — reads
-  // the result, so a customised mode behaves exactly like a shipped one.
+  // The site's playlists and pictures (D1, via /api/config). Painted from this
+  // browser's last copy at once, then refreshed — see `themes/defaults.ts`.
+  const [siteDefaults, setSiteDefaults] = useState(cachedDefaults);
+  useEffect(() => {
+    let live = true;
+    void fetchDefaults().then((fresh) => {
+      // An unchanged answer keeps the old object, so nothing downstream rebuilds.
+      if (!live || !fresh) return;
+      setSiteDefaults((current) =>
+        JSON.stringify(current) === JSON.stringify(fresh) ? current : fresh,
+      );
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const builtIns = useMemo(() => withDefaults(THEMES, siteDefaults), [siteDefaults]);
+
+  // Theme files plus the site's defaults are the starting point; the
+  // listener's record is laid over them here, and everything downstream —
+  // picker, number keys, ?mode=, colours — reads the result, so a customised
+  // mode behaves exactly like a shipped one.
   const built = useMemo(
     () =>
-      buildThemes(THEMES, customization, uploads).map((item) => {
+      buildThemes(builtIns, customization, uploads).map((item) => {
         const own = customPlaylistsByTheme[item.id];
         // The listener's own playlists sit after the built-in ones, so adding
         // one never renumbers or displaces what the mode already offered.
@@ -189,7 +208,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
           ? { ...item, playlists: [...item.playlists, ...own.map(toVibePlaylist)] }
           : item;
       }),
-    [customization, uploads, customPlaylistsByTheme],
+    [builtIns, customization, uploads, customPlaylistsByTheme],
   );
   const allThemes = useMemo(
     () => built.filter((item) => !isDeleted(customization, item.id)),
@@ -433,12 +452,9 @@ export function VibeProvider({ children }: { children: ReactNode }) {
 
   const setUpload = useCallback(
     (id: string, still: string): boolean => {
-      const others = Object.entries(uploads)
-        .filter(([key]) => key !== id)
-        .reduce((total, [, value]) => total + value.length, 0);
       // Browsers give a site ~5 MB, and a write over quota is dropped silently,
       // which would lose this picture *and* every edit after it.
-      if (others + still.length > UPLOAD_BUDGET) return false;
+      if (!fitsUploadBudget(uploads, id, still)) return false;
       setUploads((current) => ({ ...current, [id]: still }));
       editMode(id, { image: UPLOADED });
       return true;
@@ -472,7 +488,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       // borrows only its base's fonts and colours as a starting point and
       // empties the rest, so it really is a new place, not a renamed old one.
       const base = findIn(THEMES, source.baseId ?? source.id) ?? source;
-      const edit: ModeEdit = blank
+      const draft: ModeEdit = blank
         ? {
             name: 'New mode',
             shortName: 'New',
@@ -495,6 +511,10 @@ export function VibeProvider({ children }: { children: ReactNode }) {
               TEXT_LIMITS.name,
             ),
           };
+      // The uploaded picture and the listener's own playlists are stored apart
+      // from the edit, so a copy has to take them along or it loses them.
+      const { edit, still } = carryUpload(draft, uploads[source.id], uploads, id);
+      const own = blank ? [] : (customPlaylistsByTheme[source.id] ?? []);
 
       setCustomization((current) => {
         const order = buildThemes(THEMES, current).map((t) => t.id);
@@ -505,9 +525,24 @@ export function VibeProvider({ children }: { children: ReactNode }) {
           order,
         };
       });
+      if (still) setUploads((current) => ({ ...current, [id]: still }));
+      if (own.length) {
+        setCustomPlaylistsByTheme((current) => ({
+          ...current,
+          [id]: own.map((item) => ({ ...item, id: newCustomId() })),
+        }));
+      }
       return id;
     },
-    [allThemes, customization.edits, setCustomization],
+    [
+      allThemes,
+      customization.edits,
+      uploads,
+      customPlaylistsByTheme,
+      setCustomization,
+      setUploads,
+      setCustomPlaylistsByTheme,
+    ],
   );
 
   const removeMode = useCallback(
@@ -617,11 +652,13 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       if (raw.kind === 'mode') {
         const baseId =
           typeof raw.baseId === 'string' && BUILT_IN_IDS.has(raw.baseId) ? raw.baseId : null;
-        const edit = sanitizeEdit(raw.edit);
-        if (!baseId || !edit) return null;
+        const sanitized = sanitizeEdit(raw.edit);
+        if (!baseId || !sanitized) return null;
         const id = newAddedId();
-        const upload = sanitizeUploads({ [id]: raw.upload })[id];
-        if (edit.image === UPLOADED && !upload) edit.image = undefined;
+        const offered = sanitizeUploads({ [id]: raw.upload })[id];
+        // Same storage budget as an upload made here, or the picture would show
+        // now and be gone after a reload.
+        const { edit, still: upload } = carryUpload(sanitized, offered, uploads, id);
         edit.hidden = undefined;
         edit.deleted = undefined;
 
@@ -640,7 +677,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
             [id]: playlists.map((item) => ({ ...item, id: newCustomId() })),
           }));
         }
-        return { kind: 'mode', id };
+        return { kind: 'mode', id, pictureDropped: Boolean(offered) && !upload };
       }
 
       setCustomization(sanitize(raw.customization));
@@ -650,7 +687,14 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       setPlaylistOverrides(sanitizeOverrides(raw.playlistOverrides));
       return { kind: 'backup' };
     },
-    [setCustomization, setUploads, setPreferences, setCustomPlaylistsByTheme, setPlaylistOverrides],
+    [
+      uploads,
+      setCustomization,
+      setUploads,
+      setPreferences,
+      setCustomPlaylistsByTheme,
+      setPlaylistOverrides,
+    ],
   );
 
   const resetEverything = useCallback(() => {

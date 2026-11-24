@@ -27,7 +27,6 @@ import { IconButton } from '@/components/ui/IconButton';
 import { Slider } from '@/components/ui/Slider';
 import { PlaylistChips } from './PlaylistChips';
 import { TrackList } from './TrackList';
-import { envVarFor } from '@/music/playlists';
 import { formatTime } from '@/utils/format';
 import { buildShareUrl } from '@/utils/url';
 import { cn } from '@/utils/cn';
@@ -119,10 +118,10 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
 
   const secondaryLine = unconfigured
     ? playlist
-      ? // `.env` means nothing to a visitor; it is the developer's hint, so it
-        // only appears in development.
+      ? // The `defaults` table means nothing to a visitor; it is the
+        // developer's hint, so it only appears in development.
         import.meta.env.DEV
-        ? `Set ${envVarFor(playlist.id)} in .env, or add its link in Customize`
+        ? `Add a 'playlist' row '${playlist.id}' to the D1 defaults table, or its link in Customize`
         : 'Add its link in Customize'
       : `No playlists in ${theme.name} — add one in Customize`
     : // A transient message (e.g. skipping an un-embeddable track) still needs

@@ -4,8 +4,10 @@ import {
   EMPTY_CUSTOMIZATION,
   MODE_ICONS,
   TEXT_LIMITS,
+  UPLOAD_BUDGET,
   UPLOADED,
   buildThemes,
+  carryUpload,
   findIn,
   isDeleted,
   sanitizeCustomization,
@@ -200,5 +202,34 @@ describe('suggestedThemeId', () => {
     for (let hour = 0; hour < 24; hour += 1) expect(ids.has(suggestedThemeId(hour))).toBe(true);
     expect(suggestedThemeId(2)).toBe('judaad-house');
     expect(suggestedThemeId(14)).toBe('office');
+  });
+});
+
+describe('a new mode carrying an uploaded picture', () => {
+  const still = 'data:image/webp;base64,AAAA';
+
+  it('brings the still along when it fits', () => {
+    expect(carryUpload({ name: 'Copy', image: UPLOADED }, still, {}, 'my-new1')).toEqual({
+      edit: { name: 'Copy', image: UPLOADED },
+      still,
+    });
+  });
+
+  it('falls back to the default picture when storage has no room', () => {
+    // Saving it anyway would be dropped by the browser and vanish on reload.
+    const full = { 'my-other': 'x'.repeat(UPLOAD_BUDGET) };
+    expect(carryUpload({ image: UPLOADED }, still, full, 'my-new1')).toEqual({
+      edit: { image: undefined },
+    });
+  });
+
+  it('never points at an upload that is not there', () => {
+    expect(carryUpload({ image: UPLOADED }, undefined, {}, 'my-new1').edit.image).toBeUndefined();
+  });
+
+  it('leaves a linked picture alone', () => {
+    expect(carryUpload({ image: '/backgrounds/metro.avif' }, still, {}, 'my-new1')).toEqual({
+      edit: { image: '/backgrounds/metro.avif' },
+    });
   });
 });

@@ -10,6 +10,9 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "og": "node scripts/generate-og.mjs",
+    "env-to-defaults": "node scripts/env-to-defaults.mjs",
+    "db:migrate": "wrangler d1 migrations apply vibe-mode --remote",
+    "preview:cf": "npm run build && wrangler d1 migrations apply vibe-mode --local && wrangler pages dev",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "deploy": "npm run build && wrangler pages deploy --branch main"

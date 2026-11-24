@@ -259,7 +259,12 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
       const result = importSettings(JSON.parse(await file.text()));
       if (result?.kind === 'mode') {
         setSelectedId(result.id);
-        push('Mode added from the file — find it at the end of the list.', 'IMPORT');
+        push(
+          result.pictureDropped
+            ? 'Mode added from the file, without its picture — no room left. Remove another uploaded picture, then add it again.'
+            : 'Mode added from the file — find it at the end of the list.',
+          'IMPORT',
+        );
         return;
       }
       if (result?.kind === 'backup') {

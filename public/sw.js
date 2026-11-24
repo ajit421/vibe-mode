@@ -9,8 +9,8 @@
  *    otherwise pile up forever.
  *  - Other same-site files (backgrounds, icons): show the cached copy, refresh
  *    it in the background, so a replaced picture still arrives next visit.
- *  - Never touched: anything cross-origin (YouTube, fonts, oEmbed), anything
- *    not a GET, and range requests — the background video streams in pieces,
+ *  - Never touched: anything cross-origin (YouTube, fonts, oEmbed), `/api/*`,
+ *    anything not a GET, and range requests — the background video streams in pieces,
  *    and the Cache API refuses partial (206) responses.
  *
  * Kill switch: if this ever misbehaves in the wild, deploy a sw.js whose
@@ -91,7 +91,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname === '/sw.js') return;
+  // The site's defaults must be fresh: a cached copy here would hold back a
+  // playlist edited in D1 for a whole extra visit. The page keeps its own
+  // last copy in localStorage for offline.
+  if (url.pathname === '/sw.js' || url.pathname.startsWith('/api/')) return;
 
   // The refresh is registered with `waitUntil` up front: calling it later,
   // after a cached copy has already been answered, throws, and the refreshed

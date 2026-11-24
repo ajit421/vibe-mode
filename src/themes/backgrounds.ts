@@ -1,47 +1,26 @@
 /* ══════════════════════════════════════════════════════════════════════════
- *  BACKGROUND IMAGE CONFIGURATION
+ *  BACKGROUND IMAGES
  *
  *  ⚠️  NO IMAGE URLs IN THIS FILE. EVER.
  *
- *  Each mode's background picture comes from `.env`, the same way playlist IDs
- *  do. Nothing here holds a path — this file only works out which variable to
- *  read and checks that what came back is safe to put in an `src`.
- *
- *  ── Where the URL comes from ─────────────────────────────────────────────
- *  The variable name is derived from the theme `id`:
- *
- *      id: 'judaad-house'  →  VITE_IMAGE_JUDAAD_HOUSE
- *      id: 'metro'         →  VITE_IMAGE_METRO
- *
- *  So a new mode needs no wiring at all — add the matching line to `.env`.
+ *  Each mode's default background (and, for a video, its poster) is a row in
+ *  the `defaults` table in D1, served by `/api/config` and laid onto the theme
+ *  as `defaultImage` / `defaultPoster` (see `themes/defaults.ts`). This file
+ *  only checks that a value is safe to put in an `src` and picks which one wins.
  *
  *  ── What the value can be ────────────────────────────────────────────────
- *  Either a file you dropped in `public/`:
- *
- *      VITE_IMAGE_METRO=/backgrounds/metro.avif
- *
- *  or a full URL on any host:
- *
- *      VITE_IMAGE_METRO=https://example.com/metro.png
+ *  A file in `public/` (`/backgrounds/metro.avif`), or a full URL on any host.
  *
  *  A mode with nothing set simply shows its colour gradient, which is a
  *  perfectly good background on its own — no broken image, no empty frame.
  * ══════════════════════════════════════════════════════════════════════════ */
 
 import type { VibeTheme } from '@/types/theme';
-import { ENV, envName } from '@/utils/env';
-
-
-/** `'judaad-house'` → `'VITE_IMAGE_JUDAAD_HOUSE'`. */
-export const imageVarFor = (themeId: string): string => envName('VITE_IMAGE', themeId);
-
-/** `'judaad-house'` → `'VITE_POSTER_JUDAAD_HOUSE'`. */
-export const posterVarFor = (themeId: string): string => envName('VITE_POSTER', themeId);
 
 /**
  * Only `http(s)` and site-relative paths are allowed through.
  *
- * The value is build-time configuration rather than user input, so this is not
+ * The value is the site owner's configuration rather than a visitor's input, so this is not
  * the last line of defence — but it goes straight into an `src`, and letting
  * something like a `javascript:` or `data:` value reach that is exactly the
  * kind of thing that is cheap to prevent and unpleasant to discover later.
@@ -55,7 +34,7 @@ export const posterVarFor = (themeId: string): string => envName('VITE_POSTER', 
  * image configured, so a missing slash read as "I haven't set that one up yet"
  * rather than as the typo it was.
  */
-function safeImageUrl(value: string): string | null {
+export function safeImageUrl(value: string): string | null {
   // Protocol-relative (`//host/x.png`) is deliberately not treated as a path.
   if (value.startsWith('/') && !value.startsWith('//')) return value;
 
@@ -73,14 +52,14 @@ function safeImageUrl(value: string): string | null {
 /**
  * The only `data:` URLs let through: the base64 stills the Customize panel
  * encodes itself from a picture the listener uploads. Raster image types only —
- * never SVG, which can carry script — and never from `.env`, which still goes
- * through `safeImageUrl` alone.
+ * never SVG, which can carry script — and never from the site's defaults,
+ * which go through `safeImageUrl` alone.
  */
 const UPLOADED_IMAGE = /^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/;
 
 /**
  * Checks a background the listener set themselves (Customize panel, or an
- * imported backup — so untrusted). Same rules as `.env` values, plus uploads.
+ * imported backup — so untrusted). Same rules as the site's defaults, plus uploads.
  */
 export function safeCustomImage(value: string): string | null {
   const trimmed = value.trim();
@@ -108,20 +87,17 @@ function pathOf(value: string): string {
 }
 
 /** The parts of a theme that decide its background. */
-type BackgroundSource = Pick<VibeTheme, 'id' | 'baseId' | 'customImage'>;
-
-/** Whose `.env` variables a mode reads: a listener-added mode borrows its base's. */
-const envKeyOf = (theme: BackgroundSource): string => theme.baseId ?? theme.id;
+type BackgroundSource = Pick<VibeTheme, 'customImage' | 'defaultImage' | 'defaultPoster'>;
 
 /**
  * The background for a mode — a still or a short looping clip — or `null` when
  * none is configured or the value is not a usable URL.
  *
- * The same `VITE_IMAGE_*` variable takes both, decided by the file extension,
- * so switching a mode from a picture to a video is a one-line edit and needs
- * no second variable to keep in sync.
+ * The same `image` row takes both, decided by the file extension, so switching
+ * a mode from a picture to a video is a one-value edit and needs no second
+ * row to keep in sync.
  *
- * A picture the listener chose (`customImage`) wins over `.env`; `null` there
+ * A picture the listener chose (`customImage`) wins over the default; `null` there
  * means they removed the picture on purpose, so the gradient shows.
  */
 export function backgroundFor(theme: BackgroundSource): ThemeBackground | null {
@@ -129,7 +105,7 @@ export function backgroundFor(theme: BackgroundSource): ThemeBackground | null {
 
   const url = theme.customImage
     ? safeCustomImage(theme.customImage)
-    : safeImageUrl(ENV[imageVarFor(envKeyOf(theme))]?.trim() ?? '');
+    : safeImageUrl(theme.defaultImage?.trim() ?? '');
   if (!url) return null;
 
   return { url, kind: VIDEO_EXTENSIONS.test(pathOf(url)) ? 'video' : 'image' };
@@ -145,9 +121,9 @@ export function backgroundFor(theme: BackgroundSource): ThemeBackground | null {
  * is what an unconfigured mode shows too.
  */
 export function backgroundStillFor(theme: BackgroundSource): string | null {
-  // The `.env` poster belongs to the `.env` background; once the listener has
-  // picked their own (or removed it), that poster would show the wrong thing.
-  const poster = theme.customImage === undefined ? ENV[posterVarFor(envKeyOf(theme))]?.trim() : '';
+  // The default poster belongs to the default background; once the listener
+  // has picked their own (or removed it), that poster would show the wrong thing.
+  const poster = theme.customImage === undefined ? theme.defaultPoster?.trim() : '';
   if (poster) {
     const url = safeImageUrl(poster);
     if (url) return url;

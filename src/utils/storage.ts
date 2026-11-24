@@ -14,6 +14,8 @@ export const STORAGE_KEYS = {
   /** Pictures the listener uploaded, by mode id — apart, so text edits never rewrite them. */
   uploads: `${PREFIX}.uploads`,
   hasEntered: `${PREFIX}.hasEntered`,
+  /** The site's defaults as last served by `/api/config` — so first paint needn't wait for it. */
+  defaults: `${PREFIX}.defaults`,
 } as const;
 
 const kindOf = (value: unknown): string => (Array.isArray(value) ? 'array' : typeof value);

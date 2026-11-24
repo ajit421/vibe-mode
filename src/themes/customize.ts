@@ -141,6 +141,37 @@ export const UPLOADED = 'upload';
 /** Mode id → uploaded still (a `data:image/…` URL). */
 export type Uploads = Record<string, string>;
 
+/** Room for uploaded pictures: under the ~5 MB browsers give a site, with space left for the rest. */
+export const UPLOAD_BUDGET = 3_500_000;
+
+/**
+ * Whether `still` can be saved for mode `id` beside the other uploads. A write
+ * over the browser's quota is dropped silently, which would lose the picture
+ * on the next reload while the page still shows it.
+ */
+export const fitsUploadBudget = (uploads: Uploads, id: string, still: string): boolean =>
+  Object.entries(uploads).reduce((total, [key, value]) => total + (key === id ? 0 : value.length), 0) +
+    still.length <=
+  UPLOAD_BUDGET;
+
+/**
+ * The uploaded picture a new mode (a copy, or one added from a shared file)
+ * brings along. The still lives apart from the edit, so it has to be carried
+ * over explicitly — and only when it fits; otherwise the edit falls back to
+ * the default picture instead of pointing at an upload that isn't there.
+ */
+export function carryUpload(
+  edit: ModeEdit,
+  still: string | undefined,
+  uploads: Uploads,
+  id: string,
+): { edit: ModeEdit; still?: string } {
+  if (edit.image !== UPLOADED) return { edit };
+  return still && fitsUploadBudget(uploads, id, still)
+    ? { edit, still }
+    : { edit: { ...edit, image: undefined } };
+}
+
 export interface ModeEdit extends Partial<Record<TextKey, string>>, Partial<Record<LineKey, string[]>> {
   // `quotes` and `ticker` are lines as typed. `stats` and `hud` are
   // "Label: value" lines, parsed when applied — stored raw so a half-typed
@@ -177,7 +208,7 @@ export interface Customization {
 
 export const EMPTY_CUSTOMIZATION: Customization = { edits: {}, added: [], order: [] };
 
-/** Added ids can never collide with a built-in id or a `VITE_*` variable name. */
+/** Added ids can never collide with a built-in id, so no `defaults` row can fill one in. */
 const ADDED_ID = /^my-[a-z0-9]{4,16}$/;
 const SAFE_ID = /^[a-z0-9-]{1,60}$/;
 const HEX = /^#[0-9a-f]{6}$/i;

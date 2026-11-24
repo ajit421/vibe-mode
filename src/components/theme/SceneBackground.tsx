@@ -8,8 +8,8 @@ import { backgroundFor, backgroundStillFor } from '@/themes/backgrounds';
  * The active mode's background picture, filling the window behind the
  * interface.
  *
- * The image is configured per mode in `.env` (see `themes/backgrounds.ts`) —
- * nothing about it lives in code. A mode with no image, or one whose image
+ * The image is configured per mode in the D1 `defaults` table (see
+ * `themes/defaults.ts`) — nothing about it lives in code. A mode with no image, or one whose image
  * fails to load, falls back to its colour gradient, which is a complete
  * background in its own right; there is never a broken frame.
  *

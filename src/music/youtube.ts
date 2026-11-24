@@ -134,11 +134,20 @@ export function loadYouTubeIframeApi(): Promise<YTNamespace> {
       return;
     }
 
-    const timeout = window.setTimeout(() => {
-      // Reset so a later retry (e.g. after the network comes back) can work.
+    // Reset so a later retry (e.g. after the network comes back) can work. The
+    // failed <script> has to go too: a retry that finds it waits for a load
+    // that already failed and will never happen, so it could only time out.
+    const fail = (message: string) => {
+      window.clearTimeout(timeout);
       apiPromise = null;
-      reject(new Error('Timed out loading the YouTube player.'));
-    }, LOAD_TIMEOUT_MS);
+      document.querySelector(`script[src="${API_SRC}"]`)?.remove();
+      reject(new Error(message));
+    };
+
+    const timeout = window.setTimeout(
+      () => fail('Timed out loading the YouTube player.'),
+      LOAD_TIMEOUT_MS,
+    );
 
     const finish = () => {
       window.clearTimeout(timeout);
@@ -160,22 +169,14 @@ export function loadYouTubeIframeApi(): Promise<YTNamespace> {
 
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${API_SRC}"]`);
     if (existing) {
-      existing.addEventListener('error', () => {
-        window.clearTimeout(timeout);
-        apiPromise = null;
-        reject(new Error('Could not reach YouTube.'));
-      });
+      existing.addEventListener('error', () => fail('Could not reach YouTube.'));
       return;
     }
 
     const script = document.createElement('script');
     script.src = API_SRC;
     script.async = true;
-    script.onerror = () => {
-      window.clearTimeout(timeout);
-      apiPromise = null;
-      reject(new Error('Could not reach YouTube.'));
-    };
+    script.onerror = () => fail('Could not reach YouTube.');
     document.head.appendChild(script);
   });
 
