@@ -30,7 +30,7 @@ It's less a music website and more a digital memory machine.
 4. [Tech stack](#tech-stack)
 5. [How to add a new theme](#how-to-add-a-new-theme)
 6. [Architecture](#architecture)
-7. [Deploying to Netlify](#deploying-to-netlify)
+7. [Deploying to Cloudflare Pages](#deploying-to-cloudflare-pages)
 8. [Customising further](#customising-further)
 9. [Keyboard shortcuts](#keyboard-shortcuts)
 10. [Sharing links](#sharing-links)
@@ -401,34 +401,25 @@ matters.
 
 ---
 
-## Deploying to Netlify
+## Deploying to Cloudflare Pages
 
-`netlify.toml` is committed and ready:
+The site lives at `vibe-mode.pages.dev`. `wrangler.jsonc` points Pages at
+`dist`. `public/_headers` sets long-lived caching for hashed assets, `no-cache`
+for the service worker, and a few security headers. With no `404.html`, Pages
+serves `index.html` for unknown paths, so `?mode=` links survive a hard refresh.
 
-```toml
-[build]
-  command = "npm run build"
-  publish = "dist"
-```
-
-It also sets Node 20, an SPA fallback so `?mode=` links survive a hard refresh,
-long-lived caching for hashed assets, `no-cache` for the service worker, and a
-few security headers.
-
-**Connect the repo** — Netlify reads `netlify.toml`, so there's nothing else to
-configure.
-
-**Then add your playlists.** `.env` is gitignored, so it does not travel with
-the repo. Copy the same variables into
-**Site configuration → Environment variables**, then redeploy. Without them the
-site still builds and works; every mode just shows the setup prompt.
-
-Via the CLI:
+**From your machine** (uses your local `.env`):
 
 ```bash
-npm i -g netlify-cli
-netlify deploy --build --prod
+npx wrangler login   # once
+npm run deploy
 ```
+
+**From git:** connect the repo in the Cloudflare dashboard under
+**Workers & Pages → vibe-mode → Settings → Builds**. `.env` is gitignored, so
+copy the same `VITE_*` variables into that project's build environment
+variables (Production and Preview). Without them the site still builds and
+works; every mode just shows the setup prompt.
 
 ---
 

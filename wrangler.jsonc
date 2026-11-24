@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "vibe-mode",
+  "compatibility_date": "2026-11-24",
+  // Classic Cloudflare Pages (vibe-mode.pages.dev). Wrangler now hands new
+  // `pages` projects to Workers; this one was created with --force, and once a
+  // classic project exists `wrangler pages deploy` targets it directly.
+  // With no 404.html in the output, Pages serves index.html for unknown paths:
+  // that is the SPA fallback `?mode=` links rely on.
+  "pages_build_output_dir": "./dist"
+}

@@ -19,6 +19,7 @@ Requires Node 20+.
 | `npm run preview` | Serve the production build |
 | `npm run og` | Regenerate `public/og.png` |
 | `npm test` | Vitest, once (`vitest run`) |
+| `npm run deploy` | Build with the local `.env`, then `wrangler pages deploy` to Cloudflare Pages |
 
 Verification is `npm run typecheck && npm run lint && npm test`. Tests live next to the code as `*.test.ts`; today they cover the customisation sanitiser, link parsing and the time-of-day default ([customize.test.ts](src/themes/customize.test.ts)). Vitest runs through `vite.config.ts` — its `test` block points `lucide-react` at its ESM build, because React itself isn't installed (Preact) and lucide's CommonJS build `require`s it.
 
@@ -115,6 +116,10 @@ All reads go through [src/utils/storage.ts](src/utils/storage.ts), which guards 
 
 ## Deploy
 
-Netlify, config committed in [netlify.toml](netlify.toml) (Node 20, SPA fallback so `?mode=` survives a hard refresh, immutable caching for hashed assets, `no-cache` for `/sw.js`, security headers).
+Classic Cloudflare Pages (`vibe-mode.pages.dev`), config in [wrangler.jsonc](wrangler.jsonc) (`pages_build_output_dir`). Cloudflare has folded Pages into Workers: Wrangler now hands *new* `pages` projects to Workers, so this one was created with `--force`. Deploys to it need no flag. There is no `404.html`, so Pages serves `index.html` for unknown paths, which is the SPA fallback that lets `?mode=` survive a hard refresh. Headers (immutable caching for hashed assets, `no-cache` for `/sw.js`, security headers) live in [public/_headers](public/_headers).
 
-A hand-written service worker ([public/sw.js](public/sw.js)) makes the site installable and repeat visits instant; it is registered in production only. Pages are network-first (a deploy is never hidden behind a cache), `/assets/*` cache-first and capped, other same-site files stale-while-revalidate; cross-origin requests and range requests are never touched. Bump `VERSION` in it to drop old caches; to retire it, ship one that unregisters itself. `.env` does not travel with the repo — the same `VITE_*` variables must be set under Site configuration → Environment variables.
+Pages ignores `Range` and always answers 200 (checked live), and Safari won't play a `<video>` without 206. So `/backgrounds/*.mp4` alone runs the Pages Function [functions/backgrounds/[[path]].ts](functions/backgrounds/[[path]].ts), which slices the bytes. [public/_routes.json](public/_routes.json) keeps it that narrow. Every invocation is a billed request (100k/day free), and pictures must stay free static hits, so don't widen it.
+
+The site moved here from Netlify. Visitor data is per-origin localStorage, so it never follows a domain change. Visitors carry it over with backup → Restore from file. Pick a custom domain before the next move.
+
+A hand-written service worker ([public/sw.js](public/sw.js)) makes the site installable and repeat visits instant; it is registered in production only. Pages are network-first (a deploy is never hidden behind a cache), `/assets/*` cache-first and capped, other same-site files stale-while-revalidate; cross-origin requests and range requests are never touched. Bump `VERSION` in it to drop old caches; to retire it, ship one that unregisters itself. `.env` does not travel with the repo. `npm run deploy` uses the local one. A git-triggered Pages build needs the same `VITE_*` variables set as **build** environment variables (Production *and* Preview), because Vite inlines them at build time.

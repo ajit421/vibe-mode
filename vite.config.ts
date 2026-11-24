@@ -8,7 +8,7 @@ import { fileURLToPath, URL } from 'node:url';
  * Says out loud, in the build log, when a build is going out with no playlists
  * or no backgrounds configured.
  *
- * `.env` is gitignored, so a host that builds from the repo — Netlify — starts
+ * `.env` is gitignored, so a host that builds from the repo (Cloudflare Pages) starts
  * with none of these set. Vite inlines `import.meta.env` at build time, so the
  * shipped bundle then contains `undefined` for every one of them, and the site
  * quietly serves colour gradients and setup hints instead of artwork and music.
@@ -43,8 +43,8 @@ function warnOnMissingConfig(): Plugin {
       config.logger.warn(
         `\n\x1b[33m▲ Vibe Mode: building with no ${missing.join(' and no ')}.\x1b[0m\n` +
           `  .env is gitignored, so it does not reach the build host. Set these\n` +
-          `  under Netlify → Site configuration → Environment variables, then\n` +
-          `  redeploy. Nothing will error at runtime — it will just be empty.\n`,
+          `  under Cloudflare → Workers & Pages → vibe-mode → Settings → Variables,\n` +
+          `  then redeploy. Nothing will error at runtime — it will just be empty.\n`,
       );
     },
   };
