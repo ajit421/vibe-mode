@@ -186,7 +186,7 @@ export interface ModeEdit extends Partial<Record<TextKey, string>>, Partial<Reco
   removedPlaylists?: string[];
   /** Built-in playlist id → the listener's name for it, in this mode. */
   playlistNames?: Record<string, string>;
-  /** Built-in playlist id → a normalised source that replaces its `.env` one, in this mode. */
+  /** Built-in playlist id → a normalised source that replaces the site's default one, in this mode. */
   playlistSources?: Record<string, string>;
 }
 

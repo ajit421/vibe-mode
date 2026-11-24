@@ -22,13 +22,12 @@ Requires Node 20+.
 | `npm run deploy` | Build, then `wrangler pages deploy` to Cloudflare Pages |
 | `npm run preview:cf` | Build, apply `migrations/` to a local D1, serve with Functions on :8788 |
 | `npm run db:migrate` | Apply `migrations/` to the live D1 database |
-| `npm run env-to-defaults` | One-time: old `.env` → `defaults.seed.sql` (gitignored) for `wrangler d1 execute` |
 
 Verification is `npm run typecheck && npm run lint && npm test`. Tests live next to the code as `*.test.ts`; today they cover the customisation sanitiser, link parsing and the time-of-day default ([customize.test.ts](src/themes/customize.test.ts)), the stored-data sanitisers, and the site-defaults sanitiser and merge order ([defaults.test.ts](src/themes/defaults.test.ts)), sync links and change detection ([sync.test.ts](src/sync/sync.test.ts)), and the server's key handling ([lib.test.ts](server/lib.test.ts)). `functions/` and `server/` are type-checked by `tsconfig.functions.json`. Vitest runs through `vite.config.ts` — its `test` block points `lucide-react` at its ESM build, because React itself isn't installed (Preact) and lucide's CommonJS build `require`s it.
 
 On Windows, run `npm test` from PowerShell, cmd or the VS Code terminal, not Git Bash: Git Bash's lowercase `/d/` drive path makes Vitest load itself twice and every test fails with `Cannot read properties of undefined (reading 'config')`.
 
-`npm run dev` has no Pages Functions, so Vite proxies `/api` to the live site (read-only). To exercise `functions/` and a local D1, use `npm run preview:cf`; seed it with `npx wrangler d1 execute vibe-mode --local --file=defaults.seed.sql`.
+`npm run dev` has no Pages Functions, so Vite proxies `/api` to the live site (read-only). To exercise `functions/` and a local D1, use `npm run preview:cf`; seed it from the live database with `npx wrangler d1 export vibe-mode --remote --table defaults --no-schema --output defaults.seed.sql`, then `npx wrangler d1 execute vibe-mode --local --file=defaults.seed.sql` (the file is gitignored — it holds playlist IDs).
 
 ## Hard invariants
 
@@ -57,7 +56,7 @@ Rows are matched by id at runtime, so adding a playlist or theme needs no wiring
 
 Everything degrades gracefully when a row is missing or the database is down: an unconfigured playlist shows a setup hint (in dev it names the missing row), a mode with no image falls back to its colour gradient, and a failed fetch keeps the cached defaults. Never make a missing row throw.
 
-Precedence for a playlist: listener override (Customize / old Settings → localStorage) > D1 default > nothing. See `resolvePlaylistSource` in [src/music/resolve.ts](src/music/resolve.ts). `BACKGROUNDS.md` at the repo root holds image-generation prompts.
+Precedence for a playlist: listener override (Customize / old Settings → localStorage) > D1 default > nothing. See `resolvePlaylistSource` in [src/music/resolve.ts](src/music/resolve.ts).
 
 ## Architecture
 
@@ -73,7 +72,7 @@ Read [src/types/theme.ts](src/types/theme.ts) first — it is the contract, and 
 
 Visitors have full control from the Customize panel (palette icon in the top bar, lazy-loaded): create blank modes, copy, delete (built-ins go to a restorable bin via `edits[id].deleted`), hide, reorder; edit every text field, icon, heading font, picture, colours, layers and status-readout text; and add / rename / relink / remove any playlist in any mode (built-in playlist edits are per-mode `removedPlaylists` / `playlistNames` / `playlistSources`; the listener's own stay in `customPlaylists` storage). That lives in [src/themes/customize.ts](src/themes/customize.ts): a `Customization` record in localStorage (`vibe-mode.customization`) that `buildThemes(THEMES, customization, uploads)` lays over the theme files. The theme files are never mutated — they are the defaults, and "reset" deletes an entry.
 
-- `VibeProvider` exposes `themes` (visible, listener's order — what pickers, number keys and `?mode=` use) and `allThemes` (hidden included). Resolve ids with `findIn(list, id)`, not the static `findTheme`, or a listener's own mode won't survive a reload.
+- `VibeProvider` exposes `themes` (visible, listener's order — what pickers, number keys and `?mode=` use) and `allThemes` (hidden included). Resolve ids with `findIn(list, id)`, or a listener's own mode won't survive a reload.
 - `customImage` / `baseId` / `defaultImage` / `defaultPoster` on `VibeTheme` are **runtime-only** — never set them in a theme file. A listener-added mode (`my-xxxxxxxx`) borrows its `baseId`'s default background, poster and playlists.
 - Everything from storage or an imported file goes through `sanitizeCustomization` / `sanitizeUploads` (hex-only colours, `safeCustomImage` for pictures, known ids only). Keep any new editable field behind them, and add a case to the test.
 - Uploaded pictures live under their **own** key (`vibe-mode.uploads`, by mode id); the mode's `image` is just the marker `UPLOADED`. Don't put stills back in the customisation record — it is rewritten on every keystroke in the panel.

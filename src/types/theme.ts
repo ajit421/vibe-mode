@@ -67,8 +67,8 @@ export interface VibeHero {
   kicker: string;
   title: string;
   /**
-   * There is no `visual` here any more. The background is a picture configured
-   * per mode in `.env` — see `src/themes/backgrounds.ts`.
+   * There is no `visual` here any more. The background is a picture set per
+   * mode in the D1 `defaults` table — see `src/themes/backgrounds.ts`.
    */
 }
 

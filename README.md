@@ -59,7 +59,6 @@ npm run dev              # http://localhost:5173 — reads playlists from the li
 | `npm run og` | Regenerate `public/og.png`, the social preview card |
 | `npm run preview:cf` | Build, then run the site *with* its Functions against a local D1 database (:8788) |
 | `npm run db:migrate` | Apply `migrations/` to the live D1 database |
-| `npm run env-to-defaults` | One-time: turn an old `.env` into `defaults.seed.sql` |
 
 The site works before you add any playlists. Every mode still looks and
 behaves correctly — in development the player names the row it's waiting for.
@@ -112,12 +111,6 @@ The browser keeps the last answer from `/api/config` in localStorage and
 paints with it straight away, then refreshes it. `index.html` preloads
 `/api/config`, so a first-ever visit shows colour gradients only for a moment.
 If the database can't be reached, the page keeps what it had — nothing breaks.
-
-### Moving from `.env`
-
-`npm run env-to-defaults` reads an old `.env` and writes `defaults.seed.sql`
-(gitignored), which `npx wrangler d1 execute vibe-mode --remote
---file=defaults.seed.sql` loads. After that, `.env` can be deleted.
 
 ---
 
