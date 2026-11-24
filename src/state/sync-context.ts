@@ -28,6 +28,13 @@ export interface SyncContextValue {
   deleteCloudCopy: () => Promise<boolean>;
   /** Starts saving to the cloud again after `deleteCloudCopy`. */
   turnOn: () => void;
+  /** An MCP server URL for an AI assistant, carrying a fresh device key; null on failure. */
+  connectAssistant: () => Promise<string | null>;
+  /** This tab takes player commands from an assistant (polls; off by default, per tab). */
+  remoteControl: boolean;
+  setRemoteControl: (on: boolean) => void;
+  /** Loads the cloud copy now, unless this browser has changes it hasn't sent. */
+  refresh: () => void;
   addPasskey: () => Promise<boolean>;
   /** Signs in with a passkey. This browser's modes are replaced by that profile's. */
   signInWithPasskey: () => Promise<boolean>;

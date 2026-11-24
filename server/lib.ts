@@ -16,6 +16,11 @@ export interface Env {
   /** Turnstile (bot check on creating a profile). Both unset = no check. */
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
+  /**
+   * The owner's MCP key (secret, 32+ characters): `/mcp/<it>` adds the tools
+   * that change the site's defaults for every visitor. Unset = no owner access.
+   */
+  MCP_ADMIN_TOKEN?: string;
 }
 
 export type Handler = PagesFunction<Env>;
@@ -70,12 +75,14 @@ export function bearer(request: Request): string | null {
 }
 
 /** The caller's profile id and key hash, or null when the key is missing or unknown. */
-export async function caller(
+export const caller = (env: Env, request: Request) => profileForKey(env, bearer(request));
+
+/** The profile a device key belongs to — from a header, or from an MCP link's path. */
+export async function profileForKey(
   env: Env,
-  request: Request,
+  key: string | null | undefined,
 ): Promise<{ profileId: string; keyHash: string } | null> {
-  const key = bearer(request);
-  if (!key) return null;
+  if (!isKey(key)) return null;
   const keyHash = await hashKey(key);
   const row = await env.DB.prepare('SELECT profile_id FROM device_keys WHERE key_hash = ?')
     .bind(keyHash)

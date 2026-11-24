@@ -34,6 +34,7 @@ import { turnstileToken } from '@/sync/turnstile';
 
 /** Quiet time after the last change before saving — the Customize panel changes state per keystroke. */
 const SAVE_DELAY_MS = 2_000;
+const REMOTE_KEY = 'vibe-mode.remoteControl';
 /** Coming back to the tab re-checks the cloud copy at most this often. */
 const PULL_INTERVAL_MS = 30_000;
 
@@ -344,7 +345,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   /* ── Actions for the panel ─────────────────────────────────────────────── */
 
-  const createLink = useCallback(async (): Promise<string | null> => {
+  /** A fresh device key for this profile — for a sync link or an AI assistant. */
+  const mint = useCallback(async (): Promise<string | null> => {
     if (readRecord().off) return null;
     // Linking before changing anything is fine: make the cloud copy now.
     if (!readRecord().key || unsaved(readRecord())) {
@@ -355,8 +357,44 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       report(result);
       return null;
     }
-    return syncLink(result.body.key);
+    return result.body.key;
   }, [save, unsaved, report]);
+
+  const createLink = useCallback(async () => {
+    const key = await mint();
+    return key ? syncLink(key) : null;
+  }, [mint]);
+
+  const connectAssistant = useCallback(async () => {
+    const key = await mint();
+    return key ? `${window.location.origin}/mcp/${key}` : null;
+  }, [mint]);
+
+  const refresh = useCallback(() => {
+    const rec = readRecord();
+    if (!ready.current || saving.current || !rec.key || rec.off) return;
+    if (unsaved(rec)) void save();
+    else void pull();
+  }, [pull, save, unsaved]);
+
+  // Per tab on purpose (sessionStorage): letting an assistant drive the player
+  // is a decision about this tab, and every listening tab costs requests.
+  const [remoteControl, setRemoteState] = useState(() => {
+    try {
+      return window.sessionStorage.getItem(REMOTE_KEY) === 'on';
+    } catch {
+      return false;
+    }
+  });
+  const setRemoteControl = useCallback((on: boolean) => {
+    setRemoteState(on);
+    try {
+      if (on) window.sessionStorage.setItem(REMOTE_KEY, 'on');
+      else window.sessionStorage.removeItem(REMOTE_KEY);
+    } catch {
+      /* storage blocked — it just won't survive a reload */
+    }
+  }, []);
 
   const signOutOtherDevices = useCallback(async () => {
     const key = readRecord().key;
@@ -457,6 +495,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       signOutOtherDevices,
       deleteCloudCopy,
       turnOn,
+      connectAssistant,
+      remoteControl,
+      setRemoteControl,
+      refresh,
       addPasskey,
       signInWithPasskey,
     }),
@@ -470,6 +512,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       signOutOtherDevices,
       deleteCloudCopy,
       turnOn,
+      connectAssistant,
+      remoteControl,
+      setRemoteControl,
+      refresh,
       addPasskey,
       signInWithPasskey,
     ],

@@ -58,6 +58,15 @@ Everything degrades gracefully when a row is missing or the database is down: an
 
 Precedence for a playlist: listener override (Customize / old Settings → localStorage) > D1 default > nothing. See `resolvePlaylistSource` in [src/music/resolve.ts](src/music/resolve.ts).
 
+## MCP server — AI assistants control the site
+
+[functions/mcp/[[path]].ts](functions/mcp/[[path]].ts) serves `/mcp/<secret>`: stateless Streamable HTTP with JSON responses (`WebStandardStreamableHTTPServerTransport` from `@modelcontextprotocol/sdk`, a fresh server per POST; GET answers 405). The secret in the path is the credential, because Claude.ai, ChatGPT and Gemini all accept a bare URL:
+
+- **A device key** (Customize → "Connect an AI assistant" mints one, like a sync link) → the visitor tools in [server/mcp.ts](server/mcp.ts): read and edit their own modes, playlists and preferences, and drive the player. Edits go through [server/vibe.ts](server/vibe.ts), pure functions that mirror the Customize panel's rules; the browser still sanitises whatever it loads, and [server/vibe.test.ts](server/vibe.test.ts) checks every edit survives `sanitizeCustomization`. Each write bumps `profiles.version`, which is how an open tab notices.
+- **`MCP_ADMIN_TOKEN`** (a Pages secret, 32+ chars, compared in constant time) → the owner tools for the D1 `defaults` table. Unset = no owner link.
+- **Live player:** "Let AI control this tab" (per tab, sessionStorage, off by default) mounts [RemoteControl.tsx](src/components/RemoteControl.tsx), which POSTs [/api/remote](functions/api/remote.ts) every 4s: it reports what's playing (only when it changed), takes queued `remote_commands`, and refreshes the cloud copy when the version moved. Every poll is a billed request — keep it opt-in. Tables in [migrations/0003_remote.sql](migrations/0003_remote.sql).
+- Server code can import `src/` files only if they (and everything they import at runtime) are free of `react`/`lucide-react` — the Functions bundle has no Preact alias. That is why limits live in [src/themes/limits.ts](src/themes/limits.ts) and the mode catalogue is read from `PLAYLISTS`. zod 4: use `z.partialRecord` for enum-keyed objects; `z.record` with an enum demands every key.
+
 ## Architecture
 
 ### Themes are data

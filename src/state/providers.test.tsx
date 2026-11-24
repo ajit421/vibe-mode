@@ -7,6 +7,9 @@ import App from '@/App';
 import { VibeProvider } from './VibeProvider';
 import { ToastProvider } from './ToastProvider';
 import { SyncProvider } from './SyncProvider';
+import { PlayerProvider } from './PlayerProvider';
+import { usePlayer, type PlayerContextValue } from './player-context';
+import { RemoteControl } from '@/components/RemoteControl';
 import { useVibe, type VibeContextValue } from './vibe-context';
 import { useSync, type SyncContextValue } from './sync-context';
 import { SYNC_STORAGE_KEY, fingerprint, splitBackup } from '@/sync/sync';
@@ -25,10 +28,15 @@ interface Stored {
   uploads: Record<string, string>;
   version: number;
 }
-let server: { profiles: Map<string, Stored>; calls: string[] };
+let server: {
+  profiles: Map<string, Stored>;
+  calls: string[];
+  queued: { action: string; value: string | null }[];
+  reported: unknown[];
+};
 
 function fakeApi() {
-  server = { profiles: new Map(), calls: [] };
+  server = { profiles: new Map(), calls: [], queued: [], reported: [] };
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -47,6 +55,12 @@ function fakeApi() {
         server.profiles.set(key, { data, uploads: found?.uploads ?? {}, version });
         return Response.json({ version }, { status: found ? 200 : 201 });
       }
+      if (url.pathname === '/api/remote' && found) {
+        const { state } = JSON.parse(String(init.body));
+        if (state) server.reported.push(state);
+        const commands = server.queued.splice(0);
+        return Response.json({ commands, version: found.version });
+      }
       if (url.pathname === '/api/profile' && method === 'DELETE') {
         server.profiles.delete(key);
         return new Response(null, { status: 204 });
@@ -62,10 +76,14 @@ function fakeApi() {
   );
 }
 
-const ctx: { vibe?: VibeContextValue; sync?: SyncContextValue } = {};
+const ctx: { vibe?: VibeContextValue; sync?: SyncContextValue; player?: PlayerContextValue } = {};
 function Probe() {
   ctx.vibe = useVibe();
   ctx.sync = useSync();
+  return null;
+}
+function PlayerProbe() {
+  ctx.player = usePlayer();
   return null;
 }
 const mountProviders = () =>
@@ -231,5 +249,48 @@ describe('cloud save', () => {
     act(() => ctx.vibe!.editMode('metro', { name: 'B' }));
     await settle(2500);
     expect(server.calls.slice(before).filter((c) => c.startsWith('PUT'))).toEqual([]);
+  });
+});
+
+describe('an AI assistant driving the player', () => {
+  it('a tab that allows it reports what is playing and runs queued commands', async () => {
+    ({ unmount } = mount(
+      <LazyMotion features={domAnimation}>
+        <VibeProvider>
+          <ToastProvider>
+            <SyncProvider>
+              <PlayerProvider>
+                <Probe />
+                <PlayerProbe />
+                <RemoteControl />
+              </PlayerProvider>
+            </SyncProvider>
+          </ToastProvider>
+        </VibeProvider>
+      </LazyMotion>,
+    ));
+    await settle();
+    act(() => ctx.vibe!.editMode('metro', { name: 'M' })); // gives this browser a cloud copy
+    act(() => ctx.vibe!.selectTheme('metro'));
+    await settle(2500);
+    expect(server.calls).not.toContain('POST /api/remote'); // off until switched on
+
+    act(() => ctx.sync!.setRemoteControl(true));
+    await settle();
+    expect(server.reported[server.reported.length - 1]).toMatchObject({ mode: 'metro', modeName: 'M' });
+
+    server.queued.push({ action: 'switch_mode', value: 'office' }, { action: 'set_volume', value: '30' });
+    await settle(5000); // the next poll (4s) plus the mode-change wipe (380ms)
+    expect(ctx.vibe!.theme.id).toBe('office');
+    expect(ctx.player!.volume).toBe(30);
+
+    server.queued.push({ action: 'switch_mode', value: 'atlantis' }); // unknown: ignored, nothing breaks
+    await settle(5000);
+    expect(ctx.vibe!.theme.id).toBe('office');
+
+    act(() => ctx.sync!.setRemoteControl(false));
+    const before = server.calls.length;
+    await settle(10_000);
+    expect(server.calls.slice(before)).not.toContain('POST /api/remote');
   });
 });

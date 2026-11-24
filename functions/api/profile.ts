@@ -99,6 +99,8 @@ export const onRequestDelete: Handler = async ({ env, request }) => {
     env.DB.prepare('DELETE FROM uploads WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM passkeys WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM device_keys WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM remote_commands WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM remote_state WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM profiles WHERE id = ?').bind(id),
   ]);
   return new Response(null, { status: 204 });

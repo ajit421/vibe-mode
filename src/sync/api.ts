@@ -78,6 +78,20 @@ export const mintKey = (key: string) => call<{ key: string }>('POST', '/api/keys
 
 export const signOutOthers = (key: string) => call<{ removed: number }>('DELETE', '/api/keys', key);
 
+export interface RemoteCommand {
+  action: string;
+  value: string | null;
+}
+
+/** A listening tab's poll: report what's playing (only when it changed), collect queued commands. */
+export const pollRemote = (key: string, state?: Record<string, unknown>) =>
+  call<{ commands: RemoteCommand[]; version: number | null }>(
+    'POST',
+    '/api/remote',
+    key,
+    state === undefined ? {} : { state },
+  );
+
 export const passkeyOptions = (purpose: 'register' | 'login', key: string | null) =>
   call<{ challengeId: string; options: unknown }>('POST', '/api/passkeys/options', key, { purpose });
 

@@ -28,7 +28,7 @@ import {
 import type { VibeColors, VibeEffects, VibeHudItem, VibeStat, VibeTheme } from '@/types/theme';
 import { safeCustomImage } from '@/themes/backgrounds';
 import { normaliseSource, sourceFields } from '@/music/resolve';
-import { MAX_IMAGE_LENGTH, UPLOAD_BUDGET } from '@/themes/limits';
+import { LINE_LIMITS, MAX_IMAGE_LENGTH, TEXT_LIMITS, UPLOAD_BUDGET } from '@/themes/limits';
 
 /* ══════════════════════════════════════════════════════════════════════════
  *  LISTENER CUSTOMISATION
@@ -114,17 +114,8 @@ export const HEADING_FONTS = {
 } as const;
 export type FontKey = keyof typeof HEADING_FONTS;
 
-/** Text fields and how long each may be. */
-export const TEXT_LIMITS = { name: 40, shortName: 18, kicker: 48, description: 140 } as const;
+export { TEXT_LIMITS };
 type TextKey = keyof typeof TEXT_LIMITS;
-
-/** Line lists: how many lines, and how long each. */
-const LINE_LIMITS = {
-  quotes: [40, 200],
-  stats: [12, 64],
-  hud: [8, 64],
-  ticker: [20, 120],
-} as const;
 type LineKey = keyof typeof LINE_LIMITS;
 
 export { MAX_IMAGE_LENGTH, UPLOAD_BUDGET };
@@ -213,7 +204,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 export const isAddedMode = (id: string): boolean => ADDED_ID.test(id);
 
 export const newAddedId = (): string =>
-  `my-${(globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
+  `my-${(typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).slice(2))
     .replace(/[^a-z0-9]/gi, '')
     .slice(0, 8)
     .toLowerCase()}`;

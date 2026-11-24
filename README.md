@@ -27,15 +27,16 @@ It's less a music website and more a digital memory machine.
 1. [Quick start](#quick-start)
 2. [Playlists and pictures live in D1](#playlists-and-pictures-live-in-d1) ← **start here**
 3. [Customize — for visitors](#customize--for-visitors)
-4. [Tech stack](#tech-stack)
-5. [How to add a new theme](#how-to-add-a-new-theme)
-6. [Architecture](#architecture)
-7. [Deploying to Cloudflare Pages](#deploying-to-cloudflare-pages)
-8. [Customising further](#customising-further)
-9. [Keyboard shortcuts](#keyboard-shortcuts)
-10. [Sharing links](#sharing-links)
-11. [Notes on YouTube](#notes-on-youtube)
-12. [Accessibility & performance](#accessibility--performance)
+4. [Control it with an AI assistant (MCP)](#control-it-with-an-ai-assistant-mcp)
+5. [Tech stack](#tech-stack)
+6. [How to add a new theme](#how-to-add-a-new-theme)
+7. [Architecture](#architecture)
+8. [Deploying to Cloudflare Pages](#deploying-to-cloudflare-pages)
+9. [Customising further](#customising-further)
+10. [Keyboard shortcuts](#keyboard-shortcuts)
+11. [Sharing links](#sharing-links)
+12. [Notes on YouTube](#notes-on-youtube)
+13. [Accessibility & performance](#accessibility--performance)
 
 ---
 
@@ -156,6 +157,53 @@ Precedence for a playlist's link, highest first:
 2. The site's default           (D1 `defaults` table, kind 'playlist')
 3. Nothing                      → friendly setup prompt, mode still works
 ```
+
+---
+
+## Control it with an AI assistant (MCP)
+
+Vibe Mode is also an **MCP server**, so Claude, ChatGPT, Gemini — any app that
+takes a remote MCP server — can change it for you in plain words: *"make a
+rainy-night mode with a lo-fi playlist"*, *"pause the music"*, *"switch to the
+office"*.
+
+**Get your link:** Customize → *Cloud save & your devices* → **Connect an AI
+assistant** → Copy. It looks like `https://vibe-mode.pages.dev/mcp/<secret>`
+and needs no sign-in, so treat it like a password: anyone with it can change
+your modes. **Sign out other devices** revokes it.
+
+**Add it to your AI app** (menu names move around between versions):
+
+| App | Where |
+| --- | --- |
+| Claude (web / desktop) | Settings → Connectors → *Add custom connector* → paste the link |
+| ChatGPT | Settings → Apps & Connectors → turn on *Developer mode* → *Create* → paste the link, authentication *None* |
+| Gemini CLI | `~/.gemini/settings.json` → `"mcpServers": { "vibe-mode": { "httpUrl": "<link>" } }` |
+| Claude Code | `claude mcp add --transport http vibe-mode <link>` |
+
+**What it can do**
+
+| Tool | Does |
+| --- | --- |
+| `get_my_vibe` | lists your modes, playlists, pictures and preferences |
+| `update_mode` | renames, recolours, changes quotes, picture, status line; hides or shows |
+| `add_mode` / `remove_mode` / `restore_mode` | copies a mode, bins or deletes one, brings it back |
+| `add_playlist` / `update_playlist` | adds, renames, relinks or removes YouTube playlists |
+| `set_preferences` | motion, ambient layers, clock, status readouts, quotes |
+| `player_status` / `control_player` | what's playing; play, pause, next, previous, mute, volume, switch mode or playlist |
+
+Changes to modes reach an open tab when you come back to it (or at once, if
+the tab is listening). **The player tools need a listening tab:** switch on
+*Let AI control this tab* in the same section. A listening tab checks for
+commands every 4 seconds — one request each, against Cloudflare's free
+100,000 a day — so it's off by default and per tab.
+
+**Owner link — the site's defaults for everyone.** Set a secret
+`MCP_ADMIN_TOKEN` (32+ random characters) on the Pages project
+(**Settings → Variables and secrets**, type *Secret*), redeploy, and connect
+`https://vibe-mode.pages.dev/mcp/<that token>`. It offers
+`list_site_defaults`, `set_site_default` and `delete_site_default` — the same
+rows as the D1 `defaults` table. Without the variable, there is no owner link.
 
 ---
 

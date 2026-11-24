@@ -15,6 +15,7 @@ import { ShortcutsPanel } from '@/components/panels/ShortcutsPanel';
 import { ToastViewport } from '@/components/ui/ToastViewport';
 import { Landing } from '@/components/screens/Landing';
 import { World } from '@/components/screens/World';
+import { RemoteControl } from '@/components/RemoteControl';
 
 // Only people who customise need the editor, so it is its own chunk, fetched on
 // first open — everyone else never downloads it.
@@ -81,6 +82,8 @@ export function AppShell() {
     // `reducedMotion="always"` makes Motion skip transform animations while
     // still cross-fading, matching what the CSS layer does for keyframes.
     <MotionConfig reducedMotion={motionEnabled ? 'never' : 'always'}>
+      {/* Takes player commands from an AI assistant, only when switched on. */}
+      <RemoteControl />
       {/* The whole app is one non-scrolling screen: the shell owns the viewport
           height and every child fits inside it rather than extending the page. */}
       <div className="relative flex h-dvh flex-col overflow-hidden">

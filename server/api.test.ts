@@ -12,6 +12,8 @@ import * as keys from '../functions/api/keys';
 import * as options from '../functions/api/passkeys/options';
 import * as verify from '../functions/api/passkeys/verify';
 import * as backgrounds from '../functions/backgrounds/[[path]]';
+import * as mcp from '../functions/mcp/[[path]]';
+import * as remote from '../functions/api/remote';
 
 /*
  * Every endpoint in functions/, run against Wrangler's local D1 (the same
@@ -42,7 +44,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -257,5 +259,105 @@ describe('/backgrounds/*.mp4 — byte ranges for Safari', () => {
     const response = await get();
     expect(response.status).toBe(200);
     expect(response.headers.get('Accept-Ranges')).toBe('bytes');
+  });
+});
+
+interface RpcResult {
+  serverInfo?: { name: string };
+  tools?: { name: string }[];
+  isError?: boolean;
+  content?: { text: string }[];
+}
+
+describe('/mcp/<secret> — the MCP server for AI assistants', () => {
+  const OWNER = 'o'.repeat(40);
+  let id = 0;
+  const rpc = async (secret: string, method: string, params: object = {}, extra = {}) => {
+    const request = new Request(`https://vibe-mode.pages.dev/mcp/${secret}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
+    });
+    const response = await call(mcp.onRequest, request, { params: { path: [secret] }, ...extra });
+    return { status: response.status, body: response.status === 200 ? await response.json<{ result: RpcResult }>() : null };
+  };
+  const tool = async (secret: string, name: string, args: object = {}, extra = {}) =>
+    (await rpc(secret, 'tools/call', { name, arguments: args }, extra)).body!.result as Required<Pick<RpcResult, 'content'>> & RpcResult;
+  const poll = async (key: string, body: object) =>
+    (await call(remote.onRequestPost, api('/api/remote', { method: 'POST', key, body: JSON.stringify(body) }))).json<{
+      commands: { action: string; value: string | null }[];
+      version: number;
+    }>();
+
+  it('turns away unknown links and anything but POST', async () => {
+    expect((await rpc(newKey(), 'initialize')).status).toBe(401);
+    const key = newKey();
+    await save(key);
+    const get = await call(mcp.onRequest, new Request(`https://vibe-mode.pages.dev/mcp/${key}`), { params: { path: [key] } });
+    expect(get.status).toBe(405);
+  });
+
+  it('speaks MCP: initialize, then lists the visitor’s tools', async () => {
+    const key = newKey();
+    await save(key);
+    const init = await rpc(key, 'initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'test', version: '1' },
+    });
+    expect(init.body!.result.serverInfo?.name).toBe('vibe-mode');
+    const tools = (await rpc(key, 'tools/list')).body!.result.tools!.map((t) => t.name);
+    expect(tools).toEqual(expect.arrayContaining(['get_my_vibe', 'update_mode', 'add_playlist', 'control_player']));
+    expect(tools).not.toContain('set_site_default');
+  });
+
+  it('changes the visitor’s modes, and the change is what the site loads next', async () => {
+    const key = newKey();
+    await save(key, { app: 'vibe-mode', customization: { edits: {}, added: [], order: [] } });
+    const before = await env.DB.prepare('SELECT version FROM profiles').first<number>('version');
+    const result = await tool(key, 'update_mode', { mode: 'metro', name: 'AI Metro', colors: { accent: '#00ff88' } });
+    expect(result.isError).toBeFalsy();
+    const loaded = await (await call(profile.onRequestGet, api('/api/profile', { key }))).json<{
+      data: { customization: { edits: Record<string, unknown> } };
+      version: number;
+    }>();
+    expect(loaded.data.customization.edits.metro).toMatchObject({ name: 'AI Metro', colors: { accent: '#00ff88' } });
+    expect(loaded.version).toBeGreaterThan(before!);
+
+    const bad = await tool(key, 'update_mode', { mode: 'atlantis' });
+    expect(bad.isError).toBe(true);
+    expect(bad.content[0].text).toMatch(/no mode "atlantis"/);
+  });
+
+  it('drives a listening tab: no tab → a clear error; tab polling → commands arrive in order', async () => {
+    const key = newKey();
+    await save(key);
+    expect((await tool(key, 'control_player', { action: 'pause' })).content[0].text).toMatch(/No Vibe Mode tab is listening/);
+
+    await poll(key, { state: { mode: 'metro', playing: true, track: 'Song' } });
+    expect((await tool(key, 'player_status')).content[0].text).toContain('"track": "Song"');
+    await tool(key, 'control_player', { action: 'pause' });
+    await tool(key, 'control_player', { action: 'set_volume', value: '40' });
+    expect((await tool(key, 'control_player', { action: 'set_volume', value: 'loud' })).isError).toBe(true);
+
+    const first = await poll(key, {});
+    expect(first.commands).toEqual([{ action: 'pause', value: null }, { action: 'set_volume', value: '40' }]);
+    expect((await poll(key, {})).commands).toEqual([]); // taken once
+  });
+
+  it('owner link: site-default tools only, checked like the site checks them', async () => {
+    const owner = { env: { MCP_ADMIN_TOKEN: OWNER } };
+    expect((await rpc('o'.repeat(39) + 'x', 'tools/list', {}, owner)).status).toBe(401);
+    const tools = (await rpc(OWNER, 'tools/list', {}, owner)).body!.result.tools!.map((t) => t.name);
+    expect(tools).toEqual(['list_site_defaults', 'set_site_default', 'delete_site_default']);
+
+    const set = await tool(OWNER, 'set_site_default', { kind: 'playlist', id: 'metro-vibes', value: 'https://www.youtube.com/playlist?list=PL1234567890abcdef' }, owner);
+    expect(set.isError).toBeFalsy();
+    const row = await env.DB.prepare("SELECT value FROM defaults WHERE id = 'metro-vibes'").first<string>('value');
+    expect(row).toBe('PL1234567890abcdef');
+    expect((await tool(OWNER, 'set_site_default', { kind: 'image', id: 'metro', value: 'javascript:x' }, owner)).isError).toBe(true);
+
+    // Without the token set, the same link is nobody's.
+    expect((await rpc(OWNER, 'tools/list')).status).toBe(401);
   });
 });

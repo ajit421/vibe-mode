@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   ImageOff,
+  Bot,
   ImagePlus,
   KeyRound,
   Link2,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { IconButton } from '@/components/ui/IconButton';
+import { Switch } from '@/components/ui/Switch';
 import { useVibe } from '@/state/vibe-context';
 import { useToast } from '@/state/toast-context';
 import { useSync, type SyncStatus } from '@/state/sync-context';
@@ -766,6 +768,7 @@ function CloudSection() {
   const sync = useSync();
   const { push } = useToast();
   const [link, setLink] = useState<string | null>(null);
+  const [mcpLink, setMcpLink] = useState<string | null>(null);
   const [incoming, setIncoming] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -813,6 +816,15 @@ function CloudSection() {
             <Link2 className="size-3.5" />
             Link another device
           </button>
+          <button
+            type="button"
+            className={SMALL_BUTTON}
+            disabled={busy}
+            onClick={() => run(async () => setMcpLink(await sync.connectAssistant()))}
+          >
+            <Bot className="size-3.5" />
+            Connect an AI assistant
+          </button>
           {sync.passkeysSupported && (
             <button
               type="button"
@@ -857,6 +869,47 @@ function CloudSection() {
             ends up somewhere else, use “Sign out other devices”.
           </p>
         </div>
+      )}
+
+      {mcpLink && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex gap-2">
+            <input
+              readOnly
+              aria-label="MCP server link for your AI assistant"
+              className={cn(INPUT, 'font-mono text-xs sm:text-xs')}
+              value={mcpLink}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <button
+              type="button"
+              className={SMALL_BUTTON}
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(mcpLink)
+                  .then(() => push('MCP link copied. Add it as a connector in your AI app.', 'AI'))
+                  .catch(() => push('Couldn’t copy — select the link and copy it by hand.', 'AI'))
+              }
+            >
+              <Copy className="size-3.5" />
+              Copy
+            </button>
+          </div>
+          <p className="text-xs text-muted">
+            Add it as a custom connector (remote MCP server, no sign-in) in Claude, ChatGPT or Gemini.
+            The assistant can then change your modes and playlists. Like a sync link, it grants full
+            access — “Sign out other devices” revokes it.
+          </p>
+        </div>
+      )}
+
+      {sync.hasKey && (
+        <Switch
+          checked={sync.remoteControl}
+          onChange={sync.setRemoteControl}
+          label="Let AI control this tab"
+          description="Your assistant can play, pause, skip, switch mode and change the volume here. Checks every few seconds while on."
+        />
       )}
 
       <Field label="Got a link from your other device?">
