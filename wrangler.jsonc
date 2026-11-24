@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "vibe-mode",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "79099bc4-a607-45bf-906e-01629b831104",
       "migrations_dir": "migrations"
     }
   ]
