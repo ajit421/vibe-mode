@@ -59,6 +59,19 @@ Everything degrades gracefully when a row is missing or the database is down: an
 
 Precedence for a playlist: listener override (Customize / old Settings → localStorage) > D1 default > nothing. See `resolvePlaylistSource` in [src/music/resolve.ts](src/music/resolve.ts). `BACKGROUNDS.md` at the repo root holds image-generation prompts.
 
+## Cloud save: visitor data in D1, no sign-up
+
+A visitor's own changes (everything "Download my settings" would contain) are saved to D1 as well as localStorage, so they return on the next visit and on other devices. [migrations/0002_profiles.sql](migrations/0002_profiles.sql) documents the tables.
+
+- **Identity is a random key, not an account.** The browser makes 32 random bytes the first time there is something worth saving (`isEmptyBackup` — a visitor who only looked around gets no key and no row) and sends it as `Authorization: Bearer`. D1 stores only its SHA-256 (`device_keys`), so a database copy grants nothing. A profile has one key per device; [server/lib.ts](server/lib.ts) holds the auth, limits and Turnstile check shared by [functions/api/](functions/api/).
+- **Phase 3, sync links:** "Link another device" mints a new key (`POST /api/keys`) and shows `…/#sync=KEY`. The key rides in the `#` fragment so it never reaches a server log or Referer, and `SyncProvider` strips it from the address bar at once. "Sign out other devices" (`DELETE /api/keys`) revokes every key but the caller's.
+- **Phase 4, passkeys:** `functions/api/passkeys/{options,verify}.ts` via `@simplewebauthn/server`; the browser half is lazy-loaded. Signing in with a passkey mints a new device key for that profile. rpID is the request's host name, so moving domains orphans passkeys (and localStorage) — pick the custom domain first.
+- **Sync rules** ([SyncProvider.tsx](src/state/SyncProvider.tsx)): save 2s after the last change (text and each picture separately, a picture only when its fingerprint changed); load on page load and on returning to the tab — unless this browser has unsent changes, which win. Fingerprints of what was last saved live in `vibe-mode.sync`, shared by tabs. Whole-record last-write-wins between devices (a `shortcut:` in the file). Loading goes through `importSettings`, the same sanitised path as "Restore from file".
+- `vibe-mode.sync` is **not** in `STORAGE_KEYS`: "Start over" keeps the key, so the reset reaches the cloud too. The crash screen removes it explicitly, or the next load would fetch back the data that crashed.
+- **Limits, enforced on the server too:** 1 MB of text, 1.5 MB a picture, 3.5 MB of pictures per profile (`src/themes/limits.ts` is shared by both sides), one save a second, 25 device keys, 1,000 open passkey challenges.
+- **Turnstile** guards the only write anyone can make without a key: creating a profile. It is off until `TURNSTILE_SITE_KEY` and the secret `TURNSTILE_SECRET` are set on the Pages project; with them unset, creation is open.
+- Pictures are in D1 (`uploads`), not R2 — R2 isn't enabled on the account. Move them to R2 well before the database nears its size limit.
+
 ## Architecture
 
 ### Themes are data
@@ -77,7 +90,7 @@ Visitors have full control from the Customize panel (palette icon in the top bar
 - `customImage` / `baseId` / `defaultImage` / `defaultPoster` on `VibeTheme` are **runtime-only** — never set them in a theme file. A listener-added mode (`my-xxxxxxxx`) borrows its `baseId`'s default background, poster and playlists.
 - Everything from storage or an imported file goes through `sanitizeCustomization` / `sanitizeUploads` (hex-only colours, `safeCustomImage` for pictures, known ids only). Keep any new editable field behind them, and add a case to the test.
 - Uploaded pictures live under their **own** key (`vibe-mode.uploads`, by mode id); the mode's `image` is just the marker `UPLOADED`. Don't put stills back in the customisation record — it is rewritten on every keystroke in the panel.
-- Visitor data (`customization`, `uploads`, `customPlaylists`, `preferences`, `playlistOverrides`) syncs across open tabs via `useLocalStorage(..., syncAcrossTabs)`. Which mode a tab shows does not.
+- Visitor data (`customization`, `uploads`, `customPlaylists`, `preferences`, `playlistOverrides`) syncs across open tabs via `useLocalStorage(..., syncAcrossTabs)`, and to the cloud via `SyncProvider` (see "Cloud save" below). Which mode a tab shows does neither.
 - "Restore from file" takes a full backup (replaces everything) or a shared single mode (`kind: 'mode'`, always *added* under a new id). The crash screen downloads the same backup before it clears anything.
 
 ### Theming works through CSS custom properties, not components
@@ -88,17 +101,18 @@ The base colour token is named `canvas`, **not** `base` — `text-base` is alrea
 
 Tailwind v4, CSS-first: there is no `tailwind.config.js`. Design tokens live in the `@theme inline` block.
 
-### State: three contexts, nesting order matters
+### State: four contexts, nesting order matters
 
-[App.tsx](src/App.tsx) — `ErrorBoundary > VibeProvider > ToastProvider > PlayerProvider > AppShell`.
+[App.tsx](src/App.tsx) — `ErrorBoundary > VibeProvider > ToastProvider > SyncProvider > PlayerProvider > AppShell`.
 
 | Provider | Owns |
 | --- | --- |
-| `VibeProvider` | active theme, per-theme selected playlist, preferences, transition wipe, `?mode=`/`?playlist=` URL sync, localStorage |
+| `VibeProvider` | active theme, per-theme selected playlist, preferences, transition wipe, `?mode=`/`?playlist=` URL sync, localStorage, site defaults |
+| `SyncProvider` | cloud save of the visitor's data, sync links, passkeys, the "load from another device?" dialog |
 | `PlayerProvider` | the YouTube IFrame player, play state, progress, volume, error states |
 | `ToastProvider` | interaction messages |
 
-`PlayerProvider` reads from `VibeProvider`, so it must stay nested inside it. Each context is split into a `*-context.ts` (context + types + hook) and a `*Provider.tsx` (implementation) — that split exists to keep react-refresh happy.
+`PlayerProvider` reads from `VibeProvider`, so it must stay nested inside it; `SyncProvider` reads from both `VibeProvider` and `ToastProvider`. Each context is split into a `*-context.ts` (context + types + hook) and a `*Provider.tsx` (implementation) — that split exists to keep react-refresh happy.
 
 ### Two open registries
 
@@ -124,7 +138,7 @@ All reads go through [src/utils/storage.ts](src/utils/storage.ts), which guards 
 
 Classic Cloudflare Pages (`vibe-mode.pages.dev`), config in [wrangler.jsonc](wrangler.jsonc) (`pages_build_output_dir`). Cloudflare has folded Pages into Workers: Wrangler now hands *new* `pages` projects to Workers, so this one was created with `--force`. Deploys to it need no flag. There is no `404.html`, so Pages serves `index.html` for unknown paths, which is the SPA fallback that lets `?mode=` survive a hard refresh. Headers (immutable caching for hashed assets, `no-cache` for `/sw.js`, security headers) live in [public/_headers](public/_headers).
 
-Pages ignores `Range` and always answers 200 (checked live), and Safari won't play a `<video>` without 206. So `/backgrounds/*.mp4` runs the Pages Function [functions/backgrounds/[[path]].ts](functions/backgrounds/[[path]].ts), which slices the bytes. The only other Function is `/api/*` (the site defaults: one call per page load, D1 bound as `DB` in [wrangler.jsonc](wrangler.jsonc)). [public/_routes.json](public/_routes.json) keeps it that narrow. Every invocation is a billed request (100k/day free), and pictures must stay free static hits, so don't widen it further.
+Pages ignores `Range` and always answers 200 (checked live), and Safari won't play a `<video>` without 206. So `/backgrounds/*.mp4` runs the Pages Function [functions/backgrounds/[[path]].ts](functions/backgrounds/[[path]].ts), which slices the bytes. The only other Functions are `/api/*`: the site defaults (one call per page load) and cloud save (a load per visit, a save per burst of changes), with D1 bound as `DB` in [wrangler.jsonc](wrangler.jsonc). `functions/` and `server/` are type-checked by `tsconfig.functions.json` against `@cloudflare/workers-types`. [public/_routes.json](public/_routes.json) keeps it that narrow. Every invocation is a billed request (100k/day free), and pictures must stay free static hits, so don't widen it further.
 
 The site moved here from Netlify. Visitor data is per-origin localStorage, so it never follows a domain change. Visitors carry it over with backup → Restore from file. Pick a custom domain before the next move.
 

@@ -18,12 +18,15 @@
     "deploy": "npm run build && wrangler pages deploy --branch main"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.1.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
     "motion": "^11.15.0",
     "preact": "^11.2.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261124.1",
     "@eslint/js": "^9.17.0",
     "@preact/preset-vite": "^2.10.6",
     "@tailwindcss/vite": "^4.0.0",

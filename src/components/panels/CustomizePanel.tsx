@@ -3,13 +3,16 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  CloudOff,
   Copy,
   Download,
   Eye,
   EyeOff,
   ImageOff,
   ImagePlus,
+  KeyRound,
   Link2,
+  LogOut,
   Play,
   Plus,
   RotateCcw,
@@ -23,6 +26,7 @@ import { Modal } from '@/components/ui/Modal';
 import { IconButton } from '@/components/ui/IconButton';
 import { useVibe } from '@/state/vibe-context';
 import { useToast } from '@/state/toast-context';
+import { useSync, type SyncStatus } from '@/state/sync-context';
 import { backgroundStillFor, safeCustomImage } from '@/themes/backgrounds';
 import {
   COLOR_KEYS,
@@ -283,7 +287,7 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
       onClose={onClose}
       size="lg"
       title="Customize"
-      description="Make every mode yours. Changes save in this browser as you go."
+      description="Make every mode yours. Changes save as you go — here and in the cloud."
     >
       <div className="grid gap-5 sm:grid-cols-[12.5rem_1fr]">
         {/* ── Every mode, hidden ones included ─────────────────────────── */}
@@ -706,6 +710,8 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
         </div>
       </div>
 
+      <CloudSection />
+
       {/* ── Backup ─────────────────────────────────────────────────────── */}
       <section className="mt-6 flex flex-col gap-2 border-t border-line/60 pt-4">
         <h3 className="vm-label text-muted">Backup</h3>
@@ -740,6 +746,172 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
         </div>
       </section>
     </Modal>
+  );
+}
+
+const SYNC_STATUS: Record<Exclude<SyncStatus, 'saved'>, string> = {
+  idle: 'Nothing saved to the cloud yet — that starts with your first change.',
+  saving: 'Saving…',
+  offline: 'Offline. Your changes are kept here and saved when you’re back.',
+  error: 'The last save didn’t go through.',
+  off: 'Cloud save is off. Your changes stay in this browser only.',
+};
+
+/**
+ * Cloud save (phase 2), sync links (phase 3) and passkeys (phase 4) — see
+ * `state/SyncProvider.tsx`. No sign-up: changes save on their own, and these
+ * controls only matter for a second device or a lost browser.
+ */
+function CloudSection() {
+  const sync = useSync();
+  const { push } = useToast();
+  const [link, setLink] = useState<string | null>(null);
+  const [incoming, setIncoming] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const run = (task: () => Promise<unknown>) => {
+    setBusy(true);
+    void task().finally(() => setBusy(false));
+  };
+
+  const status =
+    sync.status === 'saved'
+      ? `Saved to the cloud${
+          sync.savedAt
+            ? ` · ${new Date(sync.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : ''
+        }.`
+      : SYNC_STATUS[sync.status];
+
+  return (
+    <section className="mt-6 flex flex-col gap-3 border-t border-line/60 pt-4">
+      <h3 className="vm-label text-muted">Cloud save &amp; your devices</h3>
+      <p className="text-xs text-muted">
+        What you change here saves itself — no sign-up, no password. Come back on this browser
+        and it’s all still here. <span className="text-ink">{status}</span>
+      </p>
+      {sync.message && (
+        <p className="text-xs text-primary" role="status">
+          {sync.message}
+        </p>
+      )}
+
+      {sync.status === 'off' ? (
+        <div>
+          <button type="button" className={SMALL_BUTTON} onClick={sync.turnOn}>
+            Turn cloud save back on
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className={SMALL_BUTTON}
+            disabled={busy}
+            onClick={() => run(async () => setLink(await sync.createLink()))}
+          >
+            <Link2 className="size-3.5" />
+            Link another device
+          </button>
+          {sync.passkeysSupported && (
+            <button
+              type="button"
+              className={SMALL_BUTTON}
+              disabled={busy}
+              onClick={() => run(sync.addPasskey)}
+            >
+              <KeyRound className="size-3.5" />
+              Add a passkey
+            </button>
+          )}
+        </div>
+      )}
+
+      {link && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex gap-2">
+            <input
+              readOnly
+              aria-label="Link for your other device"
+              className={cn(INPUT, 'font-mono text-xs sm:text-xs')}
+              value={link}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <button
+              type="button"
+              className={SMALL_BUTTON}
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(link)
+                  .then(() => push('Link copied. Open it on your other device.', 'SYNC'))
+                  .catch(() => push('Couldn’t copy — select the link and copy it by hand.', 'SYNC'))
+              }
+            >
+              <Copy className="size-3.5" />
+              Copy
+            </button>
+          </div>
+          <p className="flex items-start gap-1.5 text-xs text-muted">
+            <TriangleAlert className="mt-px size-3.5 shrink-0 text-primary" />
+            Anyone with this link can see and change your modes. Send it only to yourself. If it
+            ends up somewhere else, use “Sign out other devices”.
+          </p>
+        </div>
+      )}
+
+      <Field label="Got a link from your other device?">
+        <div className="flex gap-2">
+          <input
+            className={INPUT}
+            value={incoming}
+            placeholder="Paste the sync link"
+            onChange={(event) => setIncoming(event.target.value)}
+          />
+          <ConfirmButton
+            label="Use it"
+            confirmLabel="Replace mine?"
+            icon={<Check className="size-3.5" />}
+            className="shrink-0 whitespace-nowrap"
+            disabled={busy || !incoming.trim()}
+            onConfirm={() =>
+              run(async () => {
+                if (await sync.adoptLink(incoming)) setIncoming('');
+              })
+            }
+          />
+        </div>
+      </Field>
+
+      <div className="flex flex-wrap gap-2">
+        {sync.passkeysSupported && (
+          <ConfirmButton
+            label="Sign in with a passkey"
+            confirmLabel="Sure? Replaces this browser’s modes"
+            icon={<KeyRound className="size-3.5" />}
+            disabled={busy}
+            onConfirm={() => run(sync.signInWithPasskey)}
+          />
+        )}
+        {sync.hasKey && (
+          <>
+            <ConfirmButton
+              label="Sign out other devices"
+              confirmLabel="Sure? Sign them out"
+              icon={<LogOut className="size-3.5" />}
+              disabled={busy}
+              onConfirm={() => run(sync.signOutOtherDevices)}
+            />
+            <ConfirmButton
+              label="Delete my cloud copy"
+              confirmLabel="Sure? Delete for good"
+              icon={<CloudOff className="size-3.5" />}
+              disabled={busy}
+              onConfirm={() => run(sync.deleteCloudCopy)}
+            />
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 

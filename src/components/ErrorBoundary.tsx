@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { downloadJson, storedBackup } from '@/utils/backup';
 import { clearStoredPreferences } from '@/utils/storage';
+import { SYNC_STORAGE_KEY } from '@/sync/sync';
 
 interface Props {
   children: ReactNode;
@@ -40,6 +41,13 @@ export class ErrorBoundary extends Component<Props, State> {
       /* storage or downloads blocked — nothing to save, carry on */
     }
     clearStoredPreferences();
+    // Forget the cloud copy's key too, or the next load would fetch back the
+    // very data that may have caused the crash. It is in the downloaded file.
+    try {
+      window.localStorage.removeItem(SYNC_STORAGE_KEY);
+    } catch {
+      /* storage blocked */
+    }
     // A beat before navigating, so the download isn't cut off by the unload.
     window.setTimeout(() => {
       window.location.href = window.location.pathname;

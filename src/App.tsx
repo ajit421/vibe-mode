@@ -2,6 +2,7 @@ import { LazyMotion, domAnimation } from 'motion/react';
 import { VibeProvider } from '@/state/VibeProvider';
 import { ToastProvider } from '@/state/ToastProvider';
 import { PlayerProvider } from '@/state/PlayerProvider';
+import { SyncProvider } from '@/state/SyncProvider';
 import { AppShell } from '@/components/AppShell';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
@@ -16,9 +17,12 @@ export default function App() {
       <ErrorBoundary>
         <VibeProvider>
           <ToastProvider>
-            <PlayerProvider>
-              <AppShell />
-            </PlayerProvider>
+            {/* Saves the listener's changes to the cloud; needs both providers above. */}
+            <SyncProvider>
+              <PlayerProvider>
+                <AppShell />
+              </PlayerProvider>
+            </SyncProvider>
           </ToastProvider>
         </VibeProvider>
       </ErrorBoundary>

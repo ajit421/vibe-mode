@@ -28,6 +28,7 @@ import {
 import type { VibeColors, VibeEffects, VibeHudItem, VibeStat, VibeTheme } from '@/types/theme';
 import { safeCustomImage } from '@/themes/backgrounds';
 import { normaliseSource, sourceFields } from '@/music/resolve';
+import { MAX_IMAGE_LENGTH, UPLOAD_BUDGET } from '@/themes/limits';
 
 /* ══════════════════════════════════════════════════════════════════════════
  *  LISTENER CUSTOMISATION
@@ -126,8 +127,7 @@ const LINE_LIMITS = {
 } as const;
 type LineKey = keyof typeof LINE_LIMITS;
 
-/** An uploaded still is a base64 WebP/JPEG of at most 1600px — ~0.5 MB. */
-export const MAX_IMAGE_LENGTH = 1_500_000;
+export { MAX_IMAGE_LENGTH, UPLOAD_BUDGET };
 
 /**
  * `image` value meaning "the picture the listener uploaded for this mode".
@@ -140,9 +140,6 @@ export const UPLOADED = 'upload';
 
 /** Mode id → uploaded still (a `data:image/…` URL). */
 export type Uploads = Record<string, string>;
-
-/** Room for uploaded pictures: under the ~5 MB browsers give a site, with space left for the rest. */
-export const UPLOAD_BUDGET = 3_500_000;
 
 /**
  * Whether `still` can be saved for mode `id` beside the other uploads. A write

@@ -133,13 +133,28 @@ Visitors don't need the codebase. The **palette icon** in the top bar (or
   (built-in ones too), play one straight away
 - **Look** — upload a picture or paste a link, colours, atmosphere layers,
   and the status-readout text
+- **Cloud save & devices** — changes save themselves, with no sign-up;
+  **Link another device** makes a sync link, **Add a passkey** lets them sign
+  in on a new device with a fingerprint or face; **Sign out other devices**
+  and **Delete my cloud copy** take it all back
 - **Backup** — download everything as one file, restore it elsewhere, or
   **Share** a single mode as a file a friend adds with *Restore from file*
 
-All of it lives in that visitor's browser only — it never touches the deploy
-or anyone else. Everything read back (storage or a file) goes through
+Changes are kept in the visitor's browser *and* in D1, under a random key the
+browser holds — never visible to other visitors, and only a hash of the key is
+stored. See "Cloud save" in `CLAUDE.md` for how it works and its limits.
+Everything read back (storage, the cloud or a file) goes through
 `sanitizeCustomization` in `src/themes/customize.ts`, which is covered by
 `npm test`.
+
+### Turning on the bot check (recommended)
+
+Creating a cloud copy is the one thing anybody can do without a key, so it can
+be guarded by Cloudflare Turnstile. In the dashboard: **Turnstile → Add
+widget** (hostname `vibe-mode.pages.dev`, mode *Managed*). Then, in
+**Workers & Pages → vibe-mode → Settings → Variables and secrets**, add
+`TURNSTILE_SITE_KEY` (text) and `TURNSTILE_SECRET` (secret), and redeploy.
+Until both are set, the check is simply skipped.
 
 Precedence for a playlist's link, highest first:
 
@@ -159,8 +174,10 @@ Precedence for a playlist's link, highest first:
 - **Motion** (`motion/react`, formerly Framer Motion) — transitions
 - **Lucide React** — icons
 - **YouTube IFrame Player API** — playback
-- **Cloudflare D1** — the site's default playlists and pictures, via one Pages Function
-- **localStorage** — preferences and every visitor customisation
+- **Cloudflare D1 + Pages Functions** — the site's default playlists and
+  pictures, and every visitor's cloud save (`functions/api/`, `server/`)
+- **SimpleWebAuthn** — passkey sign-in (server check; browser half lazy-loaded)
+- **localStorage** — preferences and every visitor customisation, kept locally too
 - **A small service worker** (`public/sw.js`) — installable app, instant repeat
   visits; production only
 
@@ -309,8 +326,10 @@ src/
 │   ├── playlists.ts          what each playlist is (never its ID)
 │   ├── resolve.ts            playlist ID / URL parsing, source precedence
 │   └── youtube.ts            typed IFrame API loader
+├── sync/                     cloud save: keys, fingerprints, API calls, Turnstile
 ├── state/
 │   ├── vibe-context.ts       + VibeProvider.tsx   theme, prefs, URL, storage
+│   ├── sync-context.ts       + SyncProvider.tsx   cloud save, sync links, passkeys
 │   ├── player-context.ts     + PlayerProvider.tsx playback state
 │   └── toast-context.ts      + ToastProvider.tsx  interaction feedback
 ├── hooks/                    storage (tab-synced), media queries, clock, rotator, keys, install
@@ -326,6 +345,16 @@ src/
 │   └── ui/                   button, modal, slider, switch, toasts
 ├── utils/                    storage, backup, url, format, cn
 └── styles/index.css          theme token bridge + ambient keyframes
+
+functions/                    Pages Functions (Cloudflare)
+├── api/config.ts             site defaults from D1
+├── api/profile.ts            a visitor's cloud save: load / save / delete
+├── api/uploads/[mode].ts     one uploaded picture
+├── api/keys.ts               sync links, sign out other devices
+├── api/passkeys/             passkey sign-in (options + verify)
+└── backgrounds/[[path]].ts   byte ranges for background video (Safari)
+server/lib.ts                 auth, limits and Turnstile shared by functions/api
+migrations/                   D1 schema — apply with npm run db:migrate
 ```
 
 ### How theming actually works
@@ -362,16 +391,17 @@ existing mode.
 
 ### State
 
-Three small contexts, no state library:
+Four small contexts, no state library:
 
 | Context | Owns |
 | --- | --- |
 | `VibeProvider` | current theme, selected playlist per theme, preferences, visitor customisation, transition, URL sync, localStorage |
+| `SyncProvider` | cloud save, sync links, passkeys |
 | `PlayerProvider` | the YouTube player, play state, progress, volume, errors, sleep timer |
 | `ToastProvider` | the little interaction messages |
 
-`PlayerProvider` reads from `VibeProvider`, so the nesting order in `App.tsx`
-matters.
+`PlayerProvider` and `SyncProvider` read from `VibeProvider`, so the nesting
+order in `App.tsx` matters.
 
 ---
 
