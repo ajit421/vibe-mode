@@ -67,7 +67,7 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: Top
             <span className="vm-label block truncate text-[0.6rem] text-primary/85">
               {theme.hero.kicker}
             </span>
-            <h1 className="vm-glow-text truncate font-display text-[clamp(1.75rem,4.6vw,3.5rem)] leading-none font-bold tracking-tight text-ink uppercase">
+            <h1 className="vm-glow-text truncate font-display text-[clamp(1.375rem,4.6vw,3.5rem)] leading-none font-bold tracking-tight text-ink uppercase">
               {theme.name}
             </h1>
           </button>
@@ -77,9 +77,11 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: Top
           {/* Date and time, always on — not behind the status-readout toggle.
               The strip that toggle controls is a decorative block down in the
               layout; this is the one fact you actually glance up for. The date
-              drops out before the time on a narrow screen. */}
+              drops out before the time on a narrow screen, and on a phone the
+              whole clock does: the phone's own status bar already shows the
+              time, and here it squeezed the mode's name down to "OFFI…". */}
           {preferences.clock && (
-            <div className="vm-panel flex items-baseline gap-2 rounded-full px-3 py-1.5">
+            <div className="vm-panel hidden items-baseline gap-2 rounded-full px-3 py-1.5 sm:flex">
               <time
                 dateTime={now.toISOString()}
                 className="font-mono text-xs font-medium text-ink tabular-nums"

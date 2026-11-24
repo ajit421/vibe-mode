@@ -1,0 +1,261 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getPlatformProxy } from 'wrangler';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Env } from './lib';
+import { newKey } from './lib';
+import * as config from '../functions/api/config';
+import * as profile from '../functions/api/profile';
+import * as uploads from '../functions/api/uploads/[mode]';
+import * as keys from '../functions/api/keys';
+import * as options from '../functions/api/passkeys/options';
+import * as verify from '../functions/api/passkeys/verify';
+import * as backgrounds from '../functions/backgrounds/[[path]]';
+
+/*
+ * Every endpoint in functions/, run against Wrangler's local D1 (the same
+ * SQLite engine `npm run preview:cf` uses), in a throwaway directory with
+ * the real migrations applied. Lives in server/ because anything inside
+ * functions/ would be bundled as a route.
+ */
+
+let proxy: Awaited<ReturnType<typeof getPlatformProxy<Env>>>;
+let env: Env;
+let dir: string;
+
+beforeAll(async () => {
+  dir = mkdtempSync(join(tmpdir(), 'vibe-d1-'));
+  proxy = await getPlatformProxy<Env>({ persist: { path: dir } });
+  env = proxy.env;
+  for (const file of readdirSync('migrations').sort()) {
+    const sql = readFileSync(join('migrations', file), 'utf8').replace(/--.*$/gm, '');
+    for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) {
+      await env.DB.prepare(statement).run();
+    }
+  }
+}, 60_000);
+
+afterAll(async () => {
+  await proxy?.dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+beforeEach(async () => {
+  for (const table of ['uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+    await env.DB.prepare(`DELETE FROM ${table}`).run();
+  }
+});
+
+type Handler = (context: never) => Promise<Response> | Response;
+const call = (handler: Handler, request: Request, extra: Record<string, unknown> = {}) =>
+  handler({ env: { ...env, ...extra.env as object }, request, params: extra.params ?? {}, next: extra.next } as never);
+
+const api = (path: string, init: RequestInit & { key?: string } = {}) => {
+  const headers = new Headers(init.headers);
+  if (init.key) headers.set('Authorization', `Bearer ${init.key}`);
+  return new Request(`https://vibe-mode.pages.dev${path}`, { ...init, headers });
+};
+
+const save = (key: string, data: unknown = { app: 'vibe-mode', note: 'hi' }, extra = {}) =>
+  call(profile.onRequestPut, api('/api/profile', { method: 'PUT', key, body: JSON.stringify({ data }) }), extra);
+
+const still = (size = 100) => `data:image/webp;base64,${'A'.repeat(size)}`;
+
+describe('/api/config — site defaults', () => {
+  it('groups rows by kind and skips blank values', async () => {
+    await env.DB.prepare(
+      `INSERT INTO defaults (kind, id, value) VALUES
+       ('playlist', 'metro-vibes', 'PL1234567890abcdef'), ('image', 'metro', '/backgrounds/metro.avif'),
+       ('poster', 'metro', '  ')`,
+    ).run();
+    const response = await call(config.onRequestGet, api('/api/config'));
+    expect(response.headers.get('Cache-Control')).toBe('no-cache');
+    expect(await response.json()).toEqual({
+      playlists: { 'metro-vibes': 'PL1234567890abcdef' },
+      images: { metro: '/backgrounds/metro.avif' },
+      posters: {},
+    });
+  });
+
+  it('answers 503, never throws, without a database', async () => {
+    const response = await call(config.onRequestGet, api('/api/config'), { env: { DB: undefined } });
+    expect(response.status).toBe(503);
+  });
+});
+
+describe('/api/profile — cloud save', () => {
+  it('creates on the first save, then loads, updates and deletes', async () => {
+    const key = newKey();
+    expect((await save(key)).status).toBe(201);
+
+    const loaded = await call(profile.onRequestGet, api('/api/profile', { key }));
+    expect(loaded.headers.get('Cache-Control')).toBe('no-store');
+    expect(await loaded.json()).toMatchObject({ data: { note: 'hi' }, uploads: {} });
+
+    expect((await save(key, { note: 'again' })).status).toBe(429); // one save a second
+    await env.DB.prepare('UPDATE profiles SET version = version - 5000').run();
+    expect((await save(key, { note: 'later' })).status).toBe(200);
+
+    expect((await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }))).status).toBe(204);
+    expect((await call(profile.onRequestGet, api('/api/profile', { key }))).status).toBe(401);
+    const left = await env.DB.prepare('SELECT COUNT(*) AS n FROM device_keys').first<number>('n');
+    expect(left).toBe(0);
+  });
+
+  it('refuses a missing or malformed key, bad JSON, and oversized data', async () => {
+    const key = newKey();
+    expect((await call(profile.onRequestGet, api('/api/profile'))).status).toBe(401);
+    expect((await save('short-key')).status).toBe(401);
+    const bad = api('/api/profile', { method: 'PUT', key, body: '{nope' });
+    expect((await call(profile.onRequestPut, bad)).status).toBe(400);
+    expect((await save(key, ['not', 'an', 'object'])).status).toBe(400);
+    expect((await save(key, { big: 'x'.repeat(1_000_001) })).status).toBe(413);
+  });
+
+  it('never stores the key itself', async () => {
+    const key = newKey();
+    await save(key);
+    const row = await env.DB.prepare('SELECT key_hash FROM device_keys').first<string>('key_hash');
+    expect(row).toMatch(/^[0-9a-f]{64}$/);
+    expect(row).not.toContain(key);
+  });
+});
+
+describe('Turnstile on profile creation', () => {
+  const turnstile = { env: { TURNSTILE_SECRET: 'secret', TURNSTILE_SITE_KEY: 'site-key' } };
+
+  it('asks for the check when a new profile comes without a token', async () => {
+    const response = await save(newKey(), {}, turnstile);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ challenge: true, siteKey: 'site-key' });
+  });
+
+  it('creates once Cloudflare confirms the token, and not when it refuses', async () => {
+    const siteverify = vi.spyOn(globalThis, 'fetch');
+    const withToken = (key: string) =>
+      call(
+        profile.onRequestPut,
+        api('/api/profile', { method: 'PUT', key, body: '{"data":{}}', headers: { 'X-Turnstile-Token': 't' } }),
+        turnstile,
+      );
+    siteverify.mockResolvedValueOnce(Response.json({ success: true }));
+    expect((await withToken(newKey())).status).toBe(201);
+    siteverify.mockResolvedValueOnce(Response.json({ success: false }));
+    expect((await withToken(newKey())).status).toBe(403);
+    siteverify.mockRestore();
+  });
+});
+
+describe('/api/uploads/:mode — pictures', () => {
+  const put = (key: string, mode: string, body: string) =>
+    call(uploads.onRequestPut, api(`/api/uploads/${mode}`, { method: 'PUT', key, body }), { params: { mode } });
+
+  it('stores raster stills only, within the per-picture and per-visitor limits', async () => {
+    const key = newKey();
+    expect((await put(key, 'metro', still())).status).toBe(401); // no profile yet
+    await save(key);
+    expect((await put(key, 'metro', still())).status).toBe(200);
+    expect((await put(key, 'Bad Id', still())).status).toBe(400);
+    expect((await put(key, 'metro', 'data:image/svg+xml;base64,AAAA')).status).toBe(400);
+    expect((await put(key, 'metro', still(1_500_001))).status).toBe(413);
+
+    expect((await put(key, 'metro', still(1_400_000))).status).toBe(200);
+    expect((await put(key, 'office', still(1_400_000))).status).toBe(200);
+    expect((await put(key, 'college', still(1_400_000))).status).toBe(413); // over 3.5 MB in all
+    expect((await put(key, 'office', still(1_400_000))).status).toBe(200); // replacing counts once
+  });
+
+  it('deletes one picture', async () => {
+    const key = newKey();
+    await save(key);
+    await put(key, 'metro', still());
+    const removed = await call(
+      uploads.onRequestDelete,
+      api('/api/uploads/metro', { method: 'DELETE', key }),
+      { params: { mode: 'metro' } },
+    );
+    expect(removed.status).toBe(204);
+    const body = await (await call(profile.onRequestGet, api('/api/profile', { key }))).json<{ uploads: object }>();
+    expect(body.uploads).toEqual({});
+  });
+});
+
+describe('/api/keys — sync links and signing out', () => {
+  it('a minted key reaches the same profile until the owner signs other devices out', async () => {
+    const key = newKey();
+    await save(key);
+    const minted = await (await call(keys.onRequestPost, api('/api/keys', { method: 'POST', key }))).json<{ key: string }>();
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: minted.key }))).status).toBe(200);
+
+    const out = await call(keys.onRequestDelete, api('/api/keys', { method: 'DELETE', key }));
+    expect(await out.json()).toEqual({ removed: 1 });
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: minted.key }))).status).toBe(401);
+    expect((await call(profile.onRequestGet, api('/api/profile', { key }))).status).toBe(200);
+  });
+
+  it('stops at 25 devices', async () => {
+    const key = newKey();
+    await save(key);
+    const mint = () => call(keys.onRequestPost, api('/api/keys', { method: 'POST', key }));
+    for (let i = 1; i < 25; i += 1) expect((await mint()).status).toBe(201);
+    expect((await mint()).status).toBe(429);
+  });
+});
+
+describe('/api/passkeys — sign-in', () => {
+  const ask = (purpose: string, key?: string) =>
+    call(options.onRequestPost, api('/api/passkeys/options', { method: 'POST', key, body: JSON.stringify({ purpose }) }));
+  const answer = (challengeId: string, response: object) =>
+    call(verify.onRequestPost, api('/api/passkeys/verify', { method: 'POST', body: JSON.stringify({ challengeId, response }) }));
+
+  it('hands out challenges bound to the site, and needs a profile to add a passkey', async () => {
+    expect((await ask('nonsense')).status).toBe(400);
+    expect((await ask('register')).status).toBe(401);
+    const key = newKey();
+    await save(key);
+    const register = await (await ask('register', key)).json<{ options: { rp: { id: string } } }>();
+    expect(register.options.rp.id).toBe('vibe-mode.pages.dev');
+    const login = await (await ask('login')).json<{ challengeId: string; options: { rpId: string } }>();
+    expect(login.options.rpId).toBe('vibe-mode.pages.dev');
+  });
+
+  it('uses a challenge once, refuses expired ones and unknown passkeys', async () => {
+    const { challengeId } = await (await ask('login')).json<{ challengeId: string }>();
+    const unknown = await answer(challengeId, { id: 'nobody', rawId: 'nobody', type: 'public-key', response: {} });
+    expect(unknown.status).toBe(401);
+    expect((await answer(challengeId, { id: 'nobody' })).status).toBe(400); // already used
+
+    const expired = await (await ask('login')).json<{ challengeId: string }>();
+    await env.DB.prepare('UPDATE challenges SET expires_at = 0').run();
+    expect((await answer(expired.challengeId, { id: 'x' })).status).toBe(400);
+  });
+});
+
+describe('/backgrounds/*.mp4 — byte ranges for Safari', () => {
+  const bytes = new Uint8Array(100).map((_, i) => i);
+  const get = (range?: string) =>
+    call(backgrounds.onRequestGet, new Request('https://x.test/backgrounds/bg.mp4', { headers: range ? { Range: range } : {} }), {
+      next: async () => new Response(bytes, { headers: { 'Content-Type': 'video/mp4' } }),
+    });
+
+  it('slices the requested range', async () => {
+    const response = await get('bytes=10-19');
+    expect(response.status).toBe(206);
+    expect(response.headers.get('Content-Range')).toBe('bytes 10-19/100');
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+  });
+
+  it('handles open-ended and suffix ranges, and refuses impossible ones', async () => {
+    expect((await get('bytes=95-')).headers.get('Content-Range')).toBe('bytes 95-99/100');
+    expect((await get('bytes=-5')).headers.get('Content-Range')).toBe('bytes 95-99/100');
+    expect((await get('bytes=50-10')).status).toBe(416);
+    expect((await get('bytes=200-')).status).toBe(416);
+  });
+
+  it('passes a plain request through, saying ranges are supported', async () => {
+    const response = await get();
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Accept-Ranges')).toBe('bytes');
+  });
+});

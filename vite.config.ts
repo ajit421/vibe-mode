@@ -26,7 +26,8 @@ export default defineConfig({
     // since the move to Preact. Point the tests at its ESM build and run it
     // through Vite, so the `react` → `preact/compat` alias applies inside it.
     alias: [{ find: /^lucide-react$/, replacement: 'lucide-react/dist/esm/lucide-react.js' }],
-    server: { deps: { inline: [/lucide-react/] } },
+    // motion imports 'react' too, so it goes through Vite (and the alias) the same way.
+    server: { deps: { inline: [/lucide-react/, /motion/] } },
   },
   build: {
     target: 'es2020',
