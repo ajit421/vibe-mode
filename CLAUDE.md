@@ -24,7 +24,7 @@ Requires Node 20+.
 | `npm run db:migrate` | Apply `migrations/` to the live D1 database |
 | `npm run env-to-defaults` | One-time: old `.env` → `defaults.seed.sql` (gitignored) for `wrangler d1 execute` |
 
-Verification is `npm run typecheck && npm run lint && npm test`. Tests live next to the code as `*.test.ts`; today they cover the customisation sanitiser, link parsing and the time-of-day default ([customize.test.ts](src/themes/customize.test.ts)), the stored-data sanitisers, and the site-defaults sanitiser and merge order ([defaults.test.ts](src/themes/defaults.test.ts)). `functions/` is linted but not type-checked. Vitest runs through `vite.config.ts` — its `test` block points `lucide-react` at its ESM build, because React itself isn't installed (Preact) and lucide's CommonJS build `require`s it.
+Verification is `npm run typecheck && npm run lint && npm test`. Tests live next to the code as `*.test.ts`; today they cover the customisation sanitiser, link parsing and the time-of-day default ([customize.test.ts](src/themes/customize.test.ts)), the stored-data sanitisers, and the site-defaults sanitiser and merge order ([defaults.test.ts](src/themes/defaults.test.ts)), sync links and change detection ([sync.test.ts](src/sync/sync.test.ts)), and the server's key handling ([lib.test.ts](server/lib.test.ts)). `functions/` and `server/` are type-checked by `tsconfig.functions.json`. Vitest runs through `vite.config.ts` — its `test` block points `lucide-react` at its ESM build, because React itself isn't installed (Preact) and lucide's CommonJS build `require`s it.
 
 On Windows, run `npm test` from PowerShell, cmd or the VS Code terminal, not Git Bash: Git Bash's lowercase `/d/` drive path makes Vitest load itself twice and every test fails with `Cannot read properties of undefined (reading 'config')`.
 
@@ -59,19 +59,6 @@ Everything degrades gracefully when a row is missing or the database is down: an
 
 Precedence for a playlist: listener override (Customize / old Settings → localStorage) > D1 default > nothing. See `resolvePlaylistSource` in [src/music/resolve.ts](src/music/resolve.ts). `BACKGROUNDS.md` at the repo root holds image-generation prompts.
 
-## Cloud save: visitor data in D1, no sign-up
-
-A visitor's own changes (everything "Download my settings" would contain) are saved to D1 as well as localStorage, so they return on the next visit and on other devices. [migrations/0002_profiles.sql](migrations/0002_profiles.sql) documents the tables.
-
-- **Identity is a random key, not an account.** The browser makes 32 random bytes the first time there is something worth saving (`isEmptyBackup` — a visitor who only looked around gets no key and no row) and sends it as `Authorization: Bearer`. D1 stores only its SHA-256 (`device_keys`), so a database copy grants nothing. A profile has one key per device; [server/lib.ts](server/lib.ts) holds the auth, limits and Turnstile check shared by [functions/api/](functions/api/).
-- **Phase 3, sync links:** "Link another device" mints a new key (`POST /api/keys`) and shows `…/#sync=KEY`. The key rides in the `#` fragment so it never reaches a server log or Referer, and `SyncProvider` strips it from the address bar at once. "Sign out other devices" (`DELETE /api/keys`) revokes every key but the caller's.
-- **Phase 4, passkeys:** `functions/api/passkeys/{options,verify}.ts` via `@simplewebauthn/server`; the browser half is lazy-loaded. Signing in with a passkey mints a new device key for that profile. rpID is the request's host name, so moving domains orphans passkeys (and localStorage) — pick the custom domain first.
-- **Sync rules** ([SyncProvider.tsx](src/state/SyncProvider.tsx)): save 2s after the last change (text and each picture separately, a picture only when its fingerprint changed); load on page load and on returning to the tab — unless this browser has unsent changes, which win. Fingerprints of what was last saved live in `vibe-mode.sync`, shared by tabs. Whole-record last-write-wins between devices (a `shortcut:` in the file). Loading goes through `importSettings`, the same sanitised path as "Restore from file".
-- `vibe-mode.sync` is **not** in `STORAGE_KEYS`: "Start over" keeps the key, so the reset reaches the cloud too. The crash screen removes it explicitly, or the next load would fetch back the data that crashed.
-- **Limits, enforced on the server too:** 1 MB of text, 1.5 MB a picture, 3.5 MB of pictures per profile (`src/themes/limits.ts` is shared by both sides), one save a second, 25 device keys, 1,000 open passkey challenges.
-- **Turnstile** guards the only write anyone can make without a key: creating a profile. It is off until `TURNSTILE_SITE_KEY` and the secret `TURNSTILE_SECRET` are set on the Pages project; with them unset, creation is open.
-- Pictures are in D1 (`uploads`), not R2 — R2 isn't enabled on the account. Move them to R2 well before the database nears its size limit.
-
 ## Architecture
 
 ### Themes are data
@@ -90,7 +77,7 @@ Visitors have full control from the Customize panel (palette icon in the top bar
 - `customImage` / `baseId` / `defaultImage` / `defaultPoster` on `VibeTheme` are **runtime-only** — never set them in a theme file. A listener-added mode (`my-xxxxxxxx`) borrows its `baseId`'s default background, poster and playlists.
 - Everything from storage or an imported file goes through `sanitizeCustomization` / `sanitizeUploads` (hex-only colours, `safeCustomImage` for pictures, known ids only). Keep any new editable field behind them, and add a case to the test.
 - Uploaded pictures live under their **own** key (`vibe-mode.uploads`, by mode id); the mode's `image` is just the marker `UPLOADED`. Don't put stills back in the customisation record — it is rewritten on every keystroke in the panel.
-- Visitor data (`customization`, `uploads`, `customPlaylists`, `preferences`, `playlistOverrides`) syncs across open tabs via `useLocalStorage(..., syncAcrossTabs)`, and to the cloud via `SyncProvider` (see "Cloud save" below). Which mode a tab shows does neither.
+- Visitor data (`customization`, `uploads`, `customPlaylists`, `preferences`, `playlistOverrides`) syncs across open tabs via `useLocalStorage(..., syncAcrossTabs)`, and to the cloud (D1) via [SyncProvider.tsx](src/state/SyncProvider.tsx), whose header comment explains the rules; tables in [migrations/0002_profiles.sql](migrations/0002_profiles.sql). Which mode a tab shows does neither.
 - "Restore from file" takes a full backup (replaces everything) or a shared single mode (`kind: 'mode'`, always *added* under a new id). The crash screen downloads the same backup before it clears anything.
 
 ### Theming works through CSS custom properties, not components
