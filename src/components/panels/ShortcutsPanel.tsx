@@ -7,6 +7,7 @@ const GLOBAL: [string, string][] = [
   ['→', 'Next track'],
   ['M', 'Mute / unmute'],
   ['Ctrl / ⌘ + K', 'Open the mode picker'],
+  ['C', 'Customize modes'],
   ['?', 'This panel'],
   ['Esc', 'Close whatever is open'],
 ];

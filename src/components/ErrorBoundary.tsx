@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { downloadJson, storedBackup } from '@/utils/backup';
+import { clearStoredPreferences } from '@/utils/storage';
 
 interface Props {
   children: ReactNode;
@@ -25,13 +27,23 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('Vibe Mode crashed:', error, info.componentStack);
   }
 
+  /**
+   * Starting over wipes what this site saved — which, now that visitors build
+   * their own modes and upload pictures, can be hours of their work. So it is
+   * saved to a file first (the same file "Restore from file" takes), and only
+   * this site's keys are cleared, never the whole of localStorage.
+   */
   private reset = () => {
     try {
-      window.localStorage.clear();
+      downloadJson(storedBackup(), 'vibe-mode-backup.json');
     } catch {
-      /* ignore */
+      /* storage or downloads blocked — nothing to save, carry on */
     }
-    window.location.href = window.location.pathname;
+    clearStoredPreferences();
+    // A beat before navigating, so the download isn't cut off by the unload.
+    window.setTimeout(() => {
+      window.location.href = window.location.pathname;
+    }, 800);
   };
 
   render() {
@@ -46,7 +58,9 @@ export class ErrorBoundary extends Component<Props, State> {
             Arre. Ye toh chalna chahiye tha.
           </h1>
           <p className="mt-3 text-sm text-muted">
-            The site hit an error it could not recover from. Starting fresh usually sorts it out.
+            The site hit an error it could not recover from. Starting fresh usually sorts it out —
+            your modes and settings are saved to a file first, so you can bring them back from
+            Customize → Backup.
           </p>
           <pre className="mt-4 overflow-x-auto rounded-lg border border-line bg-surface p-3 text-left font-mono text-[0.7rem] text-muted">
             {error.message}
@@ -64,7 +78,7 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={this.reset}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-canvas transition-[filter] hover:brightness-110"
             >
-              Reset and start over
+              Save a backup, then start over
             </button>
           </div>
         </div>

@@ -13,6 +13,7 @@ import {
 import { STORAGE_KEYS } from '@/utils/storage';
 import { clamp, tidyTrackTitle } from '@/utils/format';
 import { useVibe } from './vibe-context';
+import { useToast } from './toast-context';
 import { PlayerContext, type PlayerContextValue, type PlayerStatus, type PlayerTrack } from './player-context';
 
 const PROGRESS_INTERVAL_MS = 400;
@@ -549,6 +550,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setRetryToken((token) => token + 1);
   }, []);
 
+  /* ── Sleep timer ──────────────────────────────────────────────────────── */
+  // A deadline, not a countdown, so the panel can show what's left and a
+  // throttled background tab still stops on time (to within the minute or so
+  // browsers allow). Audible tabs aren't throttled hard, and this one is.
+  const [sleepEndsAt, setSleepEndsAt] = useState<number | null>(null);
+  const { push } = useToast();
+
+  useEffect(() => {
+    if (!sleepEndsAt) return;
+    const id = window.setTimeout(
+      () => {
+        clearWatchdog();
+        playerRef.current?.pauseVideo?.();
+        setSleepEndsAt(null);
+        push('Sleep timer — music paused. Good night.', 'SLEEP');
+      },
+      Math.max(0, sleepEndsAt - Date.now()),
+    );
+    return () => window.clearTimeout(id);
+  }, [sleepEndsAt, clearWatchdog, push]);
+
+  const setSleepTimer = useCallback((minutes: number | null) => {
+    setSleepEndsAt(minutes ? Date.now() + minutes * 60_000 : null);
+  }, []);
+
   const value = useMemo<PlayerContextValue>(
     () => ({
       status,
@@ -579,6 +605,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleShuffle,
       toggleRepeat,
       retry,
+      sleepEndsAt,
+      setSleepTimer,
       registerHost: setHost,
     }),
     [
@@ -610,6 +638,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleShuffle,
       toggleRepeat,
       retry,
+      sleepEndsAt,
+      setSleepTimer,
     ],
   );
 

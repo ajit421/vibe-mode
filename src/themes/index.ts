@@ -33,25 +33,20 @@ export const THEMES: readonly VibeTheme[] = [
 
 export const DEFAULT_THEME_ID = judaadHouse.id;
 
-const BY_ID = new Map<string, VibeTheme>();
-for (const theme of THEMES) {
-  BY_ID.set(theme.id, theme);
-  for (const alias of theme.aliases ?? []) {
-    if (!BY_ID.has(alias)) BY_ID.set(alias, theme);
-  }
+/**
+ * Where a first-time visitor starts, by the hour on their own clock — so the
+ * landing screen opens on a place that fits the moment instead of always the
+ * same one. Only for a first visit: anyone with a saved mode, or a `?mode=`
+ * link, gets exactly what they asked for.
+ */
+export function suggestedThemeId(hour: number): string {
+  if (hour >= 5 && hour < 8) return indianTrain.id; // sunrise, window seat
+  if (hour >= 8 && hour < 11) return metro.id; // the commute
+  if (hour >= 11 && hour < 17) return office.id; // working hours
+  if (hour >= 17 && hour < 20) return gadiWala.id; // the drive home
+  if (hour >= 20 && hour < 23) return cabWala.id; // the city at night
+  return judaadHouse.id; // 11pm to 5am belongs to the house
 }
 
-/** Resolves an id or alias to a theme. Returns `undefined` if nothing matches. */
-export function findTheme(id: string | null | undefined): VibeTheme | undefined {
-  if (!id) return undefined;
-  return BY_ID.get(id.trim().toLowerCase());
-}
-
-/** Like `findTheme`, but always returns something usable. */
-export function getTheme(id: string | null | undefined): VibeTheme {
-  return findTheme(id) ?? BY_ID.get(DEFAULT_THEME_ID) ?? THEMES[0];
-}
-
-export function isKnownTheme(id: string | null | undefined): boolean {
-  return findTheme(id) !== undefined;
-}
+// Looking a mode up by id or alias happens over the *listener's* list (their
+// own modes included) — see `findIn` in `themes/customize.ts`.

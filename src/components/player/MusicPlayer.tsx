@@ -34,9 +34,11 @@ import { cn } from '@/utils/cn';
 
 interface MusicPlayerProps {
   onOpenSettings: () => void;
+  /** Where playlists are added and fixed. */
+  onOpenCustomize: () => void;
 }
 
-export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
+export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProps) {
   const player = usePlayer();
   const { theme, playlist, motionEnabled, hasEntered } = useVibe();
   const ThemeIcon = theme.icon;
@@ -117,7 +119,11 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
 
   const secondaryLine = unconfigured
     ? playlist
-      ? `Set ${envVarFor(playlist.id)} in .env, or add your own from Settings`
+      ? // `.env` means nothing to a visitor; it is the developer's hint, so it
+        // only appears in development.
+        import.meta.env.DEV
+        ? `Set ${envVarFor(playlist.id)} in .env, or add its link in Customize`
+        : 'Add its link in Customize'
       : `No playlists in ${theme.name} — add one in Customize`
     : // A transient message (e.g. skipping an un-embeddable track) still needs
       // to surface even while the player is otherwise healthy.
@@ -340,10 +346,13 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
                 left on screen, so losing skip-back on a phone would mean the
                 shortcut keys are the only way back a track. */}
             <span className={minimised ? 'contents' : 'hidden sm:contents'}>
+              {/* Not disabled on an error: when YouTube rejects a track before
+                  the list has loaded, the player can't skip on its own, and a
+                  locked Next left the visitor stuck on a dead track. */}
               <IconButton
                 label="Previous track"
                 onClick={player.previous}
-                disabled={controlsDisabled}
+                disabled={unconfigured}
               >
                 <SkipBack />
               </IconButton>
@@ -354,7 +363,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
                 label="Set up a playlist"
                 variant="solid"
                 size="lg"
-                onClick={onOpenSettings}
+                onClick={onOpenCustomize}
               >
                 <Settings2 />
               </IconButton>
@@ -377,7 +386,7 @@ export function MusicPlayer({ onOpenSettings }: MusicPlayerProps) {
               </IconButton>
             )}
 
-            <IconButton label="Next track" onClick={player.next} disabled={controlsDisabled}>
+            <IconButton label="Next track" onClick={player.next} disabled={unconfigured}>
               <SkipForward />
             </IconButton>
           </div>

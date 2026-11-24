@@ -11,6 +11,8 @@ export const STORAGE_KEYS = {
   customPlaylists: `${PREFIX}.customPlaylists`,
   /** The listener's edits to modes, the modes they added, order and visibility. */
   customization: `${PREFIX}.customization`,
+  /** Pictures the listener uploaded, by mode id — apart, so text edits never rewrite them. */
+  uploads: `${PREFIX}.uploads`,
   hasEntered: `${PREFIX}.hasEntered`,
 } as const;
 

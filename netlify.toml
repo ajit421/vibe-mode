@@ -12,6 +12,13 @@
   to = "/index.html"
   status = 200
 
+# The service worker must never be cached, or a fixed one could take a day to
+# reach visitors. (Browsers already revalidate it, but this makes it certain.)
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
 [[headers]]
   for = "/assets/*"
   [headers.values]

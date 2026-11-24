@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { VibePlaylist, VibeTheme } from '@/types/theme';
-import type { Customization, ModeEdit } from '@/themes/customize';
+import type { Customization, ModeEdit, Uploads } from '@/themes/customize';
 
 export interface VibePreferences {
   /** Master switch for animation. Also forced off by the OS setting. */
@@ -57,7 +57,24 @@ export interface VibeBackup {
   preferences: Partial<VibePreferences>;
   customPlaylists: Record<string, CustomPlaylist[]>;
   playlistOverrides: Record<string, string>;
+  /** Uploaded pictures by mode id. Optional: backups made before it existed lack it. */
+  uploads?: Uploads;
 }
+
+/** One mode, shared as a file — imported as a *new* mode, never over an existing one. */
+export interface SharedMode {
+  app: 'vibe-mode';
+  version: 1;
+  kind: 'mode';
+  /** The built-in mode it is built on (icon, fonts and default music). */
+  baseId: string;
+  edit: ModeEdit;
+  playlists: CustomPlaylist[];
+  upload?: string;
+}
+
+/** What a restored file turned out to be, or null when it wasn't a Vibe Mode file. */
+export type ImportResult = { kind: 'backup' } | { kind: 'mode'; id: string } | null;
 
 export interface VibeContextValue {
   /** The modes a visitor can pick, in their order — hidden ones left out. */
@@ -75,8 +92,6 @@ export interface VibeContextValue {
   playlistId: string | null;
   selectPlaylist: (playlistId: string) => void;
 
-  /** The listener's own playlists for the active mode. */
-  customPlaylists: CustomPlaylist[];
   /**
    * Adds one of the listener's own playlists to a mode (the active one unless
    * `modeId` says otherwise). Returns its id, or null when the source was unusable.
@@ -114,8 +129,8 @@ export interface VibeContextValue {
   motionEnabled: boolean;
   systemReducedMotion: boolean;
 
+  /** Links from the old Settings field; still honoured, cleared by a Customize relink. */
   playlistOverrides: Record<string, string>;
-  setPlaylistOverride: (playlistId: string, value: string) => void;
 
   /* ── Listener customisation of the modes themselves ─────────────────── */
   customization: Customization;
@@ -136,8 +151,15 @@ export interface VibeContextValue {
   removeMode: (themeId: string) => void;
   moveMode: (themeId: string, delta: -1 | 1) => void;
   exportSettings: () => VibeBackup;
-  /** False when the file isn't a Vibe Mode backup; bad fields are dropped, not fatal. */
-  importSettings: (raw: unknown) => boolean;
+  /** One mode as a shareable file; null for an unknown id. */
+  exportMode: (themeId: string) => SharedMode | null;
+  /**
+   * Restores a full backup (replacing everything) or adds a shared mode.
+   * Null when the file isn't a Vibe Mode file; bad fields are dropped, not fatal.
+   */
+  importSettings: (raw: unknown) => ImportResult;
+  /** Saves an uploaded still for a mode. False when there's no room left to store it. */
+  setUpload: (themeId: string, still: string) => boolean;
 
   resetEverything: () => void;
 }

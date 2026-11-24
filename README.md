@@ -2,9 +2,10 @@
 
 **Where are you right now?**
 
-Eight little worlds, sixteen playlists. Pick the place you're actually in and
-the whole site becomes it: colours, typography, artwork, ambient motion, small
-jokes, and the music that belongs there.
+Eight little worlds, sixteen playlists — and any number of your own. Pick the
+place you're actually in and the whole site becomes it: colours, typography,
+artwork, ambient motion, small jokes, and the music that belongs there. Every
+visitor can then rename, recolour, re-picture, reorder, add or delete any of it.
 
 It's less a music website and more a digital memory machine.
 
@@ -25,7 +26,7 @@ It's less a music website and more a digital memory machine.
 
 1. [Quick start](#quick-start)
 2. [Playlists live in `.env`](#playlists-live-in-env) ← **start here**
-3. [Playing your own playlist](#playing-your-own-playlist)
+3. [Customize — for visitors](#customize--for-visitors)
 4. [Tech stack](#tech-stack)
 5. [How to add a new theme](#how-to-add-a-new-theme)
 6. [Architecture](#architecture)
@@ -55,6 +56,7 @@ npm run dev              # http://localhost:5173
 | `npm run preview` | Serve the production build locally |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript only, no build |
+| `npm test` | Vitest — the customisation sanitiser and link parsing |
 | `npm run og` | Regenerate `public/og.png`, the social preview card |
 
 The site works before you add any playlists. Every mode still looks and
@@ -107,15 +109,16 @@ id: 'metro-vibes'   →   VITE_PLAYLIST_METRO_VIBES
 id: 'gadi-hits'     →   VITE_PLAYLIST_GADI_HITS
 ```
 
-And if you forget, the app tells you: an unconfigured mode prints the exact
-variable name in the player bar and again in Settings.
+And if you forget, the app tells you: in development, an unconfigured playlist
+prints the exact variable name in the player bar. (Visitors on the live site
+see "add its link in Customize" instead — `.env` means nothing to them.)
 
 `.env.example` lists all sixteen, grouped by mode.
 
 ### No playlist yet? Use individual videos
 
-A comma-separated value is treated as a hand-picked list of video IDs (the
-`v=` part of a watch URL):
+One or more video IDs or links, comma-separated, work too — a single video
+included:
 
 ```bash
 VITE_PLAYLIST_METRO_VIBES=dQw4w9WgXcQ,jNQXAC9IVRw,9bZkp7q19f0
@@ -133,41 +136,51 @@ VITE_PLAYLIST_METRO_VIBES=dQw4w9WgXcQ,jNQXAC9IVRw,9bZkp7q19f0
 
 ---
 
-## Playing your own playlist
+## Customize — for visitors
 
-Listeners don't need the codebase. In the running site:
+Visitors don't need the codebase. The **palette icon** in the top bar (or
+**C**) opens Customize, where they can:
 
-**Settings (⚙ in the top bar) → Play your own playlist → paste a link → Apply.**
+- **Modes** — create a blank one, copy, delete (built-in modes go to a
+  restorable bin), hide from the picker, reorder
+- **Words** — name, status line, description, quotes; icon and heading font
+- **Playlists** — add as many as they like to any mode, rename, relink, remove
+  (built-in ones too), play one straight away
+- **Look** — upload a picture or paste a link, colours, atmosphere layers,
+  and the status-readout text
+- **Backup** — download everything as one file, restore it elsewhere, or
+  **Share** a single mode as a file a friend adds with *Restore from file*
 
-Any YouTube playlist link or bare ID works. It applies to whichever playlist is
-selected, takes precedence over the `.env` default, and is saved in that
-person's browser only — it never touches the deploy or anyone else's session.
-A **Use the default** button appears while an override is active, and clearing
-the field falls back to `.env`.
+All of it lives in that visitor's browser only — it never touches the deploy
+or anyone else. Everything read back (storage or a file) goes through
+`sanitizeCustomization` in `src/themes/customize.ts`, which is covered by
+`npm test`.
 
-Precedence, highest first:
+Precedence for a playlist's link, highest first:
 
 ```
-1. The listener's own playlist   (Settings → localStorage)
-2. .env                          (VITE_PLAYLIST_*)
-3. Nothing                       → friendly setup prompt, mode still works
+1. The visitor's own link       (Customize → localStorage)
+2. .env                         (VITE_PLAYLIST_*)
+3. Nothing                      → friendly setup prompt, mode still works
 ```
 
 ---
 
 ## Tech stack
 
-- **React 18** + **TypeScript** (strict)
-- **Vite 6** — build and dev server
+- **Preact 11** behind the React API (`preact/compat`) + **TypeScript** (strict)
+- **Vite 6** — build and dev server; **Vitest** for tests
 - **Tailwind CSS v4** — CSS-first config, no `tailwind.config.js`
 - **Motion** (`motion/react`, formerly Framer Motion) — transitions
 - **Lucide React** — icons
 - **YouTube IFrame Player API** — playback
-- **localStorage** — preferences
+- **localStorage** — preferences and every visitor customisation
+- **A small service worker** (`public/sw.js`) — installable app, instant repeat
+  visits; production only
 
-No state library, no router, no UI kit. First load is about **117 kB of JS
-gzipped**, and each mode's artwork is a separate ~3 kB chunk fetched only when
-you visit that world.
+No state library, no router, no UI kit. First load is about **70 kB of JS
+gzipped**; the Customize panel is its own chunk, fetched on first open.
+Backgrounds are AVIF pictures (or a looping video) set per mode in `.env`.
 
 ---
 
@@ -189,7 +202,6 @@ export const hostel: VibeTheme = {
   name: 'Hostel Wala',
   shortName: 'Hostel',
   description: 'Mess ka khana, 2am maggi, roommate ka alarm.',
-  emoji: '🛏️',
   icon: BedDouble,
   aliases: ['pg'],               // optional: extra ?mode= values
 
@@ -216,8 +228,6 @@ export const hostel: VibeTheme = {
   hero: {
     kicker: 'ROOM 214 · LIGHTS OUT 11PM',
     title: 'HOSTEL WALA',
-    subtitle: 'Mess band ho gaya. Maggi hai.',
-    visual: 'hostel-room',       // see step 3
   },
 
   playlists: playlistsFor('hostel'),
@@ -248,26 +258,18 @@ export const THEMES: readonly VibeTheme[] = [
 ```
 
 **The theme is now live.** It appears in the picker, gets the next keyboard
-number, responds to `?mode=hostel`, and shows a themed abstract visual built
-from its own palette.
+number, responds to `?mode=hostel`, and shows its colour gradient as the
+background until you give it a picture.
 
-### Step 3 (optional) — give it artwork
+### Step 3 (optional) — give it a picture
 
-Unknown `hero.visual` ids fall back to `AbstractVisual`, so this is genuinely
-optional. To draw a real scene:
+Backgrounds come from `.env`, like playlists — no paths in source:
 
-1. Create `src/components/visuals/HostelRoomVisual.tsx` (copy any existing one
-   — they're plain SVG plus a few CSS animations).
-2. Register it in `src/components/visuals/registry.ts`:
-
-```ts
-'hostel-room': () =>
-  import('./HostelRoomVisual').then((m) => ({ default: m.HostelRoomVisual })),
+```bash
+VITE_IMAGE_HOSTEL=/backgrounds/hostel.avif      # a file in public/
+VITE_IMAGE_HOSTEL=/backgrounds/hostel.mp4       # a short looping clip works too
+VITE_POSTER_HOSTEL=/backgrounds/hostel.avif     # still for the card, for a video
 ```
-
-It's code-split automatically. Use `<Hotspot>` for clickable easter eggs and
-`useToast().push(message, tag)` for the popups. Add a branch in
-`MiniPreview.tsx` for a bespoke card thumbnail, or leave it for the generic one.
 
 ### Step 4 — playlists
 
@@ -312,7 +314,9 @@ src/
 │   ├── radio-wala.ts
 │   ├── gadi-wala.ts
 │   ├── college.ts
-│   └── index.ts              the registry + id/alias lookup
+│   ├── backgrounds.ts        picture/video per mode, from .env
+│   ├── customize.ts          visitor edits laid over the theme files + sanitiser
+│   └── index.ts              the registry
 ├── music/
 │   ├── playlists.ts          what each playlist is (never its ID)
 │   ├── resolve.ts            playlist ID / URL parsing, source precedence
@@ -321,19 +325,18 @@ src/
 │   ├── vibe-context.ts       + VibeProvider.tsx   theme, prefs, URL, storage
 │   ├── player-context.ts     + PlayerProvider.tsx playback state
 │   └── toast-context.ts      + ToastProvider.tsx  interaction feedback
-├── hooks/                    storage, media queries, clock, rotator, keys
+├── hooks/                    storage (tab-synced), media queries, clock, rotator, keys, install
 ├── components/
 │   ├── AppShell.tsx          layout + keyboard shortcuts
 │   ├── screens/              Landing, World
 │   ├── theme/                background, transition wipe, cards, picker
-│   ├── hero/                 title, quotes, stats, ticker, central visual
-│   ├── visuals/              one SVG scene per mode + registry (code-split)
+│   ├── hero/                 quotes, stats, ticker
 │   ├── effects/              ambient layers, registry-driven
-│   ├── player/               music player, playlist chips
-│   ├── panels/               settings, shortcuts
+│   ├── player/               music player, playlist chips, tracklist
+│   ├── panels/               settings, shortcuts, customize (lazy)
 │   ├── layout/               top bar, status bar
 │   └── ui/                   button, modal, slider, switch, toasts
-├── utils/                    storage, url, format, events, cn
+├── utils/                    storage, backup, env, url, format, cn
 └── styles/index.css          theme token bridge + ambient keyframes
 ```
 
@@ -368,20 +371,20 @@ which is what lets the variable name be derived from the playlist id instead of
 maintained in a hand-written map:
 
 ```ts
-const ENV = import.meta.env as unknown as Record<string, string | undefined>;
-export const envVarFor = (id: string) =>
-  `VITE_PLAYLIST_${id.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
+// src/utils/env.ts — one rule for every derived name
+export const ENV = import.meta.env as unknown as Record<string, string | undefined>;
+export const envName = (prefix: string, id: string) =>
+  `${prefix}_${id.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
 ```
 
-### Two registries, both open for extension
+### Open for extension
 
-- **Visuals** (`components/visuals/registry.ts`) — maps `hero.visual` → a
-  lazily imported scene. Unknown ids fall back to `AbstractVisual`.
 - **Effects** (`components/effects/AmbientEffects.tsx`) — maps each key of
   `theme.effects` → an ambient layer. Unknown keys are ignored.
+- **Backgrounds** — env-keyed by theme id, as above.
 
-Both mean a theme and its artwork can be added independently, and neither can
-break an existing mode.
+A theme and its picture can be added independently, and neither can break an
+existing mode.
 
 ### State
 
@@ -389,8 +392,8 @@ Three small contexts, no state library:
 
 | Context | Owns |
 | --- | --- |
-| `VibeProvider` | current theme, selected playlist per theme, preferences, transition, URL sync, localStorage |
-| `PlayerProvider` | the YouTube player, play state, progress, volume, errors |
+| `VibeProvider` | current theme, selected playlist per theme, preferences, visitor customisation, transition, URL sync, localStorage |
+| `PlayerProvider` | the YouTube player, play state, progress, volume, errors, sleep timer |
 | `ToastProvider` | the little interaction messages |
 
 `PlayerProvider` reads from `VibeProvider`, so the nesting order in `App.tsx`
@@ -409,7 +412,8 @@ matters.
 ```
 
 It also sets Node 20, an SPA fallback so `?mode=` links survive a hard refresh,
-long-lived caching for hashed assets, and a few security headers.
+long-lived caching for hashed assets, `no-cache` for the service worker, and a
+few security headers.
 
 **Connect the repo** — Netlify reads `netlify.toml`, so there's nothing else to
 configure.
@@ -433,9 +437,9 @@ netlify deploy --build --prod
 **Change the quotes** — edit the `quotes` array in the theme file. They rotate
 every 6.5 seconds and pause while hovered; the ↻ button steps through them.
 
-**Change the terminal ticker** — edit `ticker`. It feeds the status strip and
-the in-scene screens (the laptop in Judaad House, the monitor in Office, the
-blackboard in College).
+**Change the terminal ticker** — edit `ticker`. It feeds the status strip.
+(Visitors can rewrite quotes, ticker, stats and status-bar text for themselves
+in Customize; the theme file is just the default.)
 
 **Change the stats panel** — edit `stats`. Add `meter: 0…1` to render a bar
 instead of a value.
@@ -450,8 +454,8 @@ prefixed `vm-`. Keep them to `transform` and `opacity` so they stay on the
 compositor, and they'll automatically be disabled by the reduced-motion rule
 and paused when the tab is hidden.
 
-**Rename the site** — the wordmark is in `components/layout/TopBar.tsx`; the
-default titles are in `index.html` and `VibeProvider`.
+**Rename the site** — the default titles are in `index.html` and
+`VibeProvider`; the app name is in `public/site.webmanifest`.
 
 ---
 
@@ -462,16 +466,11 @@ default titles are in `index.html` and `VibeProvider`.
 | `Space` | Play / pause |
 | `←` / `→` | Previous / next track |
 | `M` | Mute |
-| `1`–`8` | Jump to that mode |
+| `1`–`9` | Jump to that mode (in the visitor's own order) |
 | `Ctrl` / `⌘` + `K` | Open the mode picker |
+| `C` | Customize |
 | `?` | Shortcut help |
 | `Esc` | Close any open panel |
-
-Per-mode extras: `A` for a metro announcement, `R` to reroute the cab, `T` to
-tune the radio. Scene hotspots are clickable and keyboard-focusable — the chai,
-the screwdriver and the lamp in Judaad House; the train window; the cab's nav
-screen; the radio dial and its three knobs; the car stereo, its volume knob and
-the door speaker; the blackboard and the shared earphones in College.
 
 Shortcuts deliberately yield to focused controls — `Space` presses the button
 you've tabbed to, and arrow keys move the volume slider, rather than being
@@ -504,26 +503,27 @@ Playback uses the **official YouTube IFrame Player API**. Nothing is
 downloaded, proxied or extracted — the real player is embedded and driven
 through its documented API.
 
-The iframe is deliberately **visible**, doing double duty as the artwork tile in
-the player bar (it grows into a proper video when you expand the player). That
-keeps the integration well within YouTube's terms while still looking like part
-of the site rather than a bolted-on embed.
+The player is **music-only**. The iframe has to stay in the layout and painted
+(YouTube won't play from a hidden or zero-sized one), so it sits thumbnail-sized
+under the cover art — which also makes YouTube stream its smallest video
+rendition and spend the bandwidth on audio. The video is never shown.
 
 Autoplay policies are respected: nothing plays until you press play. After that
 first interaction, switching modes carries playback across.
 
 Failure states are all handled and worded like a human: an invalid ID, a private
 or deleted playlist, an un-embeddable track (skipped automatically, up to three
-in a row), a network drop, or an empty playlist. One broken playlist never takes
-the site down.
+in a row — and Next always stays usable), a network drop, or an empty playlist.
+One broken playlist never takes the site down.
+
+A **sleep timer** in Settings pauses the music after 15, 30, 60 or 90 minutes.
 
 ---
 
 ## Accessibility & performance
 
 - Semantic landmarks, a skip link, and a real heading hierarchy
-- Every control is keyboard-reachable with visible focus rings; scene hotspots
-  are `role="button"` with labels
+- Every control is keyboard-reachable with visible focus rings
 - Dialogs trap focus, close on `Esc`, and restore focus on close
 - Sliders are native range inputs, so screen readers and touch dragging work
 - `aria-live` on the rotating quote and the toast stack
@@ -531,7 +531,8 @@ the site down.
   can be overridden in Settings
 - Animations pause entirely when the tab is hidden
 - Ambient layers use only `transform` and `opacity`
-- Each mode's artwork is a separate chunk, preloaded when you hover its card
+- Backgrounds are small AVIF files; the visible one is fetched at high priority
+- Installable as an app where the browser supports it (offered in Settings)
 
 ---
 

@@ -11,11 +11,6 @@ export function formatTime(seconds: number): string {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
-/** A 10-cell block meter, e.g. `████████░░`. */
-export function meterBar(value: number, cells = 10): string {
-  const filled = Math.round(Math.min(1, Math.max(0, value)) * cells);
-  return '█'.repeat(filled) + '░'.repeat(cells - filled);
-}
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

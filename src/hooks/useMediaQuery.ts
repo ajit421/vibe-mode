@@ -23,8 +23,3 @@ export function useMediaQuery(query: string): boolean {
 export function usePrefersReducedMotion(): boolean {
   return useMediaQuery('(prefers-reduced-motion: reduce)');
 }
-
-/** True on phone-sized viewports — used to swap layouts, not just shrink them. */
-export function useIsCompact(): boolean {
-  return useMediaQuery('(max-width: 767px)');
-}

@@ -186,7 +186,7 @@ export function loadYouTubeIframeApi(): Promise<YTNamespace> {
 export function describeYouTubeError(code: number): string {
   switch (code) {
     case YT_ERROR.INVALID_PARAM:
-      return 'That playlist ID doesn’t look right. Check the VITE_PLAYLIST_… value in .env.';
+      return 'That playlist link doesn’t look right. Fix it in Customize.';
     case YT_ERROR.HTML5_ERROR:
       return 'The player had trouble with this track. Skipping usually fixes it.';
     case YT_ERROR.NOT_FOUND:

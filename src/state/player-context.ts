@@ -59,6 +59,11 @@ export interface PlayerContextValue {
   toggleRepeat: () => void;
   retry: () => void;
 
+  /** When the sleep timer will pause the music (epoch ms), or null when it's off. */
+  sleepEndsAt: number | null;
+  /** Pause the music after this many minutes; null turns the timer off. */
+  setSleepTimer: (minutes: number | null) => void;
+
   /** The player bar hands us the element the YouTube iframe lives in. */
   registerHost: (element: HTMLDivElement | null) => void;
 }

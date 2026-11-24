@@ -129,6 +129,18 @@ type LineKey = keyof typeof LINE_LIMITS;
 /** An uploaded still is a base64 WebP/JPEG of at most 1600px — ~0.5 MB. */
 export const MAX_IMAGE_LENGTH = 1_500_000;
 
+/**
+ * `image` value meaning "the picture the listener uploaded for this mode".
+ * The still itself lives under its own storage key (`uploads`), not in here:
+ * this record is rewritten on every keystroke in the Customize panel, and
+ * carrying half a megabyte of base64 per picture through each of those writes
+ * made typing lag. Older saves with the still inline here still work.
+ */
+export const UPLOADED = 'upload';
+
+/** Mode id → uploaded still (a `data:image/…` URL). */
+export type Uploads = Record<string, string>;
+
 export interface ModeEdit extends Partial<Record<TextKey, string>>, Partial<Record<LineKey, string[]>> {
   // `quotes` and `ticker` are lines as typed. `stats` and `hud` are
   // "Label: value" lines, parsed when applied — stored raw so a half-typed
@@ -137,7 +149,7 @@ export interface ModeEdit extends Partial<Record<TextKey, string>>, Partial<Reco
   effects?: VibeEffects;
   icon?: IconKey;
   headingFont?: FontKey;
-  /** URL, site path, or uploaded still. `null` = no picture, show the gradient. */
+  /** URL, site path, `UPLOADED`, or (older saves) an inline still. `null` = no picture. */
   image?: string | null;
   hidden?: boolean;
   /** Built-in modes only — added ones are removed outright. Restorable. */
@@ -193,7 +205,7 @@ function parsePairs(lines: string[]): VibeHudItem[] {
 export const pairsToLines = (pairs: readonly VibeHudItem[] | undefined): string =>
   (pairs ?? []).map((pair) => `${pair.label}: ${pair.value}`).join('\n');
 
-function applyEdit(theme: VibeTheme, edit: ModeEdit | undefined): VibeTheme {
+function applyEdit(theme: VibeTheme, edit: ModeEdit | undefined, upload?: string): VibeTheme {
   if (!edit) return theme;
 
   const colors = { ...theme.colors, ...edit.colors };
@@ -252,7 +264,10 @@ function applyEdit(theme: VibeTheme, edit: ModeEdit | undefined): VibeTheme {
         }
       : theme.background,
     effects: edit.effects ?? theme.effects,
-    customImage: edit.image !== undefined ? edit.image : theme.customImage,
+    // An upload marker with no upload behind it (removed in another tab, say)
+    // falls back to the default picture rather than to a blank.
+    customImage:
+      edit.image === UPLOADED ? upload : edit.image !== undefined ? edit.image : theme.customImage,
     // A hand-written SEO title would still name the old mode after a rename.
     seo: name ? undefined : theme.seo,
   };
@@ -263,7 +278,11 @@ function applyEdit(theme: VibeTheme, edit: ModeEdit | undefined): VibeTheme {
  * included — in the listener's order. The provider splits it into what can be
  * picked, what can be edited, and what is in the bin.
  */
-export function buildThemes(builtIns: readonly VibeTheme[], custom: Customization): VibeTheme[] {
+export function buildThemes(
+  builtIns: readonly VibeTheme[],
+  custom: Customization,
+  uploads: Uploads = {},
+): VibeTheme[] {
   const byId = new Map(builtIns.map((theme) => [theme.id, theme]));
 
   const added = custom.added.flatMap(({ id, baseId }) => {
@@ -277,11 +296,11 @@ export function buildThemes(builtIns: readonly VibeTheme[], custom: Customizatio
   const last = Number.MAX_SAFE_INTEGER;
 
   return [...builtIns, ...added]
-    .map((theme) => applyEdit(theme, custom.edits[theme.id]))
+    .map((theme) => applyEdit(theme, custom.edits[theme.id], uploads[theme.id]))
     .sort((a, b) => (rank.get(a.id) ?? last) - (rank.get(b.id) ?? last));
 }
 
-/** Resolves an id or alias against a list, as `findTheme` does for the built-ins. */
+/** Resolves an id or alias against a list, by id or alias. */
 export function findIn(
   themes: readonly VibeTheme[],
   id: string | null | undefined,
@@ -324,7 +343,7 @@ function idRecord(raw: unknown, check: (value: unknown) => string | null): Recor
   return result;
 }
 
-function sanitizeEdit(raw: unknown): ModeEdit | null {
+export function sanitizeEdit(raw: unknown): ModeEdit | null {
   if (!isRecord(raw)) return null;
   const edit: ModeEdit = {};
 
@@ -364,7 +383,7 @@ function sanitizeEdit(raw: unknown): ModeEdit | null {
     edit.headingFont = raw.headingFont as FontKey;
   }
 
-  if (raw.image === null) edit.image = null;
+  if (raw.image === null || raw.image === UPLOADED) edit.image = raw.image;
   else if (typeof raw.image === 'string' && raw.image.length <= MAX_IMAGE_LENGTH) {
     const image = safeCustomImage(raw.image);
     if (image) edit.image = image;
@@ -388,6 +407,15 @@ function sanitizeEdit(raw: unknown): ModeEdit | null {
   if (Object.keys(sources).length) edit.playlistSources = sources;
 
   return edit;
+}
+
+/** Uploaded stills: safe ids → raster `data:image/…` URLs only, size-capped. */
+export function sanitizeUploads(raw: unknown): Uploads {
+  return idRecord(raw, (value) =>
+    typeof value === 'string' && value.startsWith('data:') && value.length <= MAX_IMAGE_LENGTH
+      ? safeCustomImage(value)
+      : null,
+  );
 }
 
 /**

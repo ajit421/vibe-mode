@@ -18,7 +18,9 @@ export function StatsPanel() {
     <dl className="vm-panel pointer-events-auto hidden gap-2.5 rounded-2xl px-5 py-4 lg:grid">
       {stats.map((stat, index) => (
         <m.div
-          key={stat.label}
+          // Position as well as label: visitors type these now, and two lines
+          // with the same label must still be two rows.
+          key={`${index}-${stat.label}`}
           className="flex items-center gap-3"
           initial={motionEnabled ? { opacity: 0, x: -8 } : false}
           animate={{ opacity: 1, x: 0 }}

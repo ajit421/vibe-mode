@@ -50,6 +50,7 @@ export function AppShell() {
       arrowright: () => player.next(),
       m: () => player.toggleMute(),
       '?': () => setShortcutsOpen((open) => !open),
+      c: () => setCustomizeOpen(true),
       'mod+k': () => setSelectorOpen(!selectorOpen),
       escape: () => {
         setSettingsOpen(false);
@@ -126,7 +127,10 @@ export function AppShell() {
           </AnimatePresence>
         </main>
 
-        <MusicPlayer onOpenSettings={() => setSettingsOpen(true)} />
+        <MusicPlayer
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenCustomize={() => setCustomizeOpen(true)}
+        />
 
         <ToastViewport />
         <TransitionOverlay />

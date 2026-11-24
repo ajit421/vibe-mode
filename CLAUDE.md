@@ -18,8 +18,11 @@ Requires Node 20+.
 | `npm run lint` | ESLint over `**/*.{ts,tsx}` |
 | `npm run preview` | Serve the production build |
 | `npm run og` | Regenerate `public/og.png` |
+| `npm test` | Vitest, once (`vitest run`) |
 
-There is **no test runner configured** — no Jest/Vitest, no test files. `npm run typecheck && npm run lint` is the whole verification story. Don't invent a test command; if tests are wanted, that's a new dependency and worth asking about first.
+Verification is `npm run typecheck && npm run lint && npm test`. Tests live next to the code as `*.test.ts`; today they cover the customisation sanitiser, link parsing and the time-of-day default ([customize.test.ts](src/themes/customize.test.ts)). Vitest runs through `vite.config.ts` — its `test` block points `lucide-react` at its ESM build, because React itself isn't installed (Preact) and lucide's CommonJS build `require`s it.
+
+On Windows, run `npm test` from PowerShell, cmd or the VS Code terminal, not Git Bash: Git Bash's lowercase `/d/` drive path makes Vitest load itself twice and every test fails with `Cannot read properties of undefined (reading 'config')`.
 
 Vite reads `.env` only at boot — after editing it, restart `npm run dev`.
 
@@ -61,11 +64,14 @@ Read [src/types/theme.ts](src/types/theme.ts) first — it is the contract, and 
 
 ### Listener customisation layers over the theme files
 
-Visitors have full control from the Customize panel (palette icon in the top bar, lazy-loaded): create blank modes, copy, delete (built-ins go to a restorable bin via `edits[id].deleted`), hide, reorder; edit every text field, icon, heading font, picture, colours, layers and status-readout text; and add / rename / relink / remove any playlist in any mode (built-in playlist edits are per-mode `removedPlaylists` / `playlistNames` / `playlistSources`; the listener's own stay in `customPlaylists` storage). That lives in [src/themes/customize.ts](src/themes/customize.ts): a `Customization` record in localStorage (`vibe-mode.customization`) that `buildThemes(THEMES, customization)` lays over the theme files. The theme files are never mutated — they are the defaults, and "reset" deletes an entry.
+Visitors have full control from the Customize panel (palette icon in the top bar, lazy-loaded): create blank modes, copy, delete (built-ins go to a restorable bin via `edits[id].deleted`), hide, reorder; edit every text field, icon, heading font, picture, colours, layers and status-readout text; and add / rename / relink / remove any playlist in any mode (built-in playlist edits are per-mode `removedPlaylists` / `playlistNames` / `playlistSources`; the listener's own stay in `customPlaylists` storage). That lives in [src/themes/customize.ts](src/themes/customize.ts): a `Customization` record in localStorage (`vibe-mode.customization`) that `buildThemes(THEMES, customization, uploads)` lays over the theme files. The theme files are never mutated — they are the defaults, and "reset" deletes an entry.
 
 - `VibeProvider` exposes `themes` (visible, listener's order — what pickers, number keys and `?mode=` use) and `allThemes` (hidden included). Resolve ids with `findIn(list, id)`, not the static `findTheme`, or a listener's own mode won't survive a reload.
 - `customImage` / `baseId` on `VibeTheme` are **runtime-only** — never set them in a theme file. A listener-added mode (`my-xxxxxxxx`) borrows its `baseId`'s `.env` background, poster and playlists.
-- Everything from storage or an imported backup goes through `sanitizeCustomization` (hex-only colours, `safeCustomImage` for pictures, known ids only). Keep any new editable field behind that sanitiser.
+- Everything from storage or an imported file goes through `sanitizeCustomization` / `sanitizeUploads` (hex-only colours, `safeCustomImage` for pictures, known ids only). Keep any new editable field behind them, and add a case to the test.
+- Uploaded pictures live under their **own** key (`vibe-mode.uploads`, by mode id); the mode's `image` is just the marker `UPLOADED`. Don't put stills back in the customisation record — it is rewritten on every keystroke in the panel.
+- Visitor data (`customization`, `uploads`, `customPlaylists`, `preferences`, `playlistOverrides`) syncs across open tabs via `useLocalStorage(..., syncAcrossTabs)`. Which mode a tab shows does not.
+- "Restore from file" takes a full backup (replaces everything) or a shared single mode (`kind: 'mode'`, always *added* under a new id). The crash screen downloads the same backup before it clears anything.
 
 ### Theming works through CSS custom properties, not components
 
@@ -107,10 +113,8 @@ All reads go through [src/utils/storage.ts](src/utils/storage.ts), which guards 
 - Failure states are worded like a human, never as error codes. One broken playlist must never take the site down.
 - Safe-area insets (`--safe-top` … `--safe-right`) exist because `viewport-fit=cover` is set; any edge-anchored bar has to inset itself back out.
 
-## Note on README.md
-
-[README.md](README.md) is thorough and mostly accurate on env/playlists/theming, but it is **stale on artwork**: it documents a `src/components/visuals/` directory, a `hero.visual` field, a visuals registry, `MiniPreview.tsx`, and per-mode hotspot shortcuts. None of those exist any more. Verify against source before trusting that section.
-
 ## Deploy
 
-Netlify, config committed in [netlify.toml](netlify.toml) (Node 20, SPA fallback so `?mode=` survives a hard refresh, immutable caching for hashed assets, security headers). `.env` does not travel with the repo — the same `VITE_*` variables must be set under Site configuration → Environment variables.
+Netlify, config committed in [netlify.toml](netlify.toml) (Node 20, SPA fallback so `?mode=` survives a hard refresh, immutable caching for hashed assets, `no-cache` for `/sw.js`, security headers).
+
+A hand-written service worker ([public/sw.js](public/sw.js)) makes the site installable and repeat visits instant; it is registered in production only. Pages are network-first (a deploy is never hidden behind a cache), `/assets/*` cache-first and capped, other same-site files stale-while-revalidate; cross-origin requests and range requests are never touched. Bump `VERSION` in it to drop old caches; to retire it, ship one that unregisters itself. `.env` does not travel with the repo — the same `VITE_*` variables must be set under Site configuration → Environment variables.

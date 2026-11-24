@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { DEFAULT_THEME_ID, THEMES } from '@/themes';
+import { DEFAULT_THEME_ID, THEMES, suggestedThemeId } from '@/themes';
 import {
   EMPTY_CUSTOMIZATION,
   TEXT_LIMITS,
+  UPLOADED,
   buildThemes,
   findIn,
   isAddedMode,
@@ -11,33 +12,42 @@ import {
   isRecord,
   newAddedId,
   sanitizeCustomization,
+  sanitizeEdit,
+  sanitizeUploads,
   type Customization,
   type ModeEdit,
+  type Uploads,
 } from '@/themes/customize';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePrefersReducedMotion } from '@/hooks/useMediaQuery';
 import { usePageHidden } from '@/hooks/usePageVisibility';
 import { STORAGE_KEYS, clearStoredPreferences, readStorage } from '@/utils/storage';
 import { readUrlState, syncUrlState } from '@/utils/url';
-import { extractPlaylistId, normaliseSource, sourceFields } from '@/music/resolve';
+import { normaliseSource, sourceFields } from '@/music/resolve';
 import type { VibePlaylist, VibeTheme } from '@/types/theme';
 import {
   DEFAULT_PREFERENCES,
   VibeContext,
   type CustomPlaylist,
+  type ImportResult,
+  type SharedMode,
   type VibeBackup,
   type VibeContextValue,
   type VibePreferences,
 } from './vibe-context';
+import { sanitizeCustomPlaylists, sanitizeOverrides, sanitizePreferences } from './sanitize';
 
 const BUILT_IN_IDS: ReadonlySet<string> = new Set(THEMES.map((theme) => theme.id));
 
 const sanitize = (raw: unknown): Customization => sanitizeCustomization(raw, BUILT_IN_IDS);
 
-/** Like the old `getTheme`, but over the listener's list: always returns something. */
+/** Finds a mode by id or alias in the listener's list; always returns something. */
 function pick(themes: readonly VibeTheme[], id: string | null | undefined): VibeTheme {
   return findIn(themes, id) ?? findIn(themes, DEFAULT_THEME_ID) ?? themes[0] ?? THEMES[0];
 }
+
+/** Room for uploaded pictures: under the ~5 MB browsers give a site, with space left for the rest. */
+const UPLOAD_BUDGET = 3_500_000;
 
 /** How long before the incoming world is swapped in behind the wipe. */
 const SWAP_DELAY_MS = 380;
@@ -68,42 +78,6 @@ function toVibePlaylist(custom: CustomPlaylist): VibePlaylist {
   };
 }
 
-/* ── Backup import: every field is untrusted, so each is rebuilt, not copied ── */
-
-const SAFE_KEY = /^[a-z0-9-]{1,60}$/;
-
-function sanitizePreferences(raw: unknown): Partial<VibePreferences> {
-  if (!isRecord(raw)) return {};
-  const keys = Object.keys(DEFAULT_PREFERENCES) as (keyof VibePreferences)[];
-  return Object.fromEntries(keys.filter((key) => typeof raw[key] === 'boolean').map((key) => [key, raw[key]]));
-}
-
-function sanitizeCustomPlaylists(raw: unknown): Record<string, CustomPlaylist[]> {
-  if (!isRecord(raw)) return {};
-  const result: Record<string, CustomPlaylist[]> = {};
-  for (const [themeId, list] of Object.entries(raw)) {
-    if (!SAFE_KEY.test(themeId) || !Array.isArray(list)) continue;
-    result[themeId] = list.flatMap((item) => {
-      if (!isRecord(item) || typeof item.id !== 'string' || !/^custom-[a-z0-9]{1,16}$/.test(item.id)) return [];
-      const source = typeof item.source === 'string' ? normaliseSource(item.source) : null;
-      if (!source) return [];
-      const name = typeof item.name === 'string' && item.name.trim() ? item.name.slice(0, 60) : 'My playlist';
-      return [{ id: item.id, name, source }];
-    });
-  }
-  return result;
-}
-
-function sanitizeOverrides(raw: unknown): Record<string, string> {
-  if (!isRecord(raw)) return {};
-  const result: Record<string, string> = {};
-  for (const [playlistId, value] of Object.entries(raw)) {
-    const id = typeof value === 'string' ? extractPlaylistId(value) : null;
-    if (SAFE_KEY.test(playlistId) && id) result[playlistId] = id;
-  }
-  return result;
-}
-
 interface Bootstrap {
   themeId: string;
   /** True when the mode came from `?mode=` rather than storage or the default. */
@@ -120,7 +94,12 @@ function bootstrapState(): Bootstrap {
   const url = readUrlState();
   const fromUrl = findIn(themes, url.mode);
   const fromStorage = findIn(themes, readStorage<string | null>(STORAGE_KEYS.selectedTheme, null));
-  const theme = fromUrl ?? fromStorage ?? pick(themes, DEFAULT_THEME_ID);
+  const visible = themes.filter((item) => !isHidden(custom, item.id));
+  const theme =
+    fromUrl ??
+    fromStorage ??
+    findIn(visible, suggestedThemeId(new Date().getHours())) ??
+    pick(themes, DEFAULT_THEME_ID);
 
   return {
     themeId: theme.id,
@@ -145,10 +124,19 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     boot.themeId,
     (stored) => (boot.fromUrl ? boot.themeId : (findIn(boot.themes, stored)?.id ?? boot.themeId)),
   );
+  // The listener's own data syncs across open tabs (see `useLocalStorage`);
+  // which mode each tab is showing does not.
   const [customization, setCustomization] = useLocalStorage<Customization>(
     STORAGE_KEYS.customization,
     EMPTY_CUSTOMIZATION,
     sanitize,
+    true,
+  );
+  const [uploads, setUploads] = useLocalStorage<Uploads>(
+    STORAGE_KEYS.uploads,
+    {},
+    sanitizeUploads,
+    true,
   );
   const [hasEntered, setHasEntered] = useLocalStorage<boolean>(
     STORAGE_KEYS.hasEntered,
@@ -158,14 +146,20 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   const [storedPreferences, setPreferences] = useLocalStorage<VibePreferences>(
     STORAGE_KEYS.preferences,
     DEFAULT_PREFERENCES,
+    sanitizePreferences,
+    true,
   );
+  // Only ever *cleared* now (a Customize relink replaces it): kept so links
+  // people set in the old Settings field still play until they change them.
   const [playlistOverrides, setPlaylistOverrides] = useLocalStorage<Record<string, string>>(
     STORAGE_KEYS.playlistOverrides,
     {},
+    sanitizeOverrides,
+    true,
   );
   const [customPlaylistsByTheme, setCustomPlaylistsByTheme] = useLocalStorage<
     Record<string, CustomPlaylist[]>
-  >(STORAGE_KEYS.customPlaylists, {});
+  >(STORAGE_KEYS.customPlaylists, {}, sanitizeCustomPlaylists, true);
   const [selectedPlaylists, setSelectedPlaylists] = useLocalStorage<Record<string, string>>(
     STORAGE_KEYS.selectedPlaylists,
     {},
@@ -187,7 +181,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   // the result, so a customised mode behaves exactly like a shipped one.
   const built = useMemo(
     () =>
-      buildThemes(THEMES, customization).map((item) => {
+      buildThemes(THEMES, customization, uploads).map((item) => {
         const own = customPlaylistsByTheme[item.id];
         // The listener's own playlists sit after the built-in ones, so adding
         // one never renumbers or displaces what the mode already offered.
@@ -195,7 +189,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
           ? { ...item, playlists: [...item.playlists, ...own.map(toVibePlaylist)] }
           : item;
       }),
-    [customization, customPlaylistsByTheme],
+    [customization, uploads, customPlaylistsByTheme],
   );
   const allThemes = useMemo(
     () => built.filter((item) => !isDeleted(customization, item.id)),
@@ -219,11 +213,6 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     [storedPreferences],
   );
   const motionEnabled = preferences.motion && !systemReducedMotion;
-
-  const customPlaylists = useMemo(
-    () => customPlaylistsByTheme[theme.id] ?? [],
-    [customPlaylistsByTheme, theme.id],
-  );
 
   const playlists = theme.playlists;
 
@@ -350,9 +339,21 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       const wantsSource = patch.source !== undefined;
       const source = wantsSource && patch.source?.trim() ? normaliseSource(patch.source) : null;
       if (wantsSource && patch.source?.trim() && !source) return false;
+      if (wantsSource && isCustomPlaylist(playlistId) && !source) return false;
+
+      // A link set in the old Settings field outranks every other source, so
+      // left in place it would silently keep playing while this panel says
+      // "playing your link". Relinking here is the newer intent, so drop it.
+      if (wantsSource) {
+        setPlaylistOverrides((current) => {
+          if (!(playlistId in current)) return current;
+          const next = { ...current };
+          delete next[playlistId];
+          return next;
+        });
+      }
 
       if (isCustomPlaylist(playlistId)) {
-        if (wantsSource && !source) return false;
         setCustomPlaylistsByTheme((current) => ({
           ...current,
           [modeId]: (current[modeId] ?? []).map((item) =>
@@ -384,7 +385,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       });
       return true;
     },
-    [isCustomPlaylist, setCustomPlaylistsByTheme, setCustomization],
+    [isCustomPlaylist, setCustomPlaylistsByTheme, setCustomization, setPlaylistOverrides],
   );
 
   const setPreference = useCallback(
@@ -394,19 +395,18 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     [setPreferences],
   );
 
-  const setPlaylistOverride = useCallback(
-    (playlistId: string, value: string) => {
-      setPlaylistOverrides((current) => {
-        const next = { ...current };
-        if (value.trim()) next[playlistId] = value.trim();
-        else delete next[playlistId];
-        return next;
-      });
-    },
-    [setPlaylistOverrides],
-  );
-
   /* ── Customising the modes themselves ──────────────────────────────────── */
+
+  const dropUpload = useCallback(
+    (id: string) =>
+      setUploads((current) => {
+        if (!(id in current)) return current;
+        const next = { ...current };
+        delete next[id];
+        return next;
+      }),
+    [setUploads],
+  );
 
   const editMode = useCallback(
     (id: string, patch: ModeEdit) => {
@@ -424,8 +424,26 @@ export function VibeProvider({ children }: { children: ReactNode }) {
         if (patch.colors) next.colors = { ...previous.colors, ...patch.colors };
         return { ...current, edits: { ...current.edits, [id]: next } };
       });
+      // Choosing any other picture (or none) retires the uploaded one, so it
+      // doesn't sit in storage eating the quota for nothing.
+      if ('image' in patch && patch.image !== UPLOADED) dropUpload(id);
     },
-    [setCustomization],
+    [setCustomization, dropUpload],
+  );
+
+  const setUpload = useCallback(
+    (id: string, still: string): boolean => {
+      const others = Object.entries(uploads)
+        .filter(([key]) => key !== id)
+        .reduce((total, [, value]) => total + value.length, 0);
+      // Browsers give a site ~5 MB, and a write over quota is dropped silently,
+      // which would lose this picture *and* every edit after it.
+      if (others + still.length > UPLOAD_BUDGET) return false;
+      setUploads((current) => ({ ...current, [id]: still }));
+      editMode(id, { image: UPLOADED });
+      return true;
+    },
+    [uploads, setUploads, editMode],
   );
 
   const resetMode = useCallback(
@@ -439,8 +457,9 @@ export function VibeProvider({ children }: { children: ReactNode }) {
         if (keep?.name) edits[id] = keep;
         return { ...current, edits };
       });
+      dropUpload(id);
     },
-    [setCustomization],
+    [setCustomization, dropUpload],
   );
 
   const addMode = useCallback(
@@ -517,6 +536,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
           delete next[id];
           return next;
         });
+        dropUpload(id);
       } else {
         // Built-in modes go to the bin rather than vanishing — the theme file
         // is still there, so "Restore" costs nothing and saves a bad click.
@@ -524,7 +544,16 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       }
       if (id === themeId) setThemeId(visible[0].id);
     },
-    [themes, themeId, editMode, setCustomization, setCustomPlaylistsByTheme, setSelectedPlaylists, setThemeId],
+    [
+      themes,
+      themeId,
+      editMode,
+      dropUpload,
+      setCustomization,
+      setCustomPlaylistsByTheme,
+      setSelectedPlaylists,
+      setThemeId,
+    ],
   );
 
   const moveMode = useCallback(
@@ -553,20 +582,75 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       preferences: storedPreferences,
       customPlaylists: customPlaylistsByTheme,
       playlistOverrides,
+      uploads,
     }),
-    [customization, storedPreferences, customPlaylistsByTheme, playlistOverrides],
+    [customization, storedPreferences, customPlaylistsByTheme, playlistOverrides, uploads],
+  );
+
+  const exportMode = useCallback(
+    (id: string): SharedMode | null => {
+      const mode = findIn(allThemes, id);
+      if (!mode) return null;
+      const edit: ModeEdit = { ...customization.edits[id], hidden: undefined, deleted: undefined };
+      // Sharing a built-in mode shares it under its own name, so the friend
+      // gets "Metro Mode", not a copy called nothing.
+      edit.name ||= mode.name;
+      return {
+        app: 'vibe-mode',
+        version: 1,
+        kind: 'mode',
+        baseId: mode.baseId ?? mode.id,
+        edit,
+        playlists: customPlaylistsByTheme[id] ?? [],
+        ...(edit.image === UPLOADED && uploads[id] ? { upload: uploads[id] } : {}),
+      };
+    },
+    [allThemes, customization.edits, customPlaylistsByTheme, uploads],
   );
 
   const importSettings = useCallback(
-    (raw: unknown): boolean => {
-      if (!isRecord(raw) || raw.app !== 'vibe-mode') return false;
+    (raw: unknown): ImportResult => {
+      if (!isRecord(raw) || raw.app !== 'vibe-mode') return null;
+
+      // One shared mode is *added* under a fresh id: someone sending you their
+      // mode must never be able to overwrite yours.
+      if (raw.kind === 'mode') {
+        const baseId =
+          typeof raw.baseId === 'string' && BUILT_IN_IDS.has(raw.baseId) ? raw.baseId : null;
+        const edit = sanitizeEdit(raw.edit);
+        if (!baseId || !edit) return null;
+        const id = newAddedId();
+        const upload = sanitizeUploads({ [id]: raw.upload })[id];
+        if (edit.image === UPLOADED && !upload) edit.image = undefined;
+        edit.hidden = undefined;
+        edit.deleted = undefined;
+
+        const playlists = sanitizeCustomPlaylists({ [id]: raw.playlists })[id] ?? [];
+        setCustomization((current) => ({
+          added: [...current.added, { id, baseId }],
+          edits: { ...current.edits, [id]: edit },
+          order: [...buildThemes(THEMES, current).map((t) => t.id), id],
+        }));
+        if (upload) setUploads((current) => ({ ...current, [id]: upload }));
+        // Fresh ids, so a playlist link set on the sender's side can't clash
+        // with one already saved here.
+        if (playlists.length) {
+          setCustomPlaylistsByTheme((current) => ({
+            ...current,
+            [id]: playlists.map((item) => ({ ...item, id: newCustomId() })),
+          }));
+        }
+        return { kind: 'mode', id };
+      }
+
       setCustomization(sanitize(raw.customization));
-      setPreferences({ ...DEFAULT_PREFERENCES, ...sanitizePreferences(raw.preferences) });
+      setUploads(sanitizeUploads(raw.uploads));
+      setPreferences(sanitizePreferences(raw.preferences));
       setCustomPlaylistsByTheme(sanitizeCustomPlaylists(raw.customPlaylists));
       setPlaylistOverrides(sanitizeOverrides(raw.playlistOverrides));
-      return true;
+      return { kind: 'backup' };
     },
-    [setCustomization, setPreferences, setCustomPlaylistsByTheme, setPlaylistOverrides],
+    [setCustomization, setUploads, setPreferences, setCustomPlaylistsByTheme, setPlaylistOverrides],
   );
 
   const resetEverything = useCallback(() => {
@@ -576,6 +660,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     setCustomPlaylistsByTheme({});
     setSelectedPlaylists({});
     setCustomization(EMPTY_CUSTOMIZATION);
+    setUploads({});
     setThemeId(DEFAULT_THEME_ID);
     setHasEntered(false);
     setSelectorOpen(false);
@@ -585,6 +670,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     setCustomPlaylistsByTheme,
     setSelectedPlaylists,
     setCustomization,
+    setUploads,
     setThemeId,
     setHasEntered,
   ]);
@@ -665,7 +751,6 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       playlist,
       playlistId: playlist?.id ?? null,
       selectPlaylist,
-      customPlaylists,
       addCustomPlaylist,
       removePlaylist,
       updatePlaylist,
@@ -683,7 +768,6 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       motionEnabled,
       systemReducedMotion,
       playlistOverrides,
-      setPlaylistOverride,
       customization,
       editMode,
       resetMode,
@@ -692,6 +776,8 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       moveMode,
       exportSettings,
       importSettings,
+      exportMode,
+      setUpload,
       resetEverything,
     }),
     [
@@ -702,7 +788,6 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       playlists,
       playlist,
       selectPlaylist,
-      customPlaylists,
       addCustomPlaylist,
       removePlaylist,
       updatePlaylist,
@@ -718,7 +803,6 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       motionEnabled,
       systemReducedMotion,
       playlistOverrides,
-      setPlaylistOverride,
       customization,
       editMode,
       resetMode,
@@ -727,6 +811,8 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       moveMode,
       exportSettings,
       importSettings,
+      exportMode,
+      setUpload,
       resetEverything,
     ],
   );

@@ -1,4 +1,6 @@
 import type { VibePlaylist } from '@/types/theme';
+import { ENV, envName } from '@/utils/env';
+import { normaliseSource, sourceFields } from '@/music/resolve';
 
 /* ══════════════════════════════════════════════════════════════════════════
  *  PLAYLIST CONFIGURATION
@@ -28,15 +30,15 @@ import type { VibePlaylist } from '@/types/theme';
  *
  *  The playlist must be Public or Unlisted — private ones cannot be embedded.
  *
- *  A comma-separated value is treated as individual videos instead, which is
+ *  One or more videos work too (ids or links, comma-separated), which is
  *  useful before you have made a real playlist:
  *
  *      VITE_PLAYLIST_METRO_VIBES=dQw4w9WgXcQ,jNQXAC9IVRw
  *
  *  ── Overriding without touching anything ─────────────────────────────────
- *  Listeners can point any playlist somewhere else from the in-app Settings
- *  panel (⚙ in the top bar). That is stored in their browser only and always
- *  wins over `.env`; clearing the field falls back to the `.env` default.
+ *  Listeners can relink, rename or remove any playlist from the in-app
+ *  Customize panel (palette icon in the top bar). That is stored in their
+ *  browser only and wins over `.env`; emptying the link goes back to it.
  *
  *  Anything left unset degrades gracefully: the mode still looks and behaves
  *  correctly, and the player explains exactly which variable is missing.
@@ -48,22 +50,8 @@ import type { VibePlaylist } from '@/types/theme';
  */
 export type PlaylistDefinition = Omit<VibePlaylist, 'youtubePlaylistId' | 'videoIds'>;
 
-/**
- * Vite inlines the whole `import.meta.env` object at build time, not just the
- * property accesses it can see, so looking a key up dynamically is safe and
- * lets the variable name be derived from the playlist id.
- */
-const ENV = import.meta.env as unknown as Record<string, string | undefined>;
-
 /** `'metro-vibes'` → `'VITE_PLAYLIST_METRO_VIBES'`. */
-export function envVarFor(playlistId: string): string {
-  return `VITE_PLAYLIST_${playlistId.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
-}
-
-function readEnvValue(playlistId: string): string | undefined {
-  const value = ENV[envVarFor(playlistId)]?.trim();
-  return value ? value : undefined;
-}
+export const envVarFor = (playlistId: string): string => envName('VITE_PLAYLIST', playlistId);
 
 /**
  * Playlists grouped by theme id. Adding a new theme? Add a matching key here.
@@ -200,18 +188,11 @@ export function playlistsFor(themeId: string): VibePlaylist[] {
   if (!list) return [];
 
   return list.map((playlist) => {
-    const value = readEnvValue(playlist.id);
-    if (!value) return playlist;
-
-    // Commas mean a hand-picked set of videos rather than a playlist.
-    if (value.includes(',')) {
-      const videoIds = value
-        .split(',')
-        .map((entry) => entry.trim())
-        .filter(Boolean);
-      return { ...playlist, videoIds };
-    }
-
-    return { ...playlist, youtubePlaylistId: value };
+    // Same parser as a link typed into the site, so `.env` accepts the same
+    // things: a playlist id or link, or one or more video ids or links. The
+    // old "a comma means videos" rule read a single video as a playlist id,
+    // which never parsed — the playlist just sat there "not set up".
+    const source = normaliseSource(ENV[envVarFor(playlist.id)] ?? '');
+    return source ? { ...playlist, ...sourceFields(source) } : playlist;
   });
 }

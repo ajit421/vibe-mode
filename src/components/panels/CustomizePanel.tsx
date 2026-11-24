@@ -13,6 +13,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Share2,
   Trash2,
   TriangleAlert,
   Undo2,
@@ -30,6 +31,7 @@ import {
   MAX_IMAGE_LENGTH,
   MODE_ICONS,
   TEXT_LIMITS,
+  UPLOADED,
   isAddedMode,
   isHidden,
   pairsToLines,
@@ -38,6 +40,7 @@ import {
 } from '@/themes/customize';
 import type { VibeColors, VibeEffects, VibePlaylist } from '@/types/theme';
 import { cn } from '@/utils/cn';
+import { downloadJson } from '@/utils/backup';
 
 const COLOR_LABELS: Record<keyof VibeColors, string> = {
   primary: 'Main',
@@ -64,13 +67,6 @@ const EFFECT_LABELS: Record<keyof VibeEffects, string> = {
 /** The four colours most people mean by "change the colours"; the rest fold away. */
 const MAIN_COLORS = COLOR_KEYS.slice(0, 4);
 const MORE_COLORS = COLOR_KEYS.slice(4);
-
-/**
- * Browsers give a site ~5 MB of localStorage, and a write over quota is
- * dropped silently — which here would lose every edit since. Uploads are the
- * only thing big enough to get near it, so they are checked against this.
- */
-const STORAGE_BUDGET = 4_000_000;
 
 const INPUT =
   'w-full min-w-0 rounded-lg border border-line bg-canvas/60 px-3 py-2 text-base text-ink placeholder:text-muted/60 focus-visible:border-primary/60 sm:text-sm';
@@ -178,7 +174,9 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
     moveMode,
     selectTheme,
     exportSettings,
+    exportMode,
     importSettings,
+    setUpload,
   } = useVibe();
   const { push } = useToast();
 
@@ -206,7 +204,9 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
 
   useEffect(() => {
     const current = customization.edits[mode.id]?.image;
-    setImageDraft(typeof current === 'string' && !current.startsWith('data:') ? current : '');
+    // Only a link the visitor typed goes back in the field, never an upload.
+    const typed = typeof current === 'string' && current !== UPLOADED && !current.startsWith('data:');
+    setImageDraft(typed ? current : '');
     setImageError(null);
   }, [mode.id, customization.edits]);
 
@@ -216,7 +216,7 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
       ? 'Default picture'
       : edit.image === null
         ? 'No picture — colour gradient'
-        : edit.image.startsWith('data:')
+        : edit.image === UPLOADED || edit.image.startsWith('data:')
           ? 'Your uploaded picture'
           : 'Your linked picture';
 
@@ -234,12 +234,10 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
     if (!file) return;
     try {
       const data = await encodeUpload(file);
-      const others = JSON.stringify(customization).length - (edit.image?.length ?? 0);
-      if (data.length > MAX_IMAGE_LENGTH || others + data.length > STORAGE_BUDGET) {
+      if (data.length > MAX_IMAGE_LENGTH || !setUpload(mode.id, data)) {
         setImageError('No room left to save that picture here. Remove another uploaded one first.');
         return;
       }
-      editMode(mode.id, { image: data });
       setImageError(null);
       push('Picture saved to this mode.', 'CUSTOMIZE');
     } catch {
@@ -247,30 +245,31 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
     }
   };
 
-  const downloadBackup = () => {
-    const blob = new Blob([JSON.stringify(exportSettings(), null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'vibe-mode-settings.json';
-    link.click();
-    // Revoking in the same tick can cancel the download in some browsers.
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const shareMode = () => {
+    const shared = exportMode(mode.id);
+    if (!shared) return;
+    const slug = mode.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'mode';
+    downloadJson(shared, `${slug}.vibe-mode.json`);
+    push(`Saved “${mode.name}” as a file. Send it — they add it with “Restore from file”.`, 'SHARE');
   };
 
-  const restoreBackup = async (file: File | undefined) => {
+  const restoreFromFile = async (file: File | undefined) => {
     if (!file) return;
     try {
-      if (importSettings(JSON.parse(await file.text()))) {
+      const result = importSettings(JSON.parse(await file.text()));
+      if (result?.kind === 'mode') {
+        setSelectedId(result.id);
+        push('Mode added from the file — find it at the end of the list.', 'IMPORT');
+        return;
+      }
+      if (result?.kind === 'backup') {
         push('Settings restored from your file.', 'IMPORT');
         return;
       }
     } catch {
       /* falls through to the message below */
     }
-    push('That file isn’t a Vibe Mode settings backup.', 'IMPORT');
+    push('That file isn’t a Vibe Mode backup or shared mode.', 'IMPORT');
   };
 
   return (
@@ -397,6 +396,10 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
             >
               <Copy className="size-3.5" />
               Make a copy
+            </button>
+            <button type="button" className={SMALL_BUTTON} onClick={shareMode}>
+              <Share2 className="size-3.5" />
+              Share
             </button>
             <ConfirmButton
               label="Reset"
@@ -702,11 +705,16 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
       <section className="mt-6 flex flex-col gap-2 border-t border-line/60 pt-4">
         <h3 className="vm-label text-muted">Backup</h3>
         <p className="text-xs text-muted">
-          Everything you changed — modes, settings, your playlists — in one file. Use it to move to
-          another browser or device, or to undo an experiment.
+          Everything you changed — modes, pictures, settings, your playlists — in one file. Use it
+          to move to another browser or device, or to undo an experiment. “Restore from file” also
+          takes a mode someone shared with you, and adds it without touching yours.
         </p>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={SMALL_BUTTON} onClick={downloadBackup}>
+          <button
+            type="button"
+            className={SMALL_BUTTON}
+            onClick={() => downloadJson(exportSettings(), 'vibe-mode-settings.json')}
+          >
             <Download className="size-3.5" />
             Download my settings
           </button>
@@ -720,7 +728,7 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
             accept="application/json,.json"
             className="hidden"
             onChange={(event) => {
-              void restoreBackup(event.target.files?.[0]);
+              void restoreFromFile(event.target.files?.[0]);
               event.target.value = '';
             }}
           />

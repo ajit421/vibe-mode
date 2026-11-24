@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 import tailwindcss from '@tailwindcss/vite';
@@ -58,6 +59,14 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+  },
+  test: {
+    // lucide-react has no `exports` map, so Node-side tools pick its CommonJS
+    // build, whose `require('react')` fails — React itself isn't installed
+    // since the move to Preact. Point the tests at its ESM build and run it
+    // through Vite, so the `react` → `preact/compat` alias applies inside it.
+    alias: [{ find: /^lucide-react$/, replacement: 'lucide-react/dist/esm/lucide-react.js' }],
+    server: { deps: { inline: [/lucide-react/] } },
   },
   build: {
     target: 'es2020',

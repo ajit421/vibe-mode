@@ -54,8 +54,10 @@ export function PlaylistChips({ variant = 'hero' }: PlaylistChipsProps) {
                 : own
                   ? // A custom playlist has no env variable behind it — the
                     // only thing that can be wrong is what was pasted in.
-                    `${playlist.name} — that link didn’t resolve. Edit it in Settings.`
-                  : `${playlist.name} — set ${envVarFor(playlist.id)} in .env, or add your own from Settings`
+                    `${playlist.name} — that link didn’t resolve. Fix it in Customize.`
+                  : import.meta.env.DEV
+                    ? `${playlist.name} — set ${envVarFor(playlist.id)} in .env, or add its link in Customize`
+                    : `${playlist.name} — not set up yet. Add its link in Customize.`
             }
             className={cn(
               // `pointer-events-auto`: in the world layout these sit inside a

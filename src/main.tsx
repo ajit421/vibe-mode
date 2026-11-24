@@ -11,3 +11,13 @@ createRoot(container).render(
     <App />
   </StrictMode>,
 );
+
+// Installable app + instant repeat visits (see public/sw.js). Production only:
+// in development a service worker would serve stale files over hot reload.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* Unsupported or blocked — the site works the same without it. */
+    });
+  });
+}

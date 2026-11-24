@@ -29,23 +29,14 @@
  * ══════════════════════════════════════════════════════════════════════════ */
 
 import type { VibeTheme } from '@/types/theme';
+import { ENV, envName } from '@/utils/env';
 
-/**
- * Vite inlines the whole `import.meta.env` object at build time, not just the
- * property accesses it can see, so looking a key up dynamically is safe and
- * lets the variable name be derived from the theme id.
- */
-const ENV = import.meta.env as unknown as Record<string, string | undefined>;
 
 /** `'judaad-house'` → `'VITE_IMAGE_JUDAAD_HOUSE'`. */
-export function imageVarFor(themeId: string): string {
-  return `VITE_IMAGE_${themeId.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
-}
+export const imageVarFor = (themeId: string): string => envName('VITE_IMAGE', themeId);
 
 /** `'judaad-house'` → `'VITE_POSTER_JUDAAD_HOUSE'`. */
-export function posterVarFor(themeId: string): string {
-  return `VITE_POSTER_${themeId.replace(/[^a-zA-Z0-9]+/g, '_').toUpperCase()}`;
-}
+export const posterVarFor = (themeId: string): string => envName('VITE_POSTER', themeId);
 
 /**
  * Only `http(s)` and site-relative paths are allowed through.
