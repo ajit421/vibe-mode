@@ -226,7 +226,7 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
             embed inside it is never remounted. */}
         {!minimised && (
           <div className="flex items-center gap-3 px-4 pt-2 sm:px-6">
-            <span className="w-10 shrink-0 text-right font-mono text-[0.65rem] text-muted tabular-nums">
+            <span className="w-10 shrink-0 text-right font-mono text-xs text-muted tabular-nums">
               {formatTime(progress)}
             </span>
             <Slider
@@ -239,7 +239,7 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
               valueText={`${formatTime(progress)} of ${formatTime(duration)}`}
               className="flex-1"
             />
-            <span className="w-10 shrink-0 font-mono text-[0.65rem] text-muted tabular-nums">
+            <span className="w-10 shrink-0 font-mono text-xs text-muted tabular-nums">
               {formatTime(duration)}
             </span>
           </div>

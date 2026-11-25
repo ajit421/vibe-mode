@@ -82,7 +82,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
 
           <Switch
             label="Clock"
-            description="The time and date in the top corner."
+            description="The time and date in the top corner, on larger screens — a phone already shows the time."
             checked={preferences.clock}
             onChange={(value) => setPreference('clock', value)}
           />

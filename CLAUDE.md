@@ -128,6 +128,8 @@ All reads go through [src/utils/storage.ts](src/utils/storage.ts), which guards 
 - Comments in this codebase explain *why*, often at length, and frequently record a decision that was tried and reversed. When changing something with such a comment above it, read it first — it usually names the failure mode you are about to reintroduce. Match that density when adding non-obvious code.
 - Failure states are worded like a human, never as error codes. One broken playlist must never take the site down.
 - Safe-area insets (`--safe-top` … `--safe-right`) exist because `viewport-fit=cover` is set; any edge-anchored bar has to inset itself back out.
+- Every panel is a native modal `<dialog>` ([Modal.tsx](src/components/ui/Modal.tsx), `showModal()`): the browser owns focus, the inert page, Escape and Android Back — don't add a focus trap, `role="dialog"` or z-index games. Toasts sit behind an open panel, so the panel shows its own feedback in a `role="status"` line (toasts pushed while it's open).
+- Touch targets: `.vm-tap` grows the *hit area* to 44px on `pointer: coarse` with an invisible `::after`, not the control itself; keep 8px between neighbours so grown areas don't overlap.
 
 ## Deploy
 

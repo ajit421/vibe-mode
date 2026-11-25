@@ -98,7 +98,7 @@ export function ThemeCard({
         </span>
 
         <div
-          className="mt-auto flex items-center gap-1.5 pt-1.5 font-mono text-[0.65rem]"
+          className="mt-auto flex items-center gap-1.5 pt-1.5 font-mono text-xs"
           style={{ color: theme.colors.muted }}
         >
           <ListMusic className="size-3" />

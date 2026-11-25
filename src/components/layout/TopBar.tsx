@@ -58,22 +58,25 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: Top
           <button
             type="button"
             onClick={leaveToLanding}
-            className="min-w-0 rounded-lg text-left transition-opacity hover:opacity-80"
+            className="vm-tap min-w-0 rounded-lg text-left transition-opacity hover:opacity-80"
             aria-label={`${theme.name} — back to all modes`}
           >
             {/* The mode's status line lives up here with the name it belongs
                 to, rather than down in the panel. Truncated rather than
-                wrapped — it must stay one line beside the title. */}
-            <span className="vm-label block truncate text-[0.6rem] text-primary/85">
+                wrapped — it must stay one line beside the title. The name
+                itself wraps to a second, balanced line on a narrow phone
+                instead: a heading cut to "OFFICE MO…" no longer says where
+                you are. */}
+            <span className="vm-label block truncate text-[0.6875rem] text-primary/85">
               {theme.hero.kicker}
             </span>
-            <h1 className="vm-glow-text truncate font-display text-[clamp(1.375rem,4.6vw,3.5rem)] leading-none font-bold tracking-tight text-ink uppercase">
+            <h1 className="vm-glow-text line-clamp-2 text-balance font-display text-[clamp(1.375rem,4.6vw,3.5rem)] leading-none font-bold tracking-tight text-ink uppercase">
               {theme.name}
             </h1>
           </button>
         )}
 
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {/* Date and time, always on — not behind the status-readout toggle.
               The strip that toggle controls is a decorative block down in the
               layout; this is the one fact you actually glance up for. The date
@@ -101,7 +104,7 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: Top
               // Both labels below are hidden on small screens, which would
               // leave this as an unnamed icon-only button on a phone.
               aria-label={`Change vibe — currently ${theme.name}`}
-              className="vm-panel group flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-3 transition-colors hover:border-primary/50"
+              className="vm-panel vm-tap group flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-3 transition-colors hover:border-primary/50"
             >
               <Icon className="size-3.5 text-primary" />
               <span className="hidden text-xs font-medium text-ink sm:inline">
