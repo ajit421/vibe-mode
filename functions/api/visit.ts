@@ -3,7 +3,7 @@ import { classify, countryOf, type Hints } from '../../server/ua';
 
 // Counts a tab opening the site, by day, browser, system, device and country
 // (migrations/0006_visits.sql). Anonymous: it adds 1 to a bucket and keeps
-// nothing about who asked. Sent once per tab by src/components/ListenPing.tsx.
+// nothing about who asked. Sent once per tab by src/components/Analytics.tsx.
 //
 // Cost: one billed request and one D1 write per tab opened. Bots are left out
 // (most don't run the page's script anyway). Like /api/listen, anyone can

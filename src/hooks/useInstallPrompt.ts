@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { track } from '@/utils/analytics';
 
 /**
  * "Install as an app", offered only where the browser can actually do it.
@@ -62,6 +63,7 @@ export function useInstallPrompt() {
     try {
       if (hasWebInstall()) {
         await (navigator as InstallableNavigator).install?.();
+        track('install', 'accepted');
         return;
       }
       // Single-use: drop it before awaiting so a second click can't reuse it.
@@ -70,7 +72,8 @@ export function useInstallPrompt() {
       notify();
       if (!prompt) return;
       await prompt.prompt();
-      await prompt.userChoice;
+      const { outcome } = await prompt.userChoice;
+      track('install', outcome);
     } catch (error) {
       // Cancelling is a normal choice, not an error worth reporting.
       if (!(error instanceof DOMException && error.name === 'AbortError')) console.error(error);

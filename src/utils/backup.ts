@@ -1,5 +1,6 @@
 import type { VibeBackup } from '@/state/vibe-context';
 import { STORAGE_KEYS, readStorage } from './storage';
+import { track } from './analytics';
 
 /** Hands the visitor a JSON file to keep. */
 export function downloadJson(data: unknown, filename: string): void {
@@ -9,6 +10,8 @@ export function downloadJson(data: unknown, filename: string): void {
   link.href = url;
   link.download = filename;
   link.click();
+  // The kind of file, never its name: a shared mode's file is named after the mode.
+  track('download', filename === 'vibe-mode-settings.json' ? 'settings' : filename === 'vibe-mode-backup.json' ? 'crash backup' : 'shared mode');
   // Revoking in the same tick can cancel the download in some browsers.
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

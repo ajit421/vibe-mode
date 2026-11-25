@@ -82,7 +82,7 @@ interface Count {
   n: number;
 }
 
-/** An anonymous tab playing music: no name, no profile — see ListenPing.tsx. */
+/** An anonymous tab playing music: no name, no profile — see src/components/Analytics.tsx. */
 interface Playing {
   mode: string;
   mode_name: string | null;
@@ -138,6 +138,41 @@ interface Overview {
     device: Count[];
     country: Count[];
   };
+  engagement: Engagement;
+}
+
+/** One tab's visit (functions/api/session.ts): no id, nothing that links it to another. */
+interface SessionRow {
+  started_at: number;
+  last_at: number;
+  open_ms: number;
+  visible_ms: number;
+  listened_ms: number;
+  first_mode: string | null;
+  browser: string | null;
+  os: string | null;
+  device: string | null;
+  country: string | null;
+}
+
+/** How long people stay and listen, and what they use (migrations/0007_sessions.sql). */
+interface Engagement {
+  sessions_day: number;
+  sessions_week: number;
+  avg_visible_ms: number;
+  avg_open_ms: number;
+  avg_listened_ms: number;
+  visible_ms_week: number;
+  listened_ms_day: number;
+  listened_ms_week: number;
+  listened_ms_month: number;
+  perDay: { day: string; ms: number }[];
+  modes: { mode: string; name: string | null; ms: number }[];
+  playlists: { name: string | null; mode: string | null; ms: number }[];
+  tracks: { name: string; mode: string | null; ms: number }[];
+  events: { name: string; detail: string; n: number }[];
+  sessions: SessionRow[];
+  lengths: Count[];
 }
 
 interface Detail {
@@ -192,6 +227,50 @@ function bytes(n: number): string {
 
 const shortId = (id: string) => id.slice(0, 8);
 
+/** 45 s · 12 min · 3 h 5 min */
+function duration(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (ms < 60_000) return `${Math.round(ms / 1000)} s`;
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
+}
+
+const dayLabel = (day: string) =>
+  new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+
+/** What each counted use means, in words (src/utils/analytics.ts → track()). Unknown names show as they are. */
+const USES: Record<string, string> = {
+  mode: 'Mode shown',
+  playlist: 'Playlist picked',
+  enter: 'Entered from the landing screen',
+  song_start: 'Song started',
+  skip: 'Skipped a song',
+  shuffle: 'Shuffle',
+  repeat: 'Repeat',
+  mute: 'Mute',
+  player_error: 'Player error',
+  panel: 'Opened a panel',
+  shortcut: 'Keyboard shortcut',
+  preference: 'Changed a setting',
+  mode_added: 'Added a mode',
+  mode_deleted: 'Deleted a mode',
+  mode_reset: 'Reset a mode',
+  playlist_added: 'Added a playlist',
+  restore: 'Restored from a file',
+  download: 'Downloaded a file',
+  reset_everything: 'Reset everything',
+  sign_in: 'Signed in',
+  sync_link_made: 'Made a sync link',
+  ai_link_made: 'Made an AI assistant link',
+  ai_control: 'Let AI control a tab',
+  passkey_added: 'Added a passkey',
+  password_set: 'Set or changed a password',
+  sign_out_others: 'Signed out other devices',
+  cloud_deleted: 'Deleted the cloud copy',
+  install: 'Install as an app',
+  crash: 'The app crashed',
+};
+
 const regions = new Intl.DisplayNames(undefined, { type: 'region' });
 /** 'IN' → 'India'. Cloudflare also sends 'XX' (unknown) and 'T1' (Tor), which aren't regions. */
 function countryName(code: string | null): string {
@@ -213,6 +292,8 @@ function Breakdown({
   total,
   label = (name) => name,
   shares = true,
+  format = String,
+  empty = 'No visits yet.',
 }: {
   title: string;
   rows: Count[];
@@ -220,22 +301,25 @@ function Breakdown({
   label?: (name: string) => string;
   /** False when `total` is only the scale (visits per day), not the whole. */
   shares?: boolean;
+  /** How a value reads: a count by default, or a duration for listening time. */
+  format?: (n: number) => string;
+  empty?: string;
 }) {
   return (
     <div className="rounded-xl border border-zinc-800 p-4">
       <h3 className="text-sm font-medium text-zinc-300">{title}</h3>
       {rows.length === 0 ? (
-        <p className="mt-2 text-sm text-zinc-500">No visits yet.</p>
+        <p className="mt-2 text-sm text-zinc-500">{empty}</p>
       ) : (
         <ul className="mt-3 flex flex-col gap-2.5">
-          {rows.map((row) => {
+          {rows.map((row, index) => {
             const share = total ? Math.round((row.n / total) * 100) : 0;
             return (
-              <li key={row.name} className="flex flex-col gap-1">
+              <li key={`${index}:${row.name}`} className="flex flex-col gap-1">
                 <div className="flex justify-between gap-3 text-sm">
                   <span className="truncate">{label(row.name)}</span>
                   <span className="text-zinc-400 tabular-nums">
-                    {shares ? `${row.n} · ${share}%` : row.n}
+                    {shares ? `${format(row.n)} · ${share}%` : format(row.n)}
                   </span>
                 </div>
                 {/* A native meter, not a styled div: the page's CSP allows no inline styles. */}
@@ -464,6 +548,25 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
             value={t.visits_day}
             hint={`tabs that opened the site · ${t.visits_week} in 7 days · ${t.visits_month} in 30`}
           />
+          {data && (
+            <>
+              <Stat
+                label="Listened today"
+                value={duration(data.engagement.listened_ms_day)}
+                hint={`all visitors · ${duration(data.engagement.listened_ms_week)} in 7 days · ${duration(data.engagement.listened_ms_month)} in 30`}
+              />
+              <Stat
+                label="Time on site, per visit"
+                value={duration(data.engagement.avg_visible_ms)}
+                hint={`average on screen, last 7 days · ${data.engagement.sessions_week} visits · ${duration(data.engagement.visible_ms_week)} in all`}
+              />
+              <Stat
+                label="Listening, per visit"
+                value={duration(data.engagement.avg_listened_ms)}
+                hint={`average, last 7 days · tab open ${duration(data.engagement.avg_open_ms)} on average`}
+              />
+            </>
+          )}
           <Stat
             label="Visitors with a cloud copy"
             value={t.visitors}
@@ -521,6 +624,92 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
         </Section>
       )}
 
+      {data && (
+        <Section title={`Listening · last ${data.visits.days} days`}>
+          <div className="grid gap-3 lg:grid-cols-3">
+            <Breakdown
+              title="Modes"
+              rows={data.engagement.modes.map((row) => ({ name: row.name ?? row.mode, n: row.ms }))}
+              total={data.engagement.listened_ms_month}
+              format={duration}
+              empty="Nothing played yet."
+            />
+            <Breakdown
+              title="Playlists"
+              rows={data.engagement.playlists.map((row) => ({ name: `${row.name ?? '—'} · ${row.mode ?? '—'}`, n: row.ms }))}
+              total={data.engagement.listened_ms_month}
+              format={duration}
+              empty="Nothing played yet."
+            />
+            <Breakdown
+              title="Songs"
+              rows={data.engagement.tracks.map((row) => ({ name: row.name, n: row.ms }))}
+              total={data.engagement.listened_ms_month}
+              format={duration}
+              empty="Nothing played yet."
+            />
+          </div>
+          {data.engagement.perDay.length > 0 && (
+            <Breakdown
+              title="Listening per day (UTC)"
+              rows={data.engagement.perDay.map((row) => ({ name: row.day, n: row.ms }))}
+              total={Math.max(...data.engagement.perDay.map((row) => row.ms))}
+              shares={false}
+              format={duration}
+              label={dayLabel}
+            />
+          )}
+        </Section>
+      )}
+
+      {data && (
+        <Section title="How long visits last · last 7 days">
+          <Breakdown
+            title="Time on screen per visit"
+            rows={data.engagement.lengths}
+            total={data.engagement.lengths.reduce((sum, row) => sum + row.n, 0)}
+            empty="No visits reported yet — a visit is reported when its tab is hidden or closed."
+          />
+        </Section>
+      )}
+
+      {data && (
+        <Section title={`What people use · last ${data.visits.days} days`}>
+          <Table head={['Use', 'Detail', 'Times']} empty={data.engagement.events.length === 0 ? 'Nothing counted yet.' : undefined}>
+            {data.engagement.events.map((row) => (
+              <tr key={`${row.name}:${row.detail}`}>
+                <td className={TD}>{USES[row.name] ?? row.name}</td>
+                <td className="px-3 py-2">{row.detail || <span className="text-zinc-500">—</span>}</td>
+                <td className={TD}>{row.n}</td>
+              </tr>
+            ))}
+          </Table>
+        </Section>
+      )}
+
+      {data && (
+        <Section title="Recent visits">
+          <Table
+            head={['Started', 'On screen', 'Tab open', 'Listening', 'Landed on', 'On', 'Where']}
+            empty={data.engagement.sessions.length === 0 ? 'No visits reported yet.' : undefined}
+          >
+            {data.engagement.sessions.map((row, index) => (
+              <tr key={index}>
+                <td className={TD}>
+                  <Time ms={row.started_at} now={now} />
+                </td>
+                <td className={TD}>{duration(row.visible_ms)}</td>
+                <td className={TD}>{duration(row.open_ms)}</td>
+                <td className={TD}>{row.listened_ms ? duration(row.listened_ms) : '—'}</td>
+                <td className={TD}>{row.first_mode ?? '—'}</td>
+                <td className={TD}>{row.browser ? `${row.browser} · ${row.os} · ${capital(row.device ?? '')}` : '—'}</td>
+                <td className={TD}>{countryName(row.country)}</td>
+              </tr>
+            ))}
+          </Table>
+        </Section>
+      )}
+
       {data && t && (
         <Section title={`Browsers, systems and devices · last ${data.visits.days} days`}>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -535,7 +724,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
               rows={data.visits.perDay.map((row) => ({ name: row.day, n: row.n }))}
               total={Math.max(...data.visits.perDay.map((row) => row.n))}
               shares={false}
-              label={(day) => new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })}
+              label={dayLabel}
             />
           )}
         </Section>

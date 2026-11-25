@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { track } from '@/utils/analytics';
 
 export type ShortcutHandler = (event: KeyboardEvent) => void;
 
@@ -67,6 +68,7 @@ export function useKeyboardShortcuts(map: ShortcutMap, enabled = true): void {
       // shortcuts we don't map keep working.
       event.preventDefault();
       handler(event);
+      track('shortcut', combo);
     };
 
     window.addEventListener('keydown', onKeyDown);

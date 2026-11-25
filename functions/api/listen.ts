@@ -1,18 +1,22 @@
 import { SAFE_ID, fail, isKey, readText, type Handler } from '../../server/lib';
 import { classify, countryOf } from '../../server/ua';
 
-// Anonymous "now playing" (see migrations/0005_listeners.sql and
-// src/components/ListenPing.tsx). Open to anyone, like /api/config — it holds
-// nothing about a person, only which mode, playlist and song a tab plays.
+// Anonymous "now playing", and the listening time behind the admin page's
+// minutes per mode, playlist and song (migrations/0005_listeners.sql,
+// 0007_sessions.sql; sent by src/components/Analytics.tsx). Open to anyone,
+// like /api/config — it holds nothing about a person.
 //
-// Cost: one billed request and one D1 write per playing tab per minute, so
-// ~70 tabs playing all day use the free 100k/day. Only the shape is checked:
-// a script could invent listeners, but only for the few minutes a row counts.
+// Cost: one billed request and two D1 writes per playing tab per minute, so
+// ~35 tabs playing all day use the free 100k writes/day (Workers Paid, $5/month,
+// lifts that to 50M). Only the shape is checked: a script could invent
+// listeners or minutes — the numbers are a guide, not a ledger.
 
 /** How long a row is kept. The admin page counts rows seen in the last 150 s. */
 const KEEP_MS = 10 * 60_000;
 /** Sweep on 1 ping in 20: the table stays tiny without a full scan on every ping. */
 const SWEEP_ODDS = 0.05;
+/** The longest gap between two pings still counted as listening (pings come every 60 s). */
+const CREDIT_MS = 150_000;
 
 const text = (value: unknown, max: number): string | null =>
   typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null;
@@ -35,6 +39,17 @@ export const onRequestPost: Handler = async ({ env, request }) => {
 
   const now = Date.now();
   const writes = [
+    // Listening time: what this tab was playing since its last ping (about a
+    // minute ago) is credited to that mode, playlist and song — read from the
+    // row before it is overwritten below. A tab silent for longer than
+    // CREDIT_MS (closed without a final ping) gets nothing for the gap.
+    env.DB.prepare(
+      `INSERT INTO listen_daily (day, mode, mode_name, playlist, playlist_name, track, ms)
+       SELECT ?1, mode, mode_name, COALESCE(playlist, ''), playlist_name, COALESCE(track, ''), ?2 - seen_at
+       FROM listeners WHERE tab = ?3 AND playing = 1 AND seen_at > ?2 - ?4
+       ON CONFLICT (day, mode, playlist, track) DO UPDATE SET ms = ms + excluded.ms,
+         mode_name = excluded.mode_name, playlist_name = excluded.playlist_name`,
+    ).bind(new Date(now).toISOString().slice(0, 10), now, body.tab, CREDIT_MS),
     env.DB.prepare(
       `INSERT INTO listeners (tab, mode, mode_name, playlist, playlist_name, track, playing, seen_at,
          browser, os, device, country)

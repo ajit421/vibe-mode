@@ -49,6 +49,7 @@ import {
 import { PASSWORD_LENGTH, USERNAME_PATTERN } from '@/themes/limits';
 import type { VibeColors, VibeEffects, VibePlaylist } from '@/types/theme';
 import { cn } from '@/utils/cn';
+import { track } from '@/utils/analytics';
 import { downloadJson } from '@/utils/backup';
 
 const COLOR_LABELS: Record<keyof VibeColors, string> = {
@@ -266,6 +267,8 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
     if (!file) return;
     try {
       const result = importSettings(JSON.parse(await file.text()));
+      // Counted here, not in importSettings: loading the cloud copy goes through it too.
+      if (result) track('restore', result.kind === 'mode' ? 'shared mode' : 'backup');
       if (result?.kind === 'mode') {
         setSelectedId(result.id);
         push(

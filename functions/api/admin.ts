@@ -64,7 +64,25 @@ async function overview(env: Env, url: URL): Promise<Response> {
   const offset = Math.max(0, Math.min(Number(url.searchParams.get('offset')) || 0, 1_000_000));
 
   const since = dayOf(now, VISIT_DAYS - 1);
-  const [totals, visitors, listening, lockouts, defaults, playing, perDay, ...buckets] = await env.DB.batch([
+  const week = dayOf(now, 6);
+  const [
+    totals,
+    visitors,
+    listening,
+    lockouts,
+    defaults,
+    playing,
+    perDay,
+    engagement,
+    listenPerDay,
+    topModes,
+    topPlaylists,
+    topTracks,
+    events,
+    sessions,
+    lengths,
+    ...buckets
+  ] = await env.DB.batch([
     env.DB.prepare(
       `SELECT
          (SELECT COUNT(*) FROM profiles) AS visitors,
@@ -126,6 +144,52 @@ async function overview(env: Env, url: URL): Promise<Response> {
        WHERE playing = 1 AND seen_at > ? ORDER BY seen_at DESC LIMIT 200`,
     ).bind(now - PLAYING_MS),
     env.DB.prepare('SELECT day, SUM(count) AS n FROM visits WHERE day >= ? GROUP BY day ORDER BY day DESC').bind(since),
+    // How long people stay and listen (migrations/0007_sessions.sql). Time on
+    // site is "on screen", not "tab open": a forgotten background tab isn't a visit.
+    env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM sessions WHERE day = ?1) AS sessions_day,
+         (SELECT COUNT(*) FROM sessions WHERE day >= ?2) AS sessions_week,
+         (SELECT COALESCE(AVG(visible_ms), 0) FROM sessions WHERE day >= ?2) AS avg_visible_ms,
+         (SELECT COALESCE(AVG(open_ms), 0) FROM sessions WHERE day >= ?2) AS avg_open_ms,
+         (SELECT COALESCE(AVG(listened_ms), 0) FROM sessions WHERE day >= ?2) AS avg_listened_ms,
+         (SELECT COALESCE(SUM(visible_ms), 0) FROM sessions WHERE day >= ?2) AS visible_ms_week,
+         (SELECT COALESCE(SUM(ms), 0) FROM listen_daily WHERE day = ?1) AS listened_ms_day,
+         (SELECT COALESCE(SUM(ms), 0) FROM listen_daily WHERE day >= ?2) AS listened_ms_week,
+         (SELECT COALESCE(SUM(ms), 0) FROM listen_daily WHERE day >= ?3) AS listened_ms_month`,
+    ).bind(dayOf(now), week, since),
+    env.DB.prepare('SELECT day, SUM(ms) AS ms FROM listen_daily WHERE day >= ? GROUP BY day ORDER BY day DESC').bind(since),
+    env.DB.prepare(
+      `SELECT mode, MAX(mode_name) AS name, SUM(ms) AS ms FROM listen_daily WHERE day >= ?
+       GROUP BY mode ORDER BY ms DESC LIMIT 20`,
+    ).bind(since),
+    env.DB.prepare(
+      `SELECT MAX(playlist_name) AS name, MAX(mode_name) AS mode, SUM(ms) AS ms FROM listen_daily
+       WHERE day >= ? AND playlist <> '' GROUP BY mode, playlist ORDER BY ms DESC LIMIT 25`,
+    ).bind(since),
+    env.DB.prepare(
+      `SELECT track AS name, MAX(mode_name) AS mode, SUM(ms) AS ms FROM listen_daily
+       WHERE day >= ? AND track <> '' GROUP BY track ORDER BY ms DESC LIMIT 25`,
+    ).bind(since),
+    env.DB.prepare(
+      `SELECT name, detail, SUM(count) AS n FROM events_daily WHERE day >= ?
+       GROUP BY name, detail ORDER BY n DESC LIMIT 150`,
+    ).bind(since),
+    // Never the tab id, as for listeners.
+    env.DB.prepare(
+      `SELECT started_at, last_at, open_ms, visible_ms, listened_ms, first_mode, browser, os, device, country
+       FROM sessions ORDER BY last_at DESC LIMIT 50`,
+    ),
+    env.DB.prepare(
+      `SELECT CASE
+           WHEN visible_ms < 60000 THEN 'Under 1 min'
+           WHEN visible_ms < 300000 THEN '1–5 min'
+           WHEN visible_ms < 900000 THEN '5–15 min'
+           WHEN visible_ms < 3600000 THEN '15–60 min'
+           ELSE 'Over 1 hour' END AS name,
+         COUNT(*) AS n
+       FROM sessions WHERE day >= ? GROUP BY name ORDER BY MIN(visible_ms)`,
+    ).bind(week),
     ...BUCKETS.map((bucket) =>
       env.DB.prepare(
         `SELECT ${bucket} AS name, SUM(count) AS n FROM visits WHERE day >= ? GROUP BY ${bucket} ORDER BY n DESC LIMIT 25`,
@@ -149,6 +213,16 @@ async function overview(env: Env, url: URL): Promise<Response> {
       days: VISIT_DAYS,
       perDay: perDay.results,
       ...Object.fromEntries(BUCKETS.map((bucket, index) => [bucket, buckets[index].results])),
+    },
+    engagement: {
+      ...(engagement.results[0] as Record<string, number>),
+      perDay: listenPerDay.results,
+      modes: topModes.results,
+      playlists: topPlaylists.results,
+      tracks: topTracks.results,
+      events: events.results,
+      sessions: sessions.results,
+      lengths: lengths.results,
     },
   });
 }

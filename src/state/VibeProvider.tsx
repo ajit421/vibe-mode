@@ -39,6 +39,7 @@ import {
   type VibePreferences,
 } from './vibe-context';
 import { sanitizeCustomPlaylists, sanitizeOverrides, sanitizePreferences } from './sanitize';
+import { track } from '@/utils/analytics';
 
 const BUILT_IN_IDS: ReadonlySet<string> = new Set(THEMES.map((theme) => theme.id));
 
@@ -316,6 +317,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       }));
       // Adding one is a request to hear it, so make it the active choice.
       setSelectedPlaylists((current) => ({ ...current, [modeId]: id }));
+      track('playlist_added');
       return id;
     },
     [theme.id, setCustomPlaylistsByTheme, setSelectedPlaylists],
@@ -410,6 +412,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   const setPreference = useCallback(
     <K extends keyof VibePreferences>(key: K, value: VibePreferences[K]) => {
       setPreferences((current) => ({ ...current, [key]: value }));
+      track('preference', `${String(key)}: ${String(value)}`);
     },
     [setPreferences],
   );
@@ -474,6 +477,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
         return { ...current, edits };
       });
       dropUpload(id);
+      track('mode_reset');
     },
     [setCustomization, dropUpload],
   );
@@ -532,6 +536,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
           [id]: own.map((item) => ({ ...item, id: newCustomId() })),
         }));
       }
+      track('mode_added', blank ? 'blank' : 'copy');
       return id;
     },
     [
@@ -577,6 +582,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
         // is still there, so "Restore" costs nothing and saves a bad click.
         editMode(id, { deleted: true });
       }
+      track('mode_deleted', isAddedMode(id) ? 'own' : 'built-in');
       if (id === themeId) setThemeId(visible[0].id);
     },
     [
@@ -708,6 +714,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     setThemeId(DEFAULT_THEME_ID);
     setHasEntered(false);
     setSelectorOpen(false);
+    track('reset_everything');
   }, [
     setPreferences,
     setPlaylistOverrides,

@@ -3,6 +3,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { X } from 'lucide-react';
 import { useToast } from '@/state/toast-context';
 import { IconButton } from './IconButton';
+import { track } from '@/utils/analytics';
 
 interface ModalProps {
   open: boolean;
@@ -46,10 +47,13 @@ function ModalDialog({ onClose, title, description, children, size = 'md' }: Mod
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
     dialog?.showModal();
+    track('panel', title); // once per opening: this effect runs on mount only
     return () => {
       closingHere.current = true;
       if (dialog?.open) dialog.close();
     };
+    // Mount only, on purpose: one count per opening, whatever the title does after.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Toasts sit behind a modal — dimmed on a desktop, hidden under the sheet on

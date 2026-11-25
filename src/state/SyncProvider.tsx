@@ -35,6 +35,7 @@ import {
   type Profile,
 } from '@/sync/api';
 import { turnstileToken } from '@/sync/turnstile';
+import { track } from '@/utils/analytics';
 import { normaliseUsername, stretchPassword } from '@/sync/password';
 import { PASSWORD_LENGTH } from '@/themes/limits';
 
@@ -272,6 +273,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
       adopt(result.body, key);
       toast(welcome, 'SYNC');
+      // Passkey and password sign-ins come through here too and count their own.
+      if (welcome !== SIGNED_IN) track('sign_in', 'sync link');
       return true;
     },
     [adopt, report, toast],
@@ -369,11 +372,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   const createLink = useCallback(async () => {
     const key = await mint();
+    if (key) track('sync_link_made');
     return key ? syncLink(key) : null;
   }, [mint]);
 
   const connectAssistant = useCallback(async () => {
     const key = await mint();
+    if (key) track('ai_link_made');
     return key ? `${window.location.origin}/mcp/${key}` : null;
   }, [mint]);
 
@@ -395,6 +400,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   });
   const setRemoteControl = useCallback((on: boolean) => {
     setRemoteState(on);
+    track('ai_control', on ? 'on' : 'off');
     try {
       if (on) window.sessionStorage.setItem(REMOTE_KEY, 'on');
       else window.sessionStorage.removeItem(REMOTE_KEY);
@@ -415,6 +421,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       result.body.removed === 1 ? 'Signed out 1 other device.' : `Signed out ${result.body.removed} other devices.`,
       'SYNC',
     );
+    track('sign_out_others');
     return true;
   }, [report, toast]);
 
@@ -431,6 +438,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     setStatus('off');
     setMessage(null);
     toast('Cloud copy deleted. Your modes are still here in this browser.', 'SYNC');
+    track('cloud_deleted');
     return true;
   }, [report, store, toast]);
 
@@ -465,6 +473,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       return false;
     }
     toast('Passkey added. Use it to sign in on a new device.', 'SYNC');
+    track('passkey_added');
     return true;
   }, [save, unsaved, report, toast]);
 
@@ -488,7 +497,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       report(result);
       return false;
     }
-    return adoptLink(result.body.key, SIGNED_IN);
+    const ok = await adoptLink(result.body.key, SIGNED_IN);
+    if (ok) track('sign_in', 'passkey');
+    return ok;
   }, [adoptLink, report]);
 
   /* ── Username + password (functions/api/login.ts) ──────────────────────── */
@@ -541,6 +552,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
       setMessage(null);
       const { signedOut } = result.body;
+      track('password_set');
       toast(
         signedOut
           ? `Password changed. ${signedOut} other ${signedOut === 1 ? 'device was' : 'devices were'} signed out.`
@@ -583,7 +595,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         refuse(result);
         return false;
       }
-      return adoptLink(result.body.key, SIGNED_IN);
+      const ok = await adoptLink(result.body.key, SIGNED_IN);
+      if (ok) track('sign_in', 'password');
+      return ok;
     },
     [adoptLink, proofOf, refuse],
   );

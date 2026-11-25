@@ -15,6 +15,7 @@ import { clamp, tidyTrackTitle } from '@/utils/format';
 import { useVibe } from './vibe-context';
 import { useToast } from './toast-context';
 import { PlayerContext, type PlayerContextValue, type PlayerStatus, type PlayerTrack } from './player-context';
+import { track as trackUse } from '@/utils/analytics';
 
 const PROGRESS_INTERVAL_MS = 400;
 /** Give up skipping past broken tracks after this many in a row. */
@@ -479,6 +480,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     blockedSkips.current = 0;
     setErrorMessage(null);
     player.nextVideo?.();
+    trackUse('skip', 'next'); // a listener's (or their assistant's) skip; auto-skips call nextVideo() directly
     armWatchdog();
   }, [armWatchdog]);
 
@@ -494,6 +496,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
     player.previousVideo();
+    trackUse('skip', 'previous');
     armWatchdog();
   }, [armWatchdog]);
 

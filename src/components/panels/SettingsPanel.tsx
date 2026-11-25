@@ -190,14 +190,15 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
           </section>
         )}
 
-        {/* What ListenPing.tsx sends — said where a visitor looks for settings. */}
+        {/* What src/utils/analytics.ts sends — said where a visitor looks for settings. */}
         <section className="flex flex-col gap-1.5 border-t border-line/60 pt-5">
           <h3 className="vm-label text-muted">Anonymous counts</h3>
           <p className="text-xs text-muted">
             So the site’s owner can see how it’s used, each tab is counted once — by browser, system,
-            device type and country — and while music plays it says which mode, playlist and song.
-            Only totals are kept: no name, no IP. Browsers with Global Privacy Control turned on send
-            nothing.
+            device type and country — with how long it stays open, on screen and playing music. While
+            music plays it says which mode, playlist and song, and it counts which features are used
+            (panels, shortcuts, skips…). No name, no IP, nothing that links one visit to another.
+            Browsers with Global Privacy Control turned on send nothing.
           </p>
         </section>
 

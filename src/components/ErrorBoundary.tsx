@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { downloadJson, storedBackup } from '@/utils/backup';
 import { clearStoredPreferences } from '@/utils/storage';
 import { SYNC_STORAGE_KEY } from '@/sync/sync';
+import { report, track } from '@/utils/analytics';
 
 interface Props {
   children: ReactNode;
@@ -26,6 +27,10 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Keep this — it is the only breadcrumb when something fails in production.
     console.error('Vibe Mode crashed:', error, info.componentStack);
+    // Sent at once: the crash screen replaces the app, and with it the
+    // component that would otherwise report when the tab is hidden.
+    track('crash', error.name);
+    report();
   }
 
   /**

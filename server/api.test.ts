@@ -18,6 +18,7 @@ import * as login from '../functions/api/login';
 import * as admin from '../functions/api/admin';
 import * as listen from '../functions/api/listen';
 import * as visit from '../functions/api/visit';
+import * as session from '../functions/api/session';
 
 /*
  * Every endpoint in functions/, run against Wrangler's local D1 (the same
@@ -51,7 +52,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -526,6 +527,105 @@ describe('/api/visit — anonymous counts by browser, system, device', () => {
       { name: 'desktop', n: 1 },
     ]);
     expect(body.visits.perDay).toEqual([expect.objectContaining({ n: 4 })]);
+  });
+});
+
+describe('/api/listen + /api/session — minutes, visit length, features used', () => {
+  const OWNER = 'o'.repeat(40);
+  const ping = (body: object) =>
+    call(
+      listen.onRequestPost,
+      api('/api/listen', { method: 'POST', body: JSON.stringify(body), headers: { 'User-Agent': CHROME_ANDROID } }),
+    );
+  const beacon = (body: object, ua: string = CHROME_ANDROID) =>
+    call(
+      session.onRequestPost,
+      api('/api/session', { method: 'POST', body: JSON.stringify(body), headers: { 'User-Agent': ua } }),
+    );
+  /** Pretends the tab's last ping was `ms` ago. */
+  const rewind = (tab: string, ms: number) =>
+    env.DB.prepare('UPDATE listeners SET seen_at = seen_at - ? WHERE tab = ?').bind(ms, tab).run();
+  const engagement = async () =>
+    (
+      await (
+        await call(admin.onRequestGet, api('/api/admin', { headers: { Authorization: `Bearer ${OWNER}` } }), {
+          env: { MCP_ADMIN_TOKEN: OWNER },
+        })
+      ).json<{ engagement: Record<string, unknown> & { sessions: object[]; events: object[]; modes: object[] } }>()
+    ).engagement;
+
+  it('credits the time between pings to what was playing, and nothing for a long silence', async () => {
+    const tab = newKey();
+    const song = { tab, mode: 'metro', modeName: 'Metro', playlist: 'metro-vibes', playlistName: 'Metro Vibes', playing: true };
+    await ping({ ...song, track: 'Song one' }); // the first ping has nothing before it
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM listen_daily').first<number>('n')).toBe(0);
+
+    await rewind(tab, 60_000);
+    await ping({ ...song, track: 'Song two' }); // the minute just past was Song one
+    await rewind(tab, 30_000);
+    await ping({ ...song, track: 'Song two', playing: false }); // paused: the last 30 s were Song two
+    await rewind(tab, 30_000);
+    await ping({ ...song, track: 'Song two', playing: false }); // paused time is not listening
+
+    const rows = (await env.DB.prepare('SELECT track, ms, mode_name, playlist_name FROM listen_daily ORDER BY track').all())
+      .results as { track: string; ms: number }[];
+    expect(rows.map((row) => row.track)).toEqual(['Song one', 'Song two']);
+    expect(rows[0].ms).toBeGreaterThanOrEqual(60_000);
+    expect(rows[0].ms).toBeLessThan(62_000);
+    expect(rows[1].ms).toBeGreaterThanOrEqual(30_000);
+    expect(rows[1].ms).toBeLessThan(32_000);
+    expect(rows[0]).toMatchObject({ mode_name: 'Metro', playlist_name: 'Metro Vibes' });
+
+    const quiet = newKey();
+    await ping({ ...song, tab: quiet, track: 'Song three' });
+    await rewind(quiet, 10 * 60_000); // closed without a last ping, back much later
+    await ping({ ...song, tab: quiet, track: 'Song three' });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM listen_daily WHERE track = 'Song three'").first<number>('n')).toBe(0);
+
+    const seen = await engagement();
+    expect(seen.modes).toEqual([expect.objectContaining({ mode: 'metro', name: 'Metro' })]);
+    expect(seen.listened_ms_day).toBeGreaterThanOrEqual(90_000);
+  });
+
+  it('keeps the largest totals for a visit, adds up feature counts, and leaves bots and junk out', async () => {
+    const tab = newKey();
+    expect(
+      (
+        await beacon({
+          tab,
+          openMs: 120_000,
+          visibleMs: 90_000,
+          listenedMs: 60_000,
+          firstMode: 'metro',
+          events: [
+            { name: 'panel', detail: 'Customize', n: 2 },
+            { name: 'Bad Name!', n: 5 },
+            { name: 'skip', detail: 'next', n: 3 },
+          ],
+        })
+      ).status,
+    ).toBe(204);
+    // A repeated, older report changes nothing; a later one grows the totals.
+    await beacon({ tab, openMs: 100_000, visibleMs: 10_000, listenedMs: 0, events: [{ name: 'panel', detail: 'Customize', n: 1 }] });
+    await beacon({ tab, openMs: 300_000, visibleMs: 999_999_999, listenedMs: 61_000 }); // on screen can't exceed open
+
+    const row = await env.DB.prepare('SELECT * FROM sessions').first<Record<string, unknown>>();
+    expect(row).toMatchObject({ open_ms: 300_000, visible_ms: 300_000, listened_ms: 61_000, first_mode: 'metro', browser: 'Chrome' });
+    const events = (await env.DB.prepare('SELECT name, detail, count FROM events_daily ORDER BY name').all()).results;
+    expect(events).toEqual([
+      { name: 'panel', detail: 'Customize', count: 3 },
+      { name: 'skip', detail: 'next', count: 3 },
+    ]);
+
+    expect((await beacon({ tab: 'short', openMs: 1 })).status).toBe(400);
+    await beacon({ tab: newKey(), openMs: 5_000 }, 'Mozilla/5.0 (compatible; Googlebot/2.1)');
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM sessions').first<number>('n')).toBe(1);
+
+    const seen = await engagement();
+    expect(seen).toMatchObject({ sessions_day: 1, sessions_week: 1, avg_visible_ms: 300_000 });
+    expect(seen.sessions).toEqual([expect.objectContaining({ visible_ms: 300_000, first_mode: 'metro' })]);
+    expect(JSON.stringify(seen)).not.toContain(tab); // the tab id never leaves the database
+    expect(seen.events).toContainEqual({ name: 'panel', detail: 'Customize', n: 3 });
   });
 });
 
