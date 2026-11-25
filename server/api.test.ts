@@ -318,6 +318,17 @@ describe('/api/login — username and password', () => {
     expect(statuses.filter((status) => status === 429)).toHaveLength(10);
   });
 
+  it('signing in again from a browser drops the key it replaces, so keys don’t pile up', async () => {
+    const key = newKey();
+    await save(key);
+    await setLogin(key, 'asha', RIGHT);
+    const again = await call(login.onRequestPost, api('/api/login', { method: 'POST', key, body: body('asha', RIGHT) }));
+    const { key: minted } = await again.json<{ key: string }>();
+    expect((await call(profile.onRequestGet, api('/api/profile', { key }))).status).toBe(401);
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: minted }))).status).toBe(200);
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM device_keys').first<number>('n')).toBe(1);
+  });
+
   it('a changed password signs out the other devices; the first one does not', async () => {
     const key = newKey();
     await save(key);

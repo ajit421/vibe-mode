@@ -107,12 +107,15 @@ export const setLogin = (key: string, username: string, proof: string) =>
 
 export const removeLogin = (key: string) => call<null>('DELETE', '/api/login', key);
 
-/** A right password answers with a fresh device key, like a passkey sign-in. */
-export const passwordLogin = (username: string, proof: string, turnstileToken?: string) =>
+/**
+ * A right password answers with a fresh device key, like a passkey sign-in.
+ * `key` is this browser's current one, if any: the server drops it, since the new one replaces it.
+ */
+export const passwordLogin = (username: string, proof: string, key: string | null, turnstileToken?: string) =>
   call<{ key: string }>(
     'POST',
     '/api/login',
-    null,
+    key,
     { username, proof },
     turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
   );

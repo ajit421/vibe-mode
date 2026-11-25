@@ -11,6 +11,7 @@ import {
   caller,
   fail,
   json,
+  retireCallerKey,
   type Handler,
 } from '../../../server/lib';
 
@@ -98,6 +99,7 @@ export const onRequestPost: Handler = async ({ env, request }) => {
       .run();
     const key = await addKey(env, passkey.profile_id);
     if (!key) return fail(429, 'Too many devices. Sign out the other devices from one you have.');
+    await retireCallerKey(env, request);
     return json({ key });
   } catch {
     // The library throws on any mismatch (origin, challenge, signature…).

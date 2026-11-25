@@ -142,6 +142,18 @@ export async function addKey(env: Env, profileId: string): Promise<string | null
 }
 
 /**
+ * After a sign-in has minted a new key: drops the key the signing-in browser
+ * sent, which it is about to replace. Otherwise every sign-in leaves one
+ * behind, and with no "sign out this browser" a profile fills up to MAX_KEYS
+ * and refuses further sign-ins. Only that one key goes — other devices on
+ * the old profile keep theirs.
+ */
+export async function retireCallerKey(env: Env, request: Request): Promise<void> {
+  const key = bearer(request);
+  if (key) await env.DB.prepare('DELETE FROM device_keys WHERE key_hash = ?').bind(await hashKey(key)).run();
+}
+
+/**
  * Turnstile check for creating a profile — the one write anybody can make
  * without already holding a key. Passes when Turnstile isn't configured, so
  * the site works before the keys are set; set both TURNSTILE_* variables in

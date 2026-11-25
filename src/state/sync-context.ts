@@ -21,7 +21,7 @@ export interface SyncContextValue {
   /** A link that brings these modes to another device; null on failure (see `message`). */
   createLink: () => Promise<string | null>;
   /** Uses a link or code from another device. This browser's modes are replaced by those. */
-  adoptLink: (input: string) => Promise<boolean>;
+  adoptLink: (input: string, welcome?: string) => Promise<boolean>;
   /** Every other device loses access; this one keeps it. Revokes a leaked link. */
   signOutOtherDevices: () => Promise<boolean>;
   /** Deletes the cloud copy for good and stops saving. The modes on this browser stay. */

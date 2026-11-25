@@ -9,6 +9,7 @@ import {
   json,
   passesTurnstile,
   readText,
+  retireCallerKey,
   sameDigest,
   type Handler,
 } from '../../server/lib';
@@ -136,6 +137,7 @@ export const onRequestPost: Handler = async ({ env, request }) => {
   await env.DB.prepare('DELETE FROM login_failures WHERE username = ?').bind(given.username).run();
   const key = await addKey(env, login.profile_id);
   if (!key) return fail(429, 'Too many devices. Sign out the other devices from one you have.');
+  await retireCallerKey(env, request);
   return json({ key });
 };
 

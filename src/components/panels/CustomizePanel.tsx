@@ -776,17 +776,21 @@ function PasswordForm({
   purpose: 'set' | 'sign-in';
   username: string | null;
   busy: boolean;
-  onSubmit: (username: string, password: string) => void;
+  onSubmit: (username: string, password: string) => Promise<unknown>;
 }) {
   const [username, setUsername] = useState(initial ?? '');
   const [password, setPassword] = useState('');
+  // Its own flag, not the section's `busy`: the password is stretched in the
+  // browser first (up to a second on a slow phone), so the button says so.
+  const [pending, setPending] = useState(false);
   const setting = purpose === 'set';
   return (
     <form
       className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault(); // inside a <dialog>: never navigate or close it
-        onSubmit(username, password);
+        setPending(true);
+        void onSubmit(username, password).finally(() => setPending(false));
       }}
     >
       <div className="grid gap-2 sm:grid-cols-2">
@@ -821,7 +825,13 @@ function PasswordForm({
       <div className="flex flex-wrap items-center gap-2">
         <button type="submit" className={SMALL_BUTTON} disabled={busy}>
           {setting ? <LockKeyhole className="size-3.5" /> : <LogIn className="size-3.5" />}
-          {setting ? 'Save username & password' : 'Sign in'}
+          {pending
+            ? setting
+              ? 'Saving…'
+              : 'Signing in…'
+            : setting
+              ? 'Save username & password'
+              : 'Sign in'}
         </button>
         <p className="text-xs text-muted">
           {!setting
@@ -859,7 +869,7 @@ function CloudSection() {
 
   const run = (task: () => Promise<unknown>) => {
     setBusy(true);
-    void task().finally(() => setBusy(false));
+    return task().finally(() => setBusy(false));
   };
 
   const status =

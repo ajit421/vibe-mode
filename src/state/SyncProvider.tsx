@@ -43,6 +43,7 @@ const SAVE_DELAY_MS = 2_000;
 const REMOTE_KEY = 'vibe-mode.remoteControl';
 /** Coming back to the tab re-checks the cloud copy at most this often. */
 const PULL_INTERVAL_MS = 30_000;
+const SIGNED_IN = 'Signed in. Your modes are here.';
 
 /*
  * Keeps the visitor's changes in the cloud (D1) as well as in this browser.
@@ -253,7 +254,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const [incoming, setIncoming] = useState<string | null>(() => parseSyncLink(window.location.hash));
 
   const adoptLink = useCallback(
-    async (input: string): Promise<boolean> => {
+    async (input: string, welcome = 'Your modes from the other device are here.'): Promise<boolean> => {
       const key = parseSyncLink(input);
       if (!key) {
         setMessage('That isn’t a sync link. Copy the whole link from your other device.');
@@ -270,7 +271,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         return false;
       }
       adopt(result.body, key);
-      toast('Your modes from the other device are here.', 'SYNC');
+      toast(welcome, 'SYNC');
       return true;
     },
     [adopt, report, toast],
@@ -481,12 +482,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       setMessage('Sign-in was cancelled.');
       return false;
     }
-    const result = await passkeyVerify(options.body.challengeId, response, null);
+    // This browser's key goes along so the server can drop it: the new one replaces it.
+    const result = await passkeyVerify(options.body.challengeId, response, readRecord().key);
     if (!result.ok || !result.body.key) {
       report(result);
       return false;
     }
-    return adoptLink(result.body.key);
+    return adoptLink(result.body.key, SIGNED_IN);
   }, [adoptLink, report]);
 
   /* ── Username + password (functions/api/login.ts) ──────────────────────── */
@@ -567,7 +569,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       const name = normaliseUsername(username);
       const proof = await proofOf(name, password);
       if (!proof) return false;
-      let result = await passwordLogin(name, proof);
+      let result = await passwordLogin(name, proof, readRecord().key);
       if (!result.ok && result.status === 403 && result.body?.challenge) {
         const siteKey = result.body.siteKey;
         const token = typeof siteKey === 'string' ? await turnstileToken(siteKey) : null;
@@ -575,13 +577,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           setMessage('Couldn’t confirm you’re not a robot. Try again.');
           return false;
         }
-        result = await passwordLogin(name, proof, token);
+        result = await passwordLogin(name, proof, readRecord().key, token);
       }
       if (!result.ok) {
         refuse(result);
         return false;
       }
-      return adoptLink(result.body.key);
+      return adoptLink(result.body.key, SIGNED_IN);
     },
     [adoptLink, proofOf, refuse],
   );
