@@ -9,7 +9,7 @@
  *    otherwise pile up forever.
  *  - Other same-site files (backgrounds, icons): show the cached copy, refresh
  *    it in the background, so a replaced picture still arrives next visit.
- *  - Never touched: anything cross-origin (YouTube, fonts, oEmbed), `/api/*`, `/admin`,
+ *  - Never touched: anything cross-origin (YouTube, fonts, oEmbed), `/api/*`, pages other than '/',
  *    anything not a GET, and range requests — the background video streams in pieces,
  *    and the Cache API refuses partial (206) responses.
  *
@@ -51,9 +51,10 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || request.headers.has('range')) return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  // The admin page is another document: caching it as the shell ('/') would
-  // make the app open as the admin page offline. Leave it to the network.
-  if (url.pathname === '/admin' || url.pathname === '/admin.html') return;
+  // Only the app itself ('/', whatever its ?mode=) is the cached shell. Other
+  // pages (/admin, /privacy) are other documents: caching them as '/' would
+  // make the app open as one of them offline. Leave those to the network.
+  if (request.mode === 'navigate' && url.pathname !== '/') return;
 
   if (request.mode === 'navigate') {
     event.respondWith(

@@ -119,3 +119,16 @@ export const passwordLogin = (username: string, proof: string, key: string | nul
     { username, proof },
     turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
   );
+
+/** Whether Google sign-in is set up here (`clientId`), and which Google account this profile is linked to. */
+export const googleStatus = (key: string | null) =>
+  call<{ clientId: string | null; email: string | null; linked: boolean }>('GET', '/api/google', key);
+
+/** See functions/api/google.ts for the answers: a key (signed in), linked, same, or 409 confirm / 404 link. */
+export const googleSignIn = (credential: string, key: string | null, replace = false) =>
+  call<{ key?: string; linked?: true; same?: true; email: string | null }>('POST', '/api/google', key, {
+    credential,
+    replace,
+  });
+
+export const googleUnlink = (key: string) => call<null>('DELETE', '/api/google', key);

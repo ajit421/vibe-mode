@@ -19,6 +19,13 @@ import * as admin from '../functions/api/admin';
 import * as listen from '../functions/api/listen';
 import * as visit from '../functions/api/visit';
 import * as session from '../functions/api/session';
+import * as google from '../functions/api/google';
+import { verifyGoogle } from './google';
+
+// Google's token check is swapped for a fake here (server/google.test.ts
+// checks the real one against signed tokens): these tests are about what
+// happens once Google has vouched for an account.
+vi.mock('./google', () => ({ verifyGoogle: vi.fn() }));
 
 /*
  * Every endpoint in functions/, run against Wrangler's local D1 (the same
@@ -52,7 +59,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['google_accounts', 'sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -626,6 +633,84 @@ describe('/api/listen + /api/session — minutes, visit length, features used', 
     expect(seen.sessions).toEqual([expect.objectContaining({ visible_ms: 300_000, first_mode: 'metro' })]);
     expect(JSON.stringify(seen)).not.toContain(tab); // the tab id never leaves the database
     expect(seen.events).toContainEqual({ name: 'panel', detail: 'Customize', n: 3 });
+  });
+});
+
+describe('/api/google — Continue with Google', () => {
+  const CLIENT = { env: { GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com' } };
+  const as = (sub: string, email = `${sub}@gmail.com`) =>
+    vi.mocked(verifyGoogle).mockResolvedValue({ sub, email });
+  const post = (key?: string, replace = false) =>
+    call(
+      google.onRequestPost,
+      api('/api/google', { method: 'POST', key, body: JSON.stringify({ credential: 'token', replace }) }),
+      CLIENT,
+    );
+  const status = async (key?: string, extra: Record<string, unknown> = CLIENT) =>
+    (await call(google.onRequestGet, api('/api/google', { key }), extra)).json<{ clientId: string | null; email: string | null }>();
+
+  it('says whether it is set up, and refuses sign-ins when it isn’t', async () => {
+    expect(await status(undefined, {})).toMatchObject({ clientId: null, email: null });
+    expect(await status()).toMatchObject({ clientId: 'client-1.apps.googleusercontent.com' });
+    as('g1');
+    expect((await call(google.onRequestPost, api('/api/google', { method: 'POST', body: '{"credential":"t"}' }))).status).toBe(503);
+  });
+
+  it('refuses a token Google didn’t vouch for', async () => {
+    vi.mocked(verifyGoogle).mockResolvedValue(null);
+    expect((await post()).status).toBe(401);
+  });
+
+  it('links a new Google account to this browser’s cloud copy, then signs in with it on another device', async () => {
+    as('g1');
+    expect(await (await post()).json()).toMatchObject({ link: true }); // nothing saved yet: save first
+
+    const key = newKey();
+    await save(key, { note: 'mine' });
+    const linked = await post(key);
+    expect(linked.status).toBe(201);
+    expect(await linked.json()).toEqual({ linked: true, email: 'g1@gmail.com' });
+    expect(await status(key)).toMatchObject({ email: 'g1@gmail.com' });
+    expect(await (await post(key)).json()).toMatchObject({ same: true }); // already this account
+
+    const fresh = await (await post()).json<{ key: string }>(); // a new device, nothing of its own
+    const loaded = await call(profile.onRequestGet, api('/api/profile', { key: fresh.key }));
+    expect(await loaded.json()).toMatchObject({ data: { note: 'mine' } });
+  });
+
+  it('asks before replacing a browser’s own modes, and swaps keys only once confirmed', async () => {
+    const [owner, other] = [newKey(), newKey()];
+    await save(owner, { note: 'account' });
+    as('g1');
+    await post(owner);
+    await save(other, { note: 'this browser' });
+
+    const ask = await post(other);
+    expect(ask.status).toBe(409);
+    expect(await ask.json()).toMatchObject({ confirm: true, email: 'g1@gmail.com' });
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: other }))).status).toBe(200); // untouched
+
+    const { key } = await (await post(other, true)).json<{ key: string }>();
+    expect(await (await call(profile.onRequestGet, api('/api/profile', { key }))).json()).toMatchObject({
+      data: { note: 'account' },
+    });
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: other }))).status).toBe(401); // replaced key retired
+  });
+
+  it('one Google account per profile; disconnecting or deleting the cloud copy removes the link', async () => {
+    const key = newKey();
+    await save(key);
+    as('g1');
+    await post(key);
+    as('g2');
+    expect((await post(key)).status).toBe(409); // this profile already has g1
+
+    expect((await call(google.onRequestDelete, api('/api/google', { method: 'DELETE', key }))).status).toBe(204);
+    expect(await status(key)).toMatchObject({ email: null });
+
+    await post(key); // g2 now
+    await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }));
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM google_accounts').first<number>('n')).toBe(0);
   });
 });
 

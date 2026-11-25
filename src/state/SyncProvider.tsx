@@ -31,6 +31,9 @@ import {
   saveProfile,
   saveUpload,
   signOutOthers,
+  googleSignIn,
+  googleStatus as fetchGoogleStatus,
+  googleUnlink,
   type ApiResult,
   type Profile,
 } from '@/sync/api';
@@ -602,6 +605,70 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     [adoptLink, proofOf, refuse],
   );
 
+  /* ── Continue with Google (functions/api/google.ts) ────────────────────── */
+
+  /** Set while the "replace this browser's modes?" dialog is open: the token to retry with. */
+  const [googlePending, setGooglePending] = useState<{ credential: string; email: string | null } | null>(null);
+
+  const googleStatus = useCallback(async () => {
+    const result = await fetchGoogleStatus(readRecord().key);
+    return result.ok ? { clientId: result.body.clientId, email: result.body.email } : { clientId: null, email: null };
+  }, []);
+
+  const continueWithGoogle = useCallback(
+    async (credential: string, replace = false): Promise<boolean> => {
+      // Modes here that the cloud doesn't have yet are saved first, so they are
+      // either linked to the Google account or protected by the dialog below —
+      // never silently replaced.
+      const rec = readRecord();
+      if (!latest.current.empty && (!rec.key || unsaved(rec))) {
+        if (!(await save(true))) return false;
+      }
+      let result = await googleSignIn(credential, readRecord().key, replace);
+      if (!result.ok && result.status === 404 && result.body?.link) {
+        // A new Google account and nothing saved here yet: make the cloud copy to link it to.
+        if (!(await save(true))) return false;
+        result = await googleSignIn(credential, readRecord().key, replace);
+      }
+      if (!result.ok && result.status === 409 && result.body?.confirm) {
+        const email = typeof result.body.email === 'string' ? result.body.email : null;
+        setGooglePending({ credential, email });
+        return false;
+      }
+      if (!result.ok) {
+        refuse(result);
+        return false;
+      }
+      const { key, linked, same, email } = result.body;
+      if (key) {
+        const ok = await adoptLink(key, email ? `Signed in as ${email}. Your modes are here.` : SIGNED_IN);
+        if (ok) track('sign_in', 'google');
+        return ok;
+      }
+      setMessage(null);
+      if (linked) {
+        track('google_linked');
+        toast(`Google account connected${email ? ` (${email})` : ''}. Use it to sign in on any device.`, 'SYNC');
+      } else if (same) {
+        toast('You’re already signed in with this Google account.', 'SYNC');
+      }
+      return true;
+    },
+    [adoptLink, refuse, save, toast, unsaved],
+  );
+
+  const disconnectGoogle = useCallback(async () => {
+    const key = readRecord().key;
+    if (!key) return false;
+    const result = await googleUnlink(key);
+    if (!result.ok) {
+      refuse(result);
+      return false;
+    }
+    toast('Google account disconnected. Passkeys and sync links still work.', 'SYNC');
+    return true;
+  }, [refuse, toast]);
+
   const value = useMemo<SyncContextValue>(
     () => ({
       status,
@@ -624,6 +691,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       setPassword,
       removePassword,
       signInWithPassword,
+      googleStatus,
+      continueWithGoogle,
+      disconnectGoogle,
     }),
     [
       status,
@@ -645,6 +715,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       setPassword,
       removePassword,
       signInWithPassword,
+      googleStatus,
+      continueWithGoogle,
+      disconnectGoogle,
     ],
   );
 
@@ -678,6 +751,33 @@ export function SyncProvider({ children }: { children: ReactNode }) {
               const key = incoming;
               setIncoming(null);
               if (key) void adoptLink(key);
+            }}
+          >
+            Load them
+          </button>
+        </div>
+      </Modal>
+      <Modal
+        open={googlePending !== null}
+        onClose={() => setGooglePending(null)}
+        title="Load your Google account’s modes?"
+        description={`${googlePending?.email ?? 'That Google account'} already has its own modes. Signing in replaces this browser’s with those.`}
+      >
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            className="rounded-lg border border-line px-4 py-2 text-sm text-ink hover:border-primary/60"
+            onClick={() => setGooglePending(null)}
+          >
+            Keep this browser’s
+          </button>
+          <button
+            type="button"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-canvas hover:brightness-110"
+            onClick={() => {
+              const pending = googlePending;
+              setGooglePending(null);
+              if (pending) void continueWithGoogle(pending.credential, true);
             }}
           >
             Load them

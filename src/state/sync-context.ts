@@ -45,6 +45,15 @@ export interface SyncContextValue {
   removePassword: () => Promise<boolean>;
   /** Signs in with a username and password. This browser's modes are replaced by that profile's. */
   signInWithPassword: (username: string, password: string) => Promise<boolean>;
+  /** Google sign-in: set up here (a Client ID), and the Google account this profile is linked to. */
+  googleStatus: () => Promise<{ clientId: string | null; email: string | null }>;
+  /**
+   * Handles the ID token from Google's button: signs in to the linked profile,
+   * or links the Google account to this browser's. May ask first (a dialog)
+   * when it would replace this browser's own modes. True when it finished.
+   */
+  continueWithGoogle: (credential: string) => Promise<boolean>;
+  disconnectGoogle: () => Promise<boolean>;
 }
 
 export const SyncContext = createContext<SyncContextValue | null>(null);

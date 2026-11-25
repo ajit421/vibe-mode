@@ -32,6 +32,7 @@ const dayOf = (now: number, days = 0) => new Date(now - days * DAY_MS).toISOStri
 interface AdminVisitor {
   id: string;
   username: string | null;
+  google: string | null;
   created_at: number;
   /** Last change: every save and every MCP edit sets it to the time. */
   version: number;
@@ -93,6 +94,7 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COUNT(*) FROM device_keys) AS devices,
          (SELECT COUNT(*) FROM passkeys) AS passkeys,
          (SELECT COUNT(*) FROM logins) AS logins,
+         (SELECT COUNT(*) FROM google_accounts) AS google,
          (SELECT COUNT(*) FROM uploads) AS uploads,
          (SELECT COALESCE(SUM(octet_length(still)), 0) FROM uploads) AS upload_bytes,
          (SELECT COALESCE(SUM(octet_length(data)), 0) FROM profiles) AS data_bytes,
@@ -115,7 +117,7 @@ async function overview(env: Env, url: URL): Promise<Response> {
     // back in), so the counts guard every shape: one odd profile must not
     // break the whole list. PAGE + 1 rows says whether there is a next page.
     env.DB.prepare(
-      `SELECT p.id, l.username, p.created_at, p.version, octet_length(p.data) AS data_bytes,
+      `SELECT p.id, l.username, g.email AS google, p.created_at, p.version, octet_length(p.data) AS data_bytes,
          COALESCE(json_array_length(p.data, '$.customization.added'), 0) AS added_modes,
          (SELECT COUNT(*) FROM json_each(p.data, '$.customization.edits')) AS edited_modes,
          (SELECT COALESCE(SUM(CASE WHEN type = 'array' THEN json_array_length(value) ELSE 0 END), 0)
@@ -124,8 +126,10 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COUNT(*) FROM passkeys k WHERE k.profile_id = p.id) AS passkeys,
          (SELECT COUNT(*) FROM uploads u WHERE u.profile_id = p.id) AS uploads,
          (SELECT seen_at FROM remote_state r WHERE r.profile_id = p.id) AS seen_at
-       FROM profiles p LEFT JOIN logins l ON l.profile_id = p.id
-       WHERE ?1 = '' OR instr(p.id, ?1) = 1 OR instr(l.username, ?1) > 0
+       FROM profiles p
+         LEFT JOIN logins l ON l.profile_id = p.id
+         LEFT JOIN google_accounts g ON g.profile_id = p.id
+       WHERE ?1 = '' OR instr(p.id, ?1) = 1 OR instr(l.username, ?1) > 0 OR instr(lower(g.email), ?1) > 0
        ORDER BY p.version DESC
        LIMIT ?2 OFFSET ?3`,
     ).bind(q, PAGE + 1, offset),
@@ -229,7 +233,7 @@ async function overview(env: Env, url: URL): Promise<Response> {
 
 async function visitor(env: Env, id: string): Promise<Response> {
   const one = (sql: string) => env.DB.prepare(sql).bind(id);
-  const [profile, login, keys, passkeys, uploads, remote, commands] = await env.DB.batch([
+  const [profile, login, keys, passkeys, uploads, remote, commands, google] = await env.DB.batch([
     one('SELECT id, data, version, created_at FROM profiles WHERE id = ?'),
     one('SELECT username, created_at FROM logins WHERE profile_id = ?'),
     one('SELECT created_at FROM device_keys WHERE profile_id = ? ORDER BY created_at DESC'),
@@ -237,6 +241,7 @@ async function visitor(env: Env, id: string): Promise<Response> {
     one('SELECT mode_id, still FROM uploads WHERE profile_id = ? ORDER BY mode_id'),
     one('SELECT state, seen_at FROM remote_state WHERE profile_id = ?'),
     one('SELECT action, value, created_at FROM remote_commands WHERE profile_id = ? ORDER BY id'),
+    one('SELECT email, created_at FROM google_accounts WHERE profile_id = ?'),
   ]);
   const row = profile.results[0] as { id: string; data: string; version: number; created_at: number } | undefined;
   if (!row) return fail(404, 'No visitor with that id.');
@@ -248,6 +253,7 @@ async function visitor(env: Env, id: string): Promise<Response> {
     version: row.version,
     data: parse(row.data),
     login: login.results[0] ?? null,
+    google: google.results[0] ?? null,
     // Key hashes say nothing useful; when each device was added does.
     devices: (keys.results as { created_at: number }[]).map((key) => key.created_at),
     passkeys: (passkeys.results as { credential_id: string; transports: string | null; created_at: number }[]).map(

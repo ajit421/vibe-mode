@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Vibe Mode privacy</title>
+    <meta name="description" content="What Vibe Mode stores, why, and how to delete it." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      The page Google's sign-in screen links to (Google Auth Platform →
+      Branding). Keep it true: when the app starts storing or counting
+      something new, say so here and in the Settings panel's note.
+    -->
+    <style>
+      :root {
+        --bg: #0c0a09;
+        --ink: #e7e5e4;
+        --muted: #a8a29e;
+        --line: #292524;
+        --link: #7dd3fc;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #fafaf9;
+          --ink: #1c1917;
+          --muted: #57534e;
+          --line: #e7e5e4;
+          --link: #0369a1;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.6 ui-sans-serif, system-ui, sans-serif;
+      }
+      main {
+        max-width: 42rem;
+        margin: 0 auto;
+        padding: 3rem 1rem 4rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin: 2rem 0 0.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--line);
+      }
+      p,
+      li {
+        color: var(--ink);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      a {
+        color: var(--link);
+      }
+      ul {
+        padding-left: 1.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Vibe Mode privacy</h1>
+      <p class="muted">Updated 25 November 2026</p>
+
+      <p>
+        Vibe Mode works without an account. You can use it without giving a name, an email or a password. This
+        page lists everything it keeps, and why.
+      </p>
+
+      <h2>On your device</h2>
+      <p>
+        Your modes, playlists, pictures and settings are kept in your browser’s storage. They stay on your device
+        unless you use cloud save (below).
+      </p>
+
+      <h2>Cloud save</h2>
+      <p>
+        After your first change, a copy of your modes, playlists, pictures and settings is saved on our server, so
+        it can come back on another device. Your browser holds a long random key for it. The server keeps only a
+        scrambled form of that key, not the key itself. If you choose to add them, it also keeps:
+      </p>
+      <ul>
+        <li><strong>Passkeys</strong>: a public key from your device. It can’t be used to sign in anywhere else.</li>
+        <li><strong>A username and password</strong>: the username, and a scrambled form of the password. Your
+          password itself never leaves your browser.</li>
+        <li><strong>Sign in with Google</strong>: Google’s ID number for your account, and your Google email
+          address. We show the email so you can see which account is connected. We get nothing else from Google:
+          no contacts, no files, no access to your account.</li>
+      </ul>
+      <p>
+        To delete all of this, open <em>Customize → Delete my cloud copy</em>. It is removed from the server for
+        good, and your modes stay in your browser. <em>Disconnect</em> removes only the Google link.
+      </p>
+
+      <h2>Anonymous usage counts</h2>
+      <p>To see how the site is used, each browser tab sends a few anonymous counts:</p>
+      <ul>
+        <li>a visit, counted by browser, operating system, device type and country, as daily totals;</li>
+        <li>how long the tab was open, on screen and playing music;</li>
+        <li>while music plays, which mode, playlist and song;</li>
+        <li>which features were used (panels opened, skips, shortcuts and so on), as totals.</li>
+      </ul>
+      <p>
+        These counts carry no name, email, account or IP address. The only id is a random one that lives in that
+        one tab and is gone when you close it, so one visit is never linked to another. If your browser sends
+        <strong>Global Privacy Control</strong>, it sends none of these.
+      </p>
+      <p>
+        We also use <strong>Cloudflare Web Analytics</strong>, which counts page views without cookies.
+      </p>
+
+      <h2>Others involved</h2>
+      <ul>
+        <li><strong>YouTube</strong> plays the music, so YouTube’s own privacy policy applies to the player.</li>
+        <li><strong>Cloudflare</strong> hosts the site and the database.</li>
+        <li><strong>Google</strong> handles Google sign-in, if you use it.</li>
+      </ul>
+
+      <h2>What we don’t do</h2>
+      <p>
+        No advertising. No selling or sharing of data. No tracking across other sites. No IP address logs in our
+        database.
+      </p>
+
+      <p><a href="/">← Back to Vibe Mode</a></p>
+    </main>
+  </body>
+</html>

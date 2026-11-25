@@ -64,6 +64,8 @@ interface Totals {
   devices: number;
   passkeys: number;
   logins: number;
+  /** Profiles linked to a Google account (functions/api/google.ts). */
+  google: number;
   uploads: number;
   upload_bytes: number;
   data_bytes: number;
@@ -98,6 +100,8 @@ interface Playing {
 interface Visitor {
   id: string;
   username: string | null;
+  /** The linked Google account's email, if any. */
+  google: string | null;
   created_at: number;
   version: number;
   data_bytes: number;
@@ -182,6 +186,7 @@ interface Detail {
   version: number;
   data: unknown;
   login: { username: string; created_at: number } | null;
+  google: { email: string | null; created_at: number } | null;
   devices: number[];
   passkeys: { credential_id: string; transports: unknown; created_at: number }[];
   uploads: { mode_id: string; still: string }[];
@@ -260,6 +265,7 @@ const USES: Record<string, string> = {
   download: 'Downloaded a file',
   reset_everything: 'Reset everything',
   sign_in: 'Signed in',
+  google_linked: 'Connected a Google account',
   sync_link_made: 'Made a sync link',
   ai_link_made: 'Made an AI assistant link',
   ai_control: 'Let AI control a tab',
@@ -585,6 +591,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
           />
           <Stat label="Devices signed in" value={t.devices} hint="browsers, sync links and AI links" />
           <Stat label="Password logins" value={t.logins} />
+          <Stat label="Google accounts" value={t.google} hint="profiles linked to Google sign-in" />
           <Stat label="Passkeys" value={t.passkeys} />
           <Stat label="Uploaded pictures" value={t.uploads} hint={bytes(t.upload_bytes)} />
           <Stat label="Saved settings" value={bytes(t.data_bytes)} hint="all visitors, text only" />
@@ -770,8 +777,8 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
               <input
                 className={INPUT}
                 type="search"
-                aria-label="Find a visitor by username or id"
-                placeholder="Username or id"
+                aria-label="Find a visitor by username, Google email or id"
+                placeholder="Username, email or id"
                 value={query}
                 onChange={(event) => setQuery(event.currentTarget.value)}
               />
@@ -789,7 +796,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
               <tr key={visitor.id} className="hover:bg-zinc-900/60">
                 <td className={TD}>
                   <button type="button" className="text-sky-400 hover:underline" onClick={() => setSelected(visitor.id)}>
-                    {visitor.username ?? <span className="font-mono">{shortId(visitor.id)}</span>}
+                    {visitor.username ?? visitor.google ?? <span className="font-mono">{shortId(visitor.id)}</span>}
                   </button>
                   {visitor.seen_at && now - visitor.seen_at < 45_000 && (
                     <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs text-emerald-400">live</span>
@@ -895,7 +902,9 @@ function VisitorDetail({
     <>
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-50">{detail?.login?.username ?? 'Visitor'}</h1>
+          <h1 className="text-xl font-semibold text-zinc-50">
+            {detail?.login?.username ?? detail?.google?.email ?? 'Visitor'}
+          </h1>
           <p className="font-mono text-xs text-zinc-500">{id}</p>
         </div>
         <button type="button" className={BUTTON} onClick={onBack}>
@@ -920,6 +929,11 @@ function VisitorDetail({
               label="Password login"
               value={detail.login ? detail.login.username : '—'}
               hint={detail.login ? <>set <Time ms={detail.login.created_at} now={now} /></> : 'none set'}
+            />
+            <Stat
+              label="Google account"
+              value={detail.google ? (detail.google.email ?? 'linked') : '—'}
+              hint={detail.google ? <>linked <Time ms={detail.google.created_at} now={now} /></> : 'not linked'}
             />
           </div>
 

@@ -23,6 +23,8 @@ export interface Env {
    * that change the site's defaults for every visitor. Unset = no owner access.
    */
   MCP_ADMIN_TOKEN?: string;
+  /** "Continue with Google" (functions/api/google.ts). Public, not secret. Unset = no Google button. */
+  GOOGLE_CLIENT_ID?: string;
 }
 
 export type Handler = PagesFunction<Env>;

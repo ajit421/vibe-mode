@@ -50,6 +50,7 @@ import { PASSWORD_LENGTH, USERNAME_PATTERN } from '@/themes/limits';
 import type { VibeColors, VibeEffects, VibePlaylist } from '@/types/theme';
 import { cn } from '@/utils/cn';
 import { track } from '@/utils/analytics';
+import { renderGoogleButton } from '@/sync/google';
 import { downloadJson } from '@/utils/backup';
 
 const COLOR_LABELS: Record<keyof VibeColors, string> = {
@@ -770,6 +771,26 @@ const SYNC_STATUS: Record<Exclude<SyncStatus, 'saved'>, string> = {
  * with the standard autocomplete names, so password managers offer to save
  * and fill it. Lowercased as typed: usernames are case-insensitive anyway.
  */
+/**
+ * Google's own "Continue with Google" button (src/sync/google.ts draws it, in
+ * an iframe of Google's). Its script loads only when this is on screen.
+ */
+function GoogleButton({ clientId, onCredential }: { clientId: string; onCredential: (credential: string) => void }) {
+  const host = useRef<HTMLDivElement>(null);
+  const callback = useRef(onCredential);
+  callback.current = onCredential;
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const element = host.current;
+    if (!element) return;
+    void renderGoogleButton(element, clientId, (credential) => callback.current(credential)).then((ok) => setFailed(!ok));
+  }, [clientId]);
+  if (failed) {
+    return <p className="text-xs text-muted">Couldn’t reach Google — check your connection, or an ad blocker.</p>;
+  }
+  return <div ref={host} className="min-h-10" />;
+}
+
 function PasswordForm({
   purpose,
   username: initial,
@@ -864,11 +885,18 @@ function CloudSection() {
   const [form, setForm] = useState<'set' | 'sign-in' | null>(null);
   // Asked only when the panel opens with a cloud copy — not on every page load.
   const [login, setLogin] = useState<string | null>(null);
-  const { hasKey, loginName } = sync;
+  // Whether Google sign-in is set up here, and which account is linked. Also
+  // asked only when the panel opens (one request), never on a page load.
+  const [google, setGoogle] = useState<{ clientId: string | null; email: string | null }>({
+    clientId: null,
+    email: null,
+  });
+  const { hasKey, loginName, googleStatus } = sync;
   useEffect(() => {
     if (hasKey) void loginName().then(setLogin);
     else setLogin(null);
-  }, [hasKey, loginName]);
+    void googleStatus().then(setGoogle);
+  }, [hasKey, loginName, googleStatus]);
 
   const run = (task: () => Promise<unknown>) => {
     setBusy(true);
@@ -1103,6 +1131,19 @@ function CloudSection() {
           <LogIn className="size-3.5" />
           Sign in with a password
         </button>
+        {sync.hasKey && google.email && (
+          <ConfirmButton
+            label={`Google: ${google.email} · Disconnect`}
+            confirmLabel="Sure? Disconnect Google"
+            icon={<LogOut className="size-3.5" />}
+            disabled={busy}
+            onConfirm={() =>
+              run(async () => {
+                if (await sync.disconnectGoogle()) setGoogle(await sync.googleStatus());
+              })
+            }
+          />
+        )}
         {sync.hasKey && (
           <>
             <ConfirmButton
@@ -1122,6 +1163,26 @@ function CloudSection() {
           </>
         )}
       </div>
+
+      {google.clientId && !google.email && sync.status !== 'off' && (
+        <div className="flex flex-col gap-1.5">
+          <GoogleButton
+            clientId={google.clientId}
+            onCredential={(credential) =>
+              void run(async () => {
+                await sync.continueWithGoogle(credential);
+                setGoogle(await sync.googleStatus());
+                setLogin(await sync.loginName());
+              })
+            }
+          />
+          <p className="text-xs text-muted">
+            {sync.hasKey
+              ? 'Connects your Google account to these modes, so you can sign in with it on any device.'
+              : 'Signs in to your modes on any device — or, the first time, keeps this browser’s modes under your Google account.'}
+          </p>
+        </div>
+      )}
 
       {form === 'sign-in' && (
         <PasswordForm
