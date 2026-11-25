@@ -1,7 +1,9 @@
-import { CircleHelp, Palette, Settings2, Shuffle } from 'lucide-react';
+import { CircleHelp, Palette, Settings2, Shuffle, UserRound } from 'lucide-react';
 import { useVibe } from '@/state/vibe-context';
 import { useClock } from '@/hooks/useClock';
 import { IconButton } from '@/components/ui/IconButton';
+import { Avatar } from '@/components/account/Avatar';
+import { useSync } from '@/state/sync-context';
 
 // Built once, not per render — constructing an Intl formatter is expensive and
 // this one repaints every second.
@@ -20,9 +22,11 @@ interface TopBarProps {
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
   onOpenCustomize: () => void;
+  onOpenAccount: () => void;
 }
 
-export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: TopBarProps) {
+export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize, onOpenAccount }: TopBarProps) {
+  const { account, status } = useSync();
   const { theme, hasEntered, setSelectorOpen, leaveToLanding, preferences } = useVibe();
   const Icon = theme.icon;
   // Ticks once a minute: the readout has no seconds, so a 1s interval would be
@@ -122,7 +126,8 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: Top
             </button>
           )}
 
-          <IconButton label="Keyboard shortcuts" size="sm" onClick={onOpenShortcuts}>
+          {/* Shortcuts need a keyboard: off on phones, where the bar is tightest. */}
+          <IconButton label="Keyboard shortcuts" size="sm" onClick={onOpenShortcuts} className="max-sm:hidden">
             <CircleHelp />
           </IconButton>
           <IconButton label="Customize modes" size="sm" onClick={onOpenCustomize}>
@@ -131,6 +136,37 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: Top
           <IconButton label="Settings" size="sm" onClick={onOpenSettings}>
             <Settings2 />
           </IconButton>
+
+          {/* The account: the way into the signed-in (Google) features. Signed
+              out it says "Sign in" where there's room; a dot asks a browser
+              holding a cloud copy from before Google to sign in and keep it. */}
+          <button
+            type="button"
+            onClick={onOpenAccount}
+            aria-label={
+              account
+                ? `Account — signed in as ${account.email ?? account.name ?? 'Google account'}`
+                : 'Account — sign in with Google'
+            }
+            title={account ? (account.email ?? 'Account') : 'Sign in'}
+            className={
+              account
+                ? 'vm-tap relative ml-0.5 flex size-9 shrink-0 items-center justify-center rounded-full ring-1 ring-line transition hover:ring-primary/70'
+                : 'vm-panel vm-tap relative ml-0.5 flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-ink transition-colors hover:border-primary/50'
+            }
+          >
+            {account ? (
+              <Avatar account={account} className="size-7 text-xs" />
+            ) : (
+              <>
+                <UserRound className="size-4 text-ink/80" aria-hidden="true" />
+                <span className="hidden sm:inline">Sign in</span>
+              </>
+            )}
+            {status === 'needs-google' && (
+              <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-primary ring-2 ring-canvas" aria-hidden="true" />
+            )}
+          </button>
         </div>
       </div>
     </header>

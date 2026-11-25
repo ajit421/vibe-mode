@@ -1,4 +1,4 @@
-import type { SyncData } from './sync';
+import type { Account, SyncData } from './sync';
 import type { Uploads } from '@/themes/customize';
 
 /*
@@ -53,24 +53,13 @@ export interface Profile {
   data: SyncData;
   uploads: Uploads;
   version: number;
+  /** The Google account the profile is signed in with — for the profile icon. */
+  account: Account | null;
 }
 
 export const loadProfile = (key: string) => call<Profile>('GET', '/api/profile', key);
 
-/**
- * `create`: this is the key's first save, so an unknown key may make a new
- * profile. False for a key that has saved before — if the server no longer
- * knows it (signed out from another device), it answers 401 instead of
- * quietly starting a second, separate cloud copy.
- */
-export const saveProfile = (key: string, data: SyncData, create: boolean, turnstileToken?: string) =>
-  call<{ version: number }>(
-    'PUT',
-    '/api/profile',
-    key,
-    { data, create },
-    turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
-  );
+export const saveProfile = (key: string, data: SyncData) => call<{ version: number }>('PUT', '/api/profile', key, { data });
 
 export const deleteProfile = (key: string) => call<null>('DELETE', '/api/profile', key);
 
@@ -83,6 +72,9 @@ export const deleteUpload = (key: string, modeId: string) =>
 export const mintKey = (key: string) => call<{ key: string }>('POST', '/api/keys', key);
 
 export const signOutOthers = (key: string) => call<{ removed: number }>('DELETE', '/api/keys', key);
+
+/** This browser's key only: signing out here. */
+export const signOutSelf = (key: string) => call<null>('DELETE', '/api/keys?self', key);
 
 export interface RemoteCommand {
   action: string;
@@ -98,49 +90,27 @@ export const pollRemote = (key: string, state?: Record<string, unknown>) =>
     state === undefined ? {} : { state },
   );
 
-export const passkeyOptions = (purpose: 'register' | 'login', key: string | null, turnstileToken?: string) =>
-  call<{ challengeId: string; options: unknown }>(
-    'POST',
-    '/api/passkeys/options',
-    key,
-    { purpose },
-    turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
-  );
+/** Whether Google sign-in is set up here (`clientId`), and the account this browser's profile is signed in with. */
+export const googleStatus = (key: string | null) =>
+  call<{ clientId: string | null; account: Account | null }>('GET', '/api/google', key);
 
-export const passkeyVerify = (challengeId: string, response: unknown, key: string | null) =>
-  call<{ ok?: true; key?: string }>('POST', '/api/passkeys/verify', key, { challengeId, response });
-
-/** The caller's sign-in username, or null when none is set. */
-export const getLogin = (key: string) => call<{ username: string | null }>('GET', '/api/login', key);
-
-/** `proof` is the stretched password (./password.ts), never the password itself. */
-export const setLogin = (key: string, username: string, proof: string) =>
-  call<{ username: string; signedOut: number }>('PUT', '/api/login', key, { username, proof });
-
-export const removeLogin = (key: string) => call<null>('DELETE', '/api/login', key);
+export interface GoogleSignIn {
+  /** A key for the account's profile: this browser is signed in (see `created`). */
+  key?: string;
+  /** The account's profile was made just now, from this browser's modes. */
+  created?: true;
+  /** The version of the profile made just now. */
+  version?: number;
+  /** This browser's cloud copy from before Google was linked to the account. */
+  linked?: true;
+  /** This browser was already signed in with this account. */
+  same?: true;
+  account: Account;
+}
 
 /**
- * A right password answers with a fresh device key, like a passkey sign-in.
- * `key` is this browser's current one, if any: the server drops it, since the new one replaces it.
+ * Sign in with a Google ID token. `data` is this browser's modes: a Google
+ * account new to the site starts from them. See functions/api/google.ts.
  */
-export const passwordLogin = (username: string, proof: string, key: string | null, turnstileToken?: string) =>
-  call<{ key: string }>(
-    'POST',
-    '/api/login',
-    key,
-    { username, proof },
-    turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
-  );
-
-/** Whether Google sign-in is set up here (`clientId`), and which Google account this profile is linked to. */
-export const googleStatus = (key: string | null) =>
-  call<{ clientId: string | null; email: string | null; linked: boolean }>('GET', '/api/google', key);
-
-/** See functions/api/google.ts for the answers: a key (signed in), linked, same, or 409 confirm / 404 link. */
-export const googleSignIn = (credential: string, key: string | null, replace = false) =>
-  call<{ key?: string; linked?: true; same?: true; email: string | null }>('POST', '/api/google', key, {
-    credential,
-    replace,
-  });
-
-export const googleUnlink = (key: string) => call<null>('DELETE', '/api/google', key);
+export const googleSignIn = (credential: string, key: string | null, data: SyncData) =>
+  call<GoogleSignIn>('POST', '/api/google', key, { credential, data });

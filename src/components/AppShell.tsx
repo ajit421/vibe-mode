@@ -12,6 +12,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { MusicPlayer } from '@/components/player/MusicPlayer';
 import { SettingsPanel } from '@/components/panels/SettingsPanel';
 import { ShortcutsPanel } from '@/components/panels/ShortcutsPanel';
+import { AccountPanel } from '@/components/panels/AccountPanel';
 import { ToastViewport } from '@/components/ui/ToastViewport';
 import { Landing } from '@/components/screens/Landing';
 import { World } from '@/components/screens/World';
@@ -61,13 +62,14 @@ export function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   // Once loaded it stays mounted, so the modal can animate out when closed.
   const [customizeLoaded, setCustomizeLoaded] = useState(false);
   useEffect(() => {
     if (customizeOpen) setCustomizeLoaded(true);
   }, [customizeOpen]);
 
-  const anyOverlayOpen = settingsOpen || shortcutsOpen || customizeOpen || selectorOpen;
+  const anyOverlayOpen = settingsOpen || shortcutsOpen || customizeOpen || accountOpen || selectorOpen;
 
   const shortcuts = useMemo<ShortcutMap>(() => {
     const map: ShortcutMap = {
@@ -130,6 +132,7 @@ export function AppShell() {
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenShortcuts={() => setShortcutsOpen(true)}
           onOpenCustomize={() => setCustomizeOpen(true)}
+          onOpenAccount={() => setAccountOpen(true)}
         />
 
         <main
@@ -179,6 +182,7 @@ export function AppShell() {
           </Suspense>
         )}
         <ShortcutsPanel open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+        <AccountPanel open={accountOpen} onClose={() => setAccountOpen(false)} />
       </div>
     </MotionConfig>
   );

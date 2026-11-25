@@ -33,10 +33,11 @@ export default defineConfig({
     target: 'es2020',
     cssCodeSplit: true,
     rollupOptions: {
-      // Two pages: the app, and the owner's admin page (served at /admin).
+      // Three pages: the app, the owner's admin page (/admin), and the MCP sign-in page (/authorize).
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         admin: fileURLToPath(new URL('./admin.html', import.meta.url)),
+        authorize: fileURLToPath(new URL('./authorize.html', import.meta.url)),
       },
       output: {
         // Keep the animation library out of the entry chunk so the shell paints fast.

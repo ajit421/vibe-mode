@@ -85,9 +85,30 @@ export function isEmptyBackup(backup: VibeBackup): boolean {
  * another tab is recognised as already saved rather than saved twice, and a
  * change made offline is still known to be unsaved after a reload.
  */
+/** The Google account a profile is signed in with — shown on the profile icon. */
+export interface Account {
+  email: string | null;
+  name: string | null;
+  /** https on googleusercontent.com only (server/google.ts, `safeAccount` below). */
+  picture: string | null;
+}
+
+const PICTURE = /^https:\/\/[a-z0-9.-]+\.googleusercontent\.com\/[^\s"'<>]{1,500}$/;
+const text = (value: unknown, max: number) => (typeof value === 'string' && value.trim() ? value.slice(0, max) : null);
+
+/** An account from storage or the network, shape-checked; null when it isn't one. */
+export function safeAccount(raw: unknown): Account | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const picture = typeof value.picture === 'string' && PICTURE.test(value.picture) ? value.picture : null;
+  return { email: text(value.email, 254), name: text(value.name, 80), picture };
+}
+
 export interface SyncRecord {
-  /** This browser's device key; null until there is something to save. */
+  /** This browser's device key: it is signed in (with `account`), or holds a cloud copy from before Google. */
   key: string | null;
+  /** Signed in with Google: the account. Null = not signed in, or not yet confirmed by the server. */
+  account: Account | null;
   /** Fingerprint of the profile text last saved or loaded. */
   data: string | null;
   /** Mode id → fingerprint of each picture last saved or loaded. */
@@ -101,12 +122,13 @@ export interface SyncRecord {
 /** Not in `STORAGE_KEYS`: "Start over" must not forget the key, or the cloud copy is orphaned. */
 export const SYNC_STORAGE_KEY = 'vibe-mode.sync';
 
-export const EMPTY_RECORD: SyncRecord = { key: null, data: null, uploads: {}, version: null, off: false };
+export const EMPTY_RECORD: SyncRecord = { key: null, account: null, data: null, uploads: {}, version: null, off: false };
 
 export function readRecord(): SyncRecord {
   const raw = readStorage<Partial<SyncRecord>>(SYNC_STORAGE_KEY, {});
   return {
     key: isSyncKey(raw.key) ? raw.key : null,
+    account: safeAccount(raw.account),
     data: typeof raw.data === 'string' ? raw.data : null,
     uploads:
       raw.uploads && typeof raw.uploads === 'object' && !Array.isArray(raw.uploads)

@@ -207,7 +207,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
           </p>
           <Switch
             label="Link my activity to my account"
-            description="Only if you have a cloud copy or sign in: your visits, listening and features used are saved with your account, and the site’s owner can see them. Off, you’re counted anonymously, like someone without an account."
+            description="Only when you’re signed in: your visits, listening and features used are saved with your account, and the site’s owner can see them. Off, you’re counted anonymously, like someone not signed in."
             checked={preferences.linkActivity}
             onChange={(value) => setPreference('linkActivity', value)}
           />

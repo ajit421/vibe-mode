@@ -81,23 +81,31 @@
         unless you use cloud save (below).
       </p>
 
-      <h2>Cloud save</h2>
+      <h2>Signing in and cloud save</h2>
       <p>
-        After your first change, a copy of your modes, playlists, pictures and settings is saved on our server, so
-        it can come back on another device. Your browser holds a long random key for it. The server keeps only a
-        scrambled form of that key, not the key itself. If you choose to add them, it also keeps:
+        Signing in is optional and uses your Google account. Signed in, your modes, playlists, pictures and settings
+        are saved on our server as you change them, so they are there on every device you sign in on. Without signing
+        in, nothing is saved on our server: everything stays in this browser.
       </p>
+      <p>From Google we keep only:</p>
       <ul>
-        <li><strong>Passkeys</strong>: a public key from your device. It can’t be used to sign in anywhere else.</li>
-        <li><strong>A username and password</strong>: the username, and a scrambled form of the password. Your
-          password itself never leaves your browser.</li>
-        <li><strong>Sign in with Google</strong>: Google’s ID number for your account, and your Google email
-          address. We show the email so you can see which account is connected. We get nothing else from Google:
-          no contacts, no files, no access to your account.</li>
+        <li>Google’s ID number for your account, so the same account always opens the same cloud copy;</li>
+        <li>your email address, name and profile picture, to show which account you are signed in with.</li>
       </ul>
       <p>
-        To delete all of this, open <em>Customize → Delete my cloud copy</em>. It is removed from the server for
-        good, and your modes stay in your browser. <em>Disconnect</em> removes only the Google link.
+        We get nothing else from Google: no contacts, no files, no access to your account. Each signed-in browser
+        holds a long random key; our server keeps only a scrambled form of it.
+      </p>
+      <p>
+        <strong>AI assistants.</strong> If you connect Claude, ChatGPT or another assistant to your Vibe Mode, you
+        sign in with Google on our page and it gets its own key for your account. It can then read and change your
+        modes and playlists, and control the player in tabs where you allow it. <em>Account → Sign out other
+        devices</em> disconnects every assistant and other device.
+      </p>
+      <p>
+        To sign out, use <em>Account → Sign out</em>: your modes stay in that browser. To delete everything we keep
+        about you — the cloud copy, the Google link and your history — use <em>Account → Delete my cloud copy</em>.
+        It cannot be undone. Your modes stay in your browser.
       </p>
 
       <h2>Usage counts</h2>
@@ -109,12 +117,12 @@
         <li>which features were used (panels opened, skips, shortcuts and so on), as totals.</li>
       </ul>
       <p>
-        <strong>Without a cloud copy</strong>, these counts are anonymous. They carry no name, email, account or
+        <strong>Not signed in</strong>, these counts are anonymous. They carry no name, email, account or
         IP address. The only id is a random one that lives in that one tab and is gone when you close it, so one
         visit is never linked to another.
       </p>
       <p>
-        <strong>With a cloud copy</strong> (after your first change, or after you sign in), your visits, your
+        <strong>Signed in</strong>, your visits, your
         listening (which songs, modes and playlists, and for how long) and the features you use are saved with
         your account, and the site’s owner can see them. This is on unless you turn it off. To stop it, switch
         off <em>Settings → Link my activity to my account</em>, and you’re counted anonymously from then on.

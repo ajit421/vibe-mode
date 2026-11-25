@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_PREFERENCES, type VibeBackup } from '@/state/vibe-context';
 import { EMPTY_CUSTOMIZATION } from '@/themes/customize';
 import { diffUploads, fingerprint, isEmptyBackup, newSyncKey, parseSyncLink } from './sync';
-import { stretchPassword } from './password';
 
 const KEY = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJ0123456'; // 43 chars
 
@@ -63,12 +62,3 @@ describe('which pictures to send', () => {
   });
 });
 
-describe('stretchPassword', () => {
-  it('is stable, ignores username case and spaces, and depends on both inputs', async () => {
-    const proof = await stretchPassword('asha', 'long enough pw');
-    expect(proof).toMatch(/^[A-Za-z0-9_-]{43}$/); // the shape the server accepts
-    expect(await stretchPassword(' ASHA ', 'long enough pw')).toBe(proof);
-    expect(await stretchPassword('ravi', 'long enough pw')).not.toBe(proof);
-    expect(await stretchPassword('asha', 'long enough PW')).not.toBe(proof);
-  });
-});

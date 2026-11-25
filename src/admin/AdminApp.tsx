@@ -277,6 +277,7 @@ const USES: Record<string, string> = {
   reset_everything: 'Reset everything',
   sign_in: 'Signed in',
   google_linked: 'Connected a Google account',
+  sign_out: 'Signed out',
   sync_link_made: 'Made a sync link',
   ai_link_made: 'Made an AI assistant link',
   ai_control: 'Let AI control a tab',
@@ -601,9 +602,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
             hint={`only tabs with “Let AI control this tab” on · ${t.queued_commands} commands queued`}
           />
           <Stat label="Devices signed in" value={t.devices} hint="browsers, sync links and AI links" />
-          <Stat label="Password logins" value={t.logins} />
           <Stat label="Google accounts" value={t.google} hint="profiles linked to Google sign-in" />
-          <Stat label="Passkeys" value={t.passkeys} />
           <Stat label="Uploaded pictures" value={t.uploads} hint={bytes(t.upload_bytes)} />
           <Stat label="Saved settings" value={bytes(t.data_bytes)} hint="all visitors, text only" />
         </div>
@@ -807,7 +806,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
               <tr key={visitor.id} className="hover:bg-zinc-900/60">
                 <td className={TD}>
                   <button type="button" className="text-sky-400 hover:underline" onClick={() => setSelected(visitor.id)}>
-                    {visitor.username ?? visitor.google ?? <span className="font-mono">{shortId(visitor.id)}</span>}
+                    {visitor.google ?? visitor.username ?? <span className="font-mono">{shortId(visitor.id)}</span>}
                   </button>
                   {visitor.seen_at && now - visitor.seen_at < 45_000 && (
                     <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs text-emerald-400">live</span>
@@ -1014,7 +1013,7 @@ function VisitorDetail({
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-zinc-50">
-            {detail?.login?.username ?? detail?.google?.email ?? 'Visitor'}
+            {detail?.google?.email ?? detail?.login?.username ?? 'Visitor'}
           </h1>
           <p className="font-mono text-xs text-zinc-500">{id}</p>
         </div>
@@ -1036,11 +1035,6 @@ function VisitorDetail({
             <Stat label="Joined" value={<Time ms={detail.created_at} now={now} />} />
             <Stat label="Last change" value={<Time ms={detail.version} now={now} />} />
             <Stat label="Devices" value={detail.devices.length} />
-            <Stat
-              label="Password login"
-              value={detail.login ? detail.login.username : '—'}
-              hint={detail.login ? <>set <Time ms={detail.login.created_at} now={now} /></> : 'none set'}
-            />
             <Stat
               label="Google account"
               value={detail.google ? (detail.google.email ?? 'linked') : '—'}

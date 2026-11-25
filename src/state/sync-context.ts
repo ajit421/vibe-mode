@@ -1,65 +1,58 @@
 import { createContext, useContext } from 'react';
+import type { Account } from '@/sync/sync';
 
 /**
- *  idle    — nothing saved to the cloud yet (nothing changed, or never)
- *  saving  — a save or load is in flight
- *  saved   — the cloud copy matches this browser
- *  offline — couldn't reach the site; changes are kept here and sent later
- *  error   — the site refused (see `message`)
- *  off     — the visitor deleted their cloud copy; nothing is sent
+ *  signed-out   — not signed in: modes stay in this browser only
+ *  needs-google — holds a cloud copy from before Google sign-in: sign in to keep it
+ *  saving       — a save or load is in flight
+ *  saved        — signed in, and the cloud copy matches this browser
+ *  offline      — signed in, but couldn't reach the site; changes are sent later
+ *  error        — the site refused (see `message`)
  */
-export type SyncStatus = 'idle' | 'saving' | 'saved' | 'offline' | 'error' | 'off';
+export type SyncStatus = 'signed-out' | 'needs-google' | 'saving' | 'saved' | 'offline' | 'error';
 
+/**
+ * Cloud features are for visitors signed in with Google (the "premium" tier):
+ * cloud save across devices, linking devices, the personal MCP server for AI
+ * assistants. Everything else works without signing in.
+ */
 export interface SyncContextValue {
   status: SyncStatus;
   /** A sentence about the last thing that went wrong, worded for a person. */
   message: string | null;
   savedAt: number | null;
-  /** This browser has a cloud copy (a device key). */
+  /** Signed in with Google: the account on the profile icon. Null otherwise. */
+  account: Account | null;
+  /** This browser holds a device key (signed in, or a cloud copy from before Google). */
   hasKey: boolean;
-  passkeysSupported: boolean;
-  /** A link that brings these modes to another device; null on failure (see `message`). */
+  /** The site's Google Client ID, or null when Google sign-in isn't set up. Fetched once. */
+  googleClientId: () => Promise<string | null>;
+  /**
+   * Handles the ID token from Google's button: signs in, creating the account
+   * from this browser's modes the first time. When the account already has
+   * modes and this browser has its own, a dialog asks which to keep.
+   */
+  continueWithGoogle: (credential: string) => Promise<boolean>;
+  /** Signs this browser out. Its modes stay here; the cloud copy stays for other devices. */
+  signOut: () => Promise<boolean>;
+  /** A link that signs another device in to this account; null on failure (see `message`). */
   createLink: () => Promise<string | null>;
-  /** Uses a link or code from another device. This browser's modes are replaced by those. */
+  /** Uses a link from another device. This browser's modes are replaced by the account's. */
   adoptLink: (input: string, welcome?: string) => Promise<boolean>;
-  /** Every other device loses access; this one keeps it. Revokes a leaked link. */
+  /** Every other device and AI assistant loses access; this one keeps it. */
   signOutOtherDevices: () => Promise<boolean>;
-  /** Deletes the cloud copy for good and stops saving. The modes on this browser stay. */
+  /** Deletes the cloud copy (and the Google link) for good. The modes on this browser stay. */
   deleteCloudCopy: () => Promise<boolean>;
   /**
-   * Stops this browser using its cloud copy, without touching the copy: other
-   * devices keep it, and signing in or a sync link brings it back. Used before
-   * "Reset everything", so the emptied browser isn't saved over the cloud copy.
+   * Stops this browser using its cloud copy without touching the copy — used
+   * before "Reset everything", so the emptied browser isn't saved over it.
    */
   leaveCloud: () => void;
-  /** Starts saving to the cloud again after `deleteCloudCopy`. */
-  turnOn: () => void;
-  /** An MCP server URL for an AI assistant, carrying a fresh device key; null on failure. */
-  connectAssistant: () => Promise<string | null>;
   /** This tab takes player commands from an assistant (polls; off by default, per tab). */
   remoteControl: boolean;
   setRemoteControl: (on: boolean) => void;
   /** Loads the cloud copy now, unless this browser has changes it hasn't sent. */
   refresh: () => void;
-  addPasskey: () => Promise<boolean>;
-  /** Signs in with a passkey. This browser's modes are replaced by that profile's. */
-  signInWithPasskey: () => Promise<boolean>;
-  /** This profile's sign-in username; null when none is set or there is no cloud copy. */
-  loginName: () => Promise<string | null>;
-  /** Sets or changes the username and password (saving first if needed). A change signs other devices out. */
-  setPassword: (username: string, password: string) => Promise<boolean>;
-  removePassword: () => Promise<boolean>;
-  /** Signs in with a username and password. This browser's modes are replaced by that profile's. */
-  signInWithPassword: (username: string, password: string) => Promise<boolean>;
-  /** Google sign-in: set up here (a Client ID), and the Google account this profile is linked to. */
-  googleStatus: () => Promise<{ clientId: string | null; email: string | null; linked: boolean }>;
-  /**
-   * Handles the ID token from Google's button: signs in to the linked profile,
-   * or links the Google account to this browser's. May ask first (a dialog)
-   * when it would replace this browser's own modes. True when it finished.
-   */
-  continueWithGoogle: (credential: string) => Promise<boolean>;
-  disconnectGoogle: () => Promise<boolean>;
 }
 
 export const SyncContext = createContext<SyncContextValue | null>(null);

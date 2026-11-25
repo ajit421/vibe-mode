@@ -3,19 +3,14 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
-  CloudOff,
+  Cloud,
   Copy,
   Download,
   Eye,
   EyeOff,
   ImageOff,
-  Bot,
   ImagePlus,
-  KeyRound,
   Link2,
-  LockKeyhole,
-  LogIn,
-  LogOut,
   Play,
   Plus,
   RotateCcw,
@@ -28,10 +23,9 @@ import {
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmButton, SMALL_BUTTON } from '@/components/ui/ConfirmButton';
 import { IconButton } from '@/components/ui/IconButton';
-import { Switch } from '@/components/ui/Switch';
 import { useVibe } from '@/state/vibe-context';
 import { useToast } from '@/state/toast-context';
-import { useSync, type SyncStatus } from '@/state/sync-context';
+import { useSync } from '@/state/sync-context';
 import { backgroundStillFor, safeCustomImage } from '@/themes/backgrounds';
 import {
   COLOR_KEYS,
@@ -47,13 +41,12 @@ import {
   type FontKey,
   type IconKey,
 } from '@/themes/customize';
-import { MAX_ADDED_MODES, PASSWORD_LENGTH, USERNAME_PATTERN } from '@/themes/limits';
-
-const FULL = `You have ${MAX_ADDED_MODES} modes of your own — delete one to add another.`;
+import { MAX_ADDED_MODES } from '@/themes/limits';
 import type { VibeColors, VibeEffects, VibePlaylist } from '@/types/theme';
 import { cn } from '@/utils/cn';
 import { track } from '@/utils/analytics';
-import { renderGoogleButton } from '@/sync/google';
+
+const FULL = `You have ${MAX_ADDED_MODES} modes of your own — delete one to add another.`;
 import { downloadJson } from '@/utils/backup';
 
 const COLOR_LABELS: Record<keyof VibeColors, string> = {
@@ -679,7 +672,9 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
         </div>
       </div>
 
-      <CloudSection />
+      {/* Cloud save, devices and AI assistants live in the Account panel (the
+          profile icon) now — they are the signed-in features. */}
+      <CloudNote />
 
       {/* ── Backup ─────────────────────────────────────────────────────── */}
       <section className="mt-6 flex flex-col gap-2 border-t border-line/60 pt-4">
@@ -718,448 +713,18 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
   );
 }
 
-const SYNC_STATUS: Record<Exclude<SyncStatus, 'saved'>, string> = {
-  idle: 'Nothing saved to the cloud yet — that starts with your first change.',
-  saving: 'Saving…',
-  offline: 'Offline. Your changes are kept here and saved when you’re back.',
-  error: 'The last save didn’t go through.',
-  off: 'Cloud save is off. Your changes stay in this browser only.',
-};
-
-/**
- * Username + password, for setting one or signing in with it. A real <form>
- * with the standard autocomplete names, so password managers offer to save
- * and fill it. Lowercased as typed: usernames are case-insensitive anyway.
- */
-/**
- * Google's own "Continue with Google" button (src/sync/google.ts draws it, in
- * an iframe of Google's). Its script loads only when this is on screen.
- */
-function GoogleButton({ clientId, onCredential }: { clientId: string; onCredential: (credential: string) => void }) {
-  const host = useRef<HTMLDivElement>(null);
-  const callback = useRef(onCredential);
-  callback.current = onCredential;
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    const element = host.current;
-    if (!element) return;
-    void renderGoogleButton(element, clientId, (credential) => callback.current(credential)).then((ok) => setFailed(!ok));
-  }, [clientId]);
-  if (failed) {
-    return <p className="text-xs text-muted">Couldn’t reach Google — check your connection, or an ad blocker.</p>;
-  }
-  return <div ref={host} className="min-h-10" />;
-}
-
-function PasswordForm({
-  purpose,
-  username: initial,
-  busy,
-  onSubmit,
-}: {
-  purpose: 'set' | 'sign-in';
-  username: string | null;
-  busy: boolean;
-  onSubmit: (username: string, password: string) => Promise<unknown>;
-}) {
-  const [username, setUsername] = useState(initial ?? '');
-  const [password, setPassword] = useState('');
-  // Its own flag, not the section's `busy`: the password is stretched in the
-  // browser first (up to a second on a slow phone), so the button says so.
-  const [pending, setPending] = useState(false);
-  const setting = purpose === 'set';
+/** Where this browser's modes are kept: one line, pointing at the Account panel. */
+function CloudNote() {
+  const { account, status } = useSync();
   return (
-    <form
-      className="flex flex-col gap-2"
-      onSubmit={(event) => {
-        event.preventDefault(); // inside a <dialog>: never navigate or close it
-        setPending(true);
-        void onSubmit(username, password).finally(() => setPending(false));
-      }}
-    >
-      <div className="grid gap-2 sm:grid-cols-2">
-        <Field label="Username">
-          <input
-            className={INPUT}
-            name="username"
-            autoComplete="username"
-            autoCapitalize="none"
-            spellCheck={false}
-            required
-            pattern={USERNAME_PATTERN}
-            title="3 to 30 letters, numbers, dashes or underscores"
-            value={username}
-            onChange={(event) => setUsername(event.currentTarget.value.toLowerCase())}
-          />
-        </Field>
-        <Field label={setting ? `New password (at least ${PASSWORD_LENGTH.min} characters)` : 'Password'}>
-          <input
-            className={INPUT}
-            type="password"
-            name="password"
-            autoComplete={setting ? 'new-password' : 'current-password'}
-            required
-            minLength={setting ? PASSWORD_LENGTH.min : undefined}
-            maxLength={PASSWORD_LENGTH.max}
-            value={password}
-            onChange={(event) => setPassword(event.currentTarget.value)}
-          />
-        </Field>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="submit" className={SMALL_BUTTON} disabled={busy}>
-          {setting ? <LockKeyhole className="size-3.5" /> : <LogIn className="size-3.5" />}
-          {pending
-            ? setting
-              ? 'Saving…'
-              : 'Signing in…'
-            : setting
-              ? 'Save username & password'
-              : 'Sign in'}
-        </button>
-        <p className="text-xs text-muted">
-          {!setting
-            ? 'Replaces this browser’s modes with that account’s.'
-            : initial
-              ? 'Changing it signs out your other devices and AI assistant links.'
-              : 'There’s no email, so a forgotten password can’t be reset — keep a passkey or another device too.'}
-        </p>
-      </div>
-    </form>
-  );
-}
-
-/**
- * Cloud save (phase 2), sync links (phase 3), passkeys (phase 4) and the
- * optional username + password — see `state/SyncProvider.tsx`. No sign-up:
- * changes save on their own, and these controls only matter for a second
- * device or a lost browser.
- */
-function CloudSection() {
-  const sync = useSync();
-  const { push } = useToast();
-  const [link, setLink] = useState<string | null>(null);
-  const [mcpLink, setMcpLink] = useState<string | null>(null);
-  const [incoming, setIncoming] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState<'set' | 'sign-in' | null>(null);
-  // Asked only when the panel opens with a cloud copy — not on every page load.
-  const [login, setLogin] = useState<string | null>(null);
-  // Whether Google sign-in is set up here, and which account is linked. Also
-  // asked only when the panel opens (one request), never on a page load.
-  const [google, setGoogle] = useState<{ clientId: string | null; email: string | null; linked: boolean }>({
-    clientId: null,
-    email: null,
-    linked: false,
-  });
-  const { hasKey, loginName, googleStatus } = sync;
-  useEffect(() => {
-    if (hasKey) void loginName().then(setLogin);
-    else setLogin(null);
-    void googleStatus().then(setGoogle);
-  }, [hasKey, loginName, googleStatus]);
-
-  const run = (task: () => Promise<unknown>) => {
-    setBusy(true);
-    return task().finally(() => setBusy(false));
-  };
-
-  const status =
-    sync.status === 'saved'
-      ? `Saved to the cloud${
-          sync.savedAt
-            ? ` · ${new Date(sync.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-            : ''
-        }.`
-      : SYNC_STATUS[sync.status];
-
-  return (
-    <section className="mt-6 flex flex-col gap-3 border-t border-line/60 pt-4">
-      <h3 className="vm-label text-muted">Cloud save &amp; your devices</h3>
-      <p className="text-xs text-muted">
-        What you change here saves itself — no sign-up needed. Come back on this browser and
-        it’s all still here. <span className="text-ink">{status}</span>
-        {login && (
-          <>
-            {' '}
-            Signed in as <span className="text-ink">{login}</span>.
-          </>
-        )}
-      </p>
-      {sync.message && (
-        <p className="text-xs text-primary" role="status">
-          {sync.message}
-        </p>
-      )}
-
-      {sync.status === 'off' ? (
-        <div>
-          <button type="button" className={SMALL_BUTTON} onClick={sync.turnOn}>
-            Turn cloud save back on
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={SMALL_BUTTON}
-            disabled={busy}
-            onClick={() => run(async () => setLink(await sync.createLink()))}
-          >
-            <Link2 className="size-3.5" />
-            Link another device
-          </button>
-          <button
-            type="button"
-            className={SMALL_BUTTON}
-            disabled={busy}
-            onClick={() => run(async () => setMcpLink(await sync.connectAssistant()))}
-          >
-            <Bot className="size-3.5" />
-            Connect an AI assistant
-          </button>
-          {sync.passkeysSupported && (
-            <button
-              type="button"
-              className={SMALL_BUTTON}
-              disabled={busy}
-              onClick={() => run(sync.addPasskey)}
-            >
-              <KeyRound className="size-3.5" />
-              Add a passkey
-            </button>
-          )}
-          <button
-            type="button"
-            className={SMALL_BUTTON}
-            disabled={busy}
-            aria-expanded={form === 'set'}
-            onClick={() => setForm(form === 'set' ? null : 'set')}
-          >
-            <LockKeyhole className="size-3.5" />
-            {login ? 'Change password' : 'Set a username & password'}
-          </button>
-        </div>
-      )}
-
-      {form === 'set' && sync.status !== 'off' && (
-        <div className="flex flex-col gap-2">
-          <PasswordForm
-            purpose="set"
-            username={login}
-            busy={busy}
-            onSubmit={(username, password) =>
-              run(async () => {
-                if (!(await sync.setPassword(username, password))) return;
-                setLogin(username);
-                setForm(null);
-              })
-            }
-          />
-          {login && (
-            <div>
-              <ConfirmButton
-                label="Remove password sign-in"
-                confirmLabel="Sure? Remove it"
-                icon={<Trash2 className="size-3.5" />}
-                disabled={busy}
-                onConfirm={() =>
-                  run(async () => {
-                    if (!(await sync.removePassword())) return;
-                    setLogin(null);
-                    setForm(null);
-                  })
-                }
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-      {link && (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex gap-2">
-            <input
-              readOnly
-              aria-label="Link for your other device"
-              className={cn(INPUT, 'font-mono text-xs sm:text-xs')}
-              value={link}
-              onFocus={(event) => event.currentTarget.select()}
-            />
-            <button
-              type="button"
-              className={SMALL_BUTTON}
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(link)
-                  .then(() => push('Link copied. Open it on your other device.', 'SYNC'))
-                  .catch(() => push('Couldn’t copy — select the link and copy it by hand.', 'SYNC'))
-              }
-            >
-              <Copy className="size-3.5" />
-              Copy
-            </button>
-          </div>
-          <p className="flex items-start gap-1.5 text-xs text-muted">
-            <TriangleAlert className="mt-px size-3.5 shrink-0 text-primary" />
-            Anyone with this link can see and change your modes. Send it only to yourself. If it
-            ends up somewhere else, use “Sign out other devices”.
-          </p>
-        </div>
-      )}
-
-      {mcpLink && (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex gap-2">
-            <input
-              readOnly
-              aria-label="MCP server link for your AI assistant"
-              className={cn(INPUT, 'font-mono text-xs sm:text-xs')}
-              value={mcpLink}
-              onFocus={(event) => event.currentTarget.select()}
-            />
-            <button
-              type="button"
-              className={SMALL_BUTTON}
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(mcpLink)
-                  .then(() => push('MCP link copied. Add it as a connector in your AI app.', 'AI'))
-                  .catch(() => push('Couldn’t copy — select the link and copy it by hand.', 'AI'))
-              }
-            >
-              <Copy className="size-3.5" />
-              Copy
-            </button>
-          </div>
-          <p className="text-xs text-muted">
-            Add it as a custom connector (remote MCP server, no sign-in) in Claude, ChatGPT or Gemini.
-            The assistant can then change your modes and playlists. Like a sync link, it grants full
-            access — “Sign out other devices” revokes it.
-          </p>
-        </div>
-      )}
-
-      {sync.hasKey && (
-        <Switch
-          checked={sync.remoteControl}
-          onChange={sync.setRemoteControl}
-          label="Let AI control this tab"
-          description="Your assistant can play, pause, skip, switch mode and change the volume here. Checks every few seconds while on."
-        />
-      )}
-
-      <Field label="Got a link from your other device?">
-        <div className="flex gap-2">
-          <input
-            className={INPUT}
-            value={incoming}
-            placeholder="Paste the sync link"
-            onChange={(event) => setIncoming(event.target.value)}
-          />
-          <ConfirmButton
-            label="Use it"
-            confirmLabel="Replace mine?"
-            icon={<Check className="size-3.5" />}
-            className="shrink-0 whitespace-nowrap"
-            disabled={busy || !incoming.trim()}
-            onConfirm={() =>
-              run(async () => {
-                if (await sync.adoptLink(incoming)) setIncoming('');
-              })
-            }
-          />
-        </div>
-      </Field>
-
-      <div className="flex flex-wrap gap-2">
-        {sync.passkeysSupported && (
-          <ConfirmButton
-            label="Sign in with a passkey"
-            confirmLabel="Sure? Replaces this browser’s modes"
-            icon={<KeyRound className="size-3.5" />}
-            disabled={busy}
-            onConfirm={() => run(sync.signInWithPasskey)}
-          />
-        )}
-        <button
-          type="button"
-          className={SMALL_BUTTON}
-          disabled={busy}
-          aria-expanded={form === 'sign-in'}
-          onClick={() => setForm(form === 'sign-in' ? null : 'sign-in')}
-        >
-          <LogIn className="size-3.5" />
-          Sign in with a password
-        </button>
-        {sync.hasKey && google.linked && (
-          <ConfirmButton
-            label={`Google: ${google.email ?? 'connected'} · Disconnect`}
-            confirmLabel="Sure? Disconnect Google"
-            icon={<LogOut className="size-3.5" />}
-            disabled={busy}
-            onConfirm={() =>
-              run(async () => {
-                if (await sync.disconnectGoogle()) setGoogle(await sync.googleStatus());
-              })
-            }
-          />
-        )}
-        {sync.hasKey && (
-          <>
-            <ConfirmButton
-              label="Sign out other devices"
-              confirmLabel="Sure? Sign them out"
-              icon={<LogOut className="size-3.5" />}
-              disabled={busy}
-              onConfirm={() => run(sync.signOutOtherDevices)}
-            />
-            <ConfirmButton
-              label="Delete my cloud copy"
-              confirmLabel="Sure? Delete for good"
-              icon={<CloudOff className="size-3.5" />}
-              disabled={busy}
-              onConfirm={() => run(sync.deleteCloudCopy)}
-            />
-          </>
-        )}
-      </div>
-
-      {google.clientId && !google.linked && sync.status !== 'off' && (
-        <div className="flex flex-col gap-1.5">
-          <GoogleButton
-            clientId={google.clientId}
-            onCredential={(credential) =>
-              void run(async () => {
-                await sync.continueWithGoogle(credential);
-                setGoogle(await sync.googleStatus());
-                setLogin(await sync.loginName());
-              })
-            }
-          />
-          <p className="text-xs text-muted">
-            {sync.hasKey
-              ? 'Connects your Google account to these modes, so you can sign in with it on any device.'
-              : 'Signs in to your modes on any device — or, the first time, keeps this browser’s modes under your Google account.'}
-          </p>
-        </div>
-      )}
-
-      {form === 'sign-in' && (
-        <PasswordForm
-          purpose="sign-in"
-          username={null}
-          busy={busy}
-          onSubmit={(username, password) =>
-            run(async () => {
-              if (!(await sync.signInWithPassword(username, password))) return;
-              setForm(null);
-              setLogin(await sync.loginName());
-            })
-          }
-        />
-      )}
-    </section>
+    <p className="mt-6 flex items-center gap-2 border-t border-line/60 pt-4 text-xs text-muted">
+      <Cloud className="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+      {account
+        ? `Signed in as ${account.email ?? account.name ?? 'your Google account'} — ${
+            status === 'saved' ? 'your modes are saved to the cloud.' : 'saving to the cloud.'
+          }`
+        : 'Your modes are kept in this browser. Sign in with Google (the profile icon, top right) to save them to the cloud and use them on every device.'}
+    </p>
   );
 }
 

@@ -77,33 +77,6 @@ export async function hashKey(key: string): Promise<string> {
 }
 
 /**
- * PBKDF2 rounds for the server's half of password hashing. Few on purpose:
- * the browser already spent 600k rounds (src/sync/password.ts), because even
- * 100k here measured 17 ms — over a free-plan Function's 10 ms of CPU. This
- * half only makes what is stored differ from what is sent, per random salt.
- * Stored per login, so it can change later.
- */
-export const PASSWORD_ITERATIONS = 1_000;
-
-/** PBKDF2-SHA256 of a (stretched) password, as hex. `salt` is base64url. */
-export async function hashPassword(password: string, salt: string, iterations: number): Promise<string> {
-  const material = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
-  );
-  return hex(
-    await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', hash: 'SHA-256', salt: base64UrlToBytes(salt), iterations },
-      material,
-      256,
-    ),
-  );
-}
-
-/**
  * True when `secret` is the owner's key (MCP_ADMIN_TOKEN, 32+ characters),
  * compared as digests in constant time. Unset or short = nobody is the owner.
  * The MCP owner link and the admin panel (functions/api/admin.ts) share it.
@@ -183,7 +156,7 @@ export async function profileForKey(
   return row ? { profileId: row.profile_id, keyHash } : null;
 }
 
-/** Mints another key for a profile (a sync link, a passkey sign-in). Null at the cap. */
+/** Mints another key for a profile (a sync link, a Google sign-in, an AI assistant). Null at the cap. */
 export async function addKey(env: Env, profileId: string): Promise<string | null> {
   const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM device_keys WHERE profile_id = ?')
     .bind(profileId)
@@ -211,7 +184,7 @@ export async function retireCallerKey(env: Env, request: Request): Promise<void>
     .first<string>('profile_id');
   if (!left) return;
   // The profile this browser leaves: if nothing can reach it any more (no
-  // other device, sync link, passkey, password or Google), it is data nobody
+  // other device, sync link or Google account — or old passkey/password), it is data nobody
   // can ever open again — up to 3.5 MB of pictures included — so it goes.
   const reachable = await env.DB.prepare(
     `SELECT EXISTS (SELECT 1 FROM device_keys WHERE profile_id = ?1)
