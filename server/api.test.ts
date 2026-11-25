@@ -4,22 +4,24 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Env } from './lib';
-import { newKey } from './lib';
+import { hashKey, newKey } from './lib';
 import * as config from '../functions/api/config';
 import * as profile from '../functions/api/profile';
 import * as uploads from '../functions/api/uploads/[mode]';
 import * as keys from '../functions/api/keys';
-import * as options from '../functions/api/passkeys/options';
-import * as verify from '../functions/api/passkeys/verify';
 import * as backgrounds from '../functions/backgrounds/[[path]]';
 import * as mcp from '../functions/mcp/[[path]]';
 import * as remote from '../functions/api/remote';
-import * as login from '../functions/api/login';
 import * as admin from '../functions/api/admin';
 import * as listen from '../functions/api/listen';
 import * as visit from '../functions/api/visit';
 import * as session from '../functions/api/session';
 import * as google from '../functions/api/google';
+import * as oauthRegister from '../functions/api/oauth/register';
+import * as oauthClient from '../functions/api/oauth/client';
+import * as oauthAuthorize from '../functions/api/oauth/authorize';
+import * as oauthToken from '../functions/api/oauth/token';
+import { challengeOf } from './oauth';
 import { verifyGoogle } from './google';
 
 // Google's token check is swapped for a fake here (server/google.test.ts
@@ -59,7 +61,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['profile_listens', 'google_accounts', 'sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['oauth_codes', 'oauth_clients', 'profile_listens', 'google_accounts', 'sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -74,8 +76,44 @@ const api = (path: string, init: RequestInit & { key?: string } = {}) => {
   return new Request(`https://vibe-mode.pages.dev${path}`, { ...init, headers });
 };
 
-const save = (key: string, data: unknown = { app: 'vibe-mode', note: 'hi' }, extra = {}) =>
-  call(profile.onRequestPut, api('/api/profile', { method: 'PUT', key, body: JSON.stringify({ data }) }), extra);
+/**
+ * A profile signed in with Google, made straight in the database for `key`
+ * (signing in itself is tested in the /api/google block). Cloud features need
+ * one: since Google became the way in, a save never creates a profile.
+ */
+const member = async (key: string, sub = `g-${key.slice(0, 8)}`, data = '{}') => {
+  const keyHash = await hashKey(key);
+  if (await env.DB.prepare('SELECT 1 AS x FROM device_keys WHERE key_hash = ?').bind(keyHash).first()) return;
+  const id = crypto.randomUUID();
+  const at = Date.now() - 5_000; // old enough that the first save isn't throttled
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO profiles (id, data, version, created_at) VALUES (?, ?, ?, ?)').bind(id, data, at, at),
+    env.DB.prepare('INSERT INTO device_keys (key_hash, profile_id, created_at) VALUES (?, ?, ?)').bind(keyHash, id, at),
+    env.DB.prepare('INSERT INTO google_accounts (sub, profile_id, email, created_at) VALUES (?, ?, ?, ?)').bind(
+      sub,
+      id,
+      `${sub}@gmail.com`,
+      at,
+    ),
+  ]);
+};
+
+/** A cloud copy from before Google sign-in: a key and a profile, no Google account. */
+const legacy = async (key: string, data = '{"note":"old"}') => {
+  const id = crypto.randomUUID();
+  const at = Date.now() - 5_000;
+  await env.DB.batch([
+    env.DB.prepare('INSERT INTO profiles (id, data, version, created_at) VALUES (?, ?, ?, ?)').bind(id, data, at, at),
+    env.DB.prepare('INSERT INTO device_keys (key_hash, profile_id, created_at) VALUES (?, ?, ?)').bind(await hashKey(key), id, at),
+  ]);
+  return id;
+};
+
+/** Saves as a signed-in visitor (making the profile first if `key` is a fresh, well-formed one). */
+const save = async (key: string, data: unknown = { app: 'vibe-mode', note: 'hi' }, extra = {}) => {
+  if (/^[A-Za-z0-9_-]{43}$/.test(key)) await member(key);
+  return call(profile.onRequestPut, api('/api/profile', { method: 'PUT', key, body: JSON.stringify({ data }) }), extra);
+};
 
 const still = (size = 100) => `data:image/webp;base64,${'A'.repeat(size)}`;
 
@@ -102,13 +140,13 @@ describe('/api/config — site defaults', () => {
 });
 
 describe('/api/profile — cloud save', () => {
-  it('creates on the first save, then loads, updates and deletes', async () => {
+  it('saves, loads (with the account), updates and deletes', async () => {
     const key = newKey();
-    expect((await save(key)).status).toBe(201);
+    expect((await save(key)).status).toBe(200);
 
     const loaded = await call(profile.onRequestGet, api('/api/profile', { key }));
     expect(loaded.headers.get('Cache-Control')).toBe('no-store');
-    expect(await loaded.json()).toMatchObject({ data: { note: 'hi' }, uploads: {} });
+    expect(await loaded.json()).toMatchObject({ data: { note: 'hi' }, uploads: {}, account: { email: expect.stringMatching(/@gmail\.com$/) } });
 
     expect((await save(key, { note: 'again' })).status).toBe(429); // one save a second
     await env.DB.prepare('UPDATE profiles SET version = version - 5000').run();
@@ -122,6 +160,7 @@ describe('/api/profile — cloud save', () => {
 
   it('refuses a missing or malformed key, bad JSON, and oversized data', async () => {
     const key = newKey();
+    await member(key);
     expect((await call(profile.onRequestGet, api('/api/profile'))).status).toBe(401);
     expect((await save('short-key')).status).toBe(401);
     const bad = api('/api/profile', { method: 'PUT', key, body: '{nope' });
@@ -136,31 +175,6 @@ describe('/api/profile — cloud save', () => {
     const row = await env.DB.prepare('SELECT key_hash FROM device_keys').first<string>('key_hash');
     expect(row).toMatch(/^[0-9a-f]{64}$/);
     expect(row).not.toContain(key);
-  });
-});
-
-describe('Turnstile on profile creation', () => {
-  const turnstile = { env: { TURNSTILE_SECRET: 'secret', TURNSTILE_SITE_KEY: 'site-key' } };
-
-  it('asks for the check when a new profile comes without a token', async () => {
-    const response = await save(newKey(), {}, turnstile);
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ challenge: true, siteKey: 'site-key' });
-  });
-
-  it('creates once Cloudflare confirms the token, and not when it refuses', async () => {
-    const siteverify = vi.spyOn(globalThis, 'fetch');
-    const withToken = (key: string) =>
-      call(
-        profile.onRequestPut,
-        api('/api/profile', { method: 'PUT', key, body: '{"data":{}}', headers: { 'X-Turnstile-Token': 't' } }),
-        turnstile,
-      );
-    siteverify.mockResolvedValueOnce(Response.json({ success: true }));
-    expect((await withToken(newKey())).status).toBe(201);
-    siteverify.mockResolvedValueOnce(Response.json({ success: false }));
-    expect((await withToken(newKey())).status).toBe(403);
-    siteverify.mockRestore();
   });
 });
 
@@ -220,160 +234,6 @@ describe('/api/keys — sync links and signing out', () => {
   });
 });
 
-describe('/api/passkeys — sign-in', () => {
-  const ask = (purpose: string, key?: string) =>
-    call(options.onRequestPost, api('/api/passkeys/options', { method: 'POST', key, body: JSON.stringify({ purpose }) }));
-  const answer = (challengeId: string, response: object) =>
-    call(verify.onRequestPost, api('/api/passkeys/verify', { method: 'POST', body: JSON.stringify({ challengeId, response }) }));
-
-  it('hands out challenges bound to the site, and needs a profile to add a passkey', async () => {
-    expect((await ask('nonsense')).status).toBe(400);
-    expect((await ask('register')).status).toBe(401);
-    const key = newKey();
-    await save(key);
-    const register = await (await ask('register', key)).json<{ options: { rp: { id: string } } }>();
-    expect(register.options.rp.id).toBe('vibe-mode.pages.dev');
-    const login = await (await ask('login')).json<{ challengeId: string; options: { rpId: string } }>();
-    expect(login.options.rpId).toBe('vibe-mode.pages.dev');
-  });
-
-  it('uses a challenge once, refuses expired ones and unknown passkeys', async () => {
-    const { challengeId } = await (await ask('login')).json<{ challengeId: string }>();
-    const unknown = await answer(challengeId, { id: 'nobody', rawId: 'nobody', type: 'public-key', response: {} });
-    expect(unknown.status).toBe(401);
-    expect((await answer(challengeId, { id: 'nobody' })).status).toBe(400); // already used
-
-    const expired = await (await ask('login')).json<{ challengeId: string }>();
-    await env.DB.prepare('UPDATE challenges SET expires_at = 0').run();
-    expect((await answer(expired.challengeId, { id: 'x' })).status).toBe(400);
-  });
-});
-
-describe('/api/login — username and password', () => {
-  // What the browser sends: the password stretched (src/sync/password.ts), 43 base64url chars.
-  const [RIGHT, OTHER, NEW] = [newKey(), newKey(), newKey()];
-  const body = (username: string, proof: string) => JSON.stringify({ username, proof });
-  const setLogin = (key: string, username: string, proof: string) =>
-    call(login.onRequestPut, api('/api/login', { method: 'PUT', key, body: body(username, proof) }));
-  const signIn = (username: string, proof: string, extra = {}) =>
-    call(login.onRequestPost, api('/api/login', { method: 'POST', body: body(username, proof) }), extra);
-  const nameOf = async (key: string) =>
-    (await (await call(login.onRequestGet, api('/api/login', { key }))).json<{ username: string | null }>()).username;
-
-  it('sets a login on a profile, then signs in on a new device with it', async () => {
-    const key = newKey();
-    expect((await setLogin(key, 'asha', RIGHT)).status).toBe(401); // no profile yet
-    await save(key, { note: 'mine' });
-    expect(await nameOf(key)).toBeNull();
-    expect((await setLogin(key, ' Asha ', RIGHT)).status).toBe(200);
-    expect(await nameOf(key)).toBe('asha');
-
-    const answer = await signIn('ASHA', RIGHT); // usernames ignore case
-    expect(answer.status).toBe(200);
-    const { key: minted } = await answer.json<{ key: string }>();
-    const loaded = await call(profile.onRequestGet, api('/api/profile', { key: minted }));
-    expect(await loaded.json()).toMatchObject({ data: { note: 'mine' } });
-  });
-
-  it('stores neither the proof nor a hash that repeats across logins', async () => {
-    const [a, b] = [newKey(), newKey()];
-    await save(a);
-    await save(b);
-    await setLogin(a, 'one', RIGHT);
-    await setLogin(b, 'two', RIGHT);
-    const rows = (await env.DB.prepare('SELECT hash, salt FROM logins').all<{ hash: string; salt: string }>()).results;
-    expect(rows[0].hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(rows[0].hash).not.toBe(rows[1].hash);
-    expect(JSON.stringify(rows)).not.toContain(RIGHT);
-  });
-
-  it('refuses bad usernames, anything but a stretched proof, and a name someone else has', async () => {
-    const [a, b] = [newKey(), newKey()];
-    await save(a);
-    await save(b);
-    expect((await setLogin(a, 'no spaces', RIGHT)).status).toBe(400);
-    expect((await setLogin(a, 'ab', RIGHT)).status).toBe(400);
-    expect((await setLogin(a, 'asha', 'a plain password')).status).toBe(400);
-    expect((await signIn('asha', 'a plain password')).status).toBe(400);
-    expect((await setLogin(a, 'asha', RIGHT)).status).toBe(200);
-    expect((await setLogin(b, 'ASHA', RIGHT)).status).toBe(409);
-    expect(await nameOf(a)).toBe('asha'); // the failed one changed nothing
-  });
-
-  it('says the same for an unknown user and a wrong password', async () => {
-    const key = newKey();
-    await save(key);
-    await setLogin(key, 'asha', RIGHT);
-    const wrong = await signIn('asha', OTHER);
-    const unknown = await signIn('nobody', RIGHT);
-    expect(wrong.status).toBe(401);
-    expect(unknown.status).toBe(401);
-    expect(await wrong.json()).toEqual(await unknown.json());
-  });
-
-  it('locks a username after ten tries, even for the right password, until the window passes', async () => {
-    const key = newKey();
-    await save(key);
-    await setLogin(key, 'asha', RIGHT);
-    for (let i = 0; i < 10; i += 1) expect((await signIn('asha', OTHER)).status).toBe(401);
-    expect((await signIn('asha', RIGHT)).status).toBe(429);
-    await env.DB.prepare('UPDATE login_failures SET since = 0').run();
-    expect((await signIn('asha', RIGHT)).status).toBe(200);
-    expect((await signIn('asha', OTHER)).status).toBe(401); // a right answer reset the count
-  });
-
-  it('holds the limit when guesses arrive all at once', async () => {
-    const key = newKey();
-    await save(key);
-    await setLogin(key, 'asha', RIGHT);
-    const answers = await Promise.all(Array.from({ length: 20 }, () => signIn('asha', OTHER)));
-    const statuses = answers.map((answer) => answer.status);
-    expect(statuses.filter((status) => status === 401)).toHaveLength(10);
-    expect(statuses.filter((status) => status === 429)).toHaveLength(10);
-  });
-
-  it('signing in again from a browser drops the key it replaces, so keys don’t pile up', async () => {
-    const key = newKey();
-    await save(key);
-    await setLogin(key, 'asha', RIGHT);
-    const again = await call(login.onRequestPost, api('/api/login', { method: 'POST', key, body: body('asha', RIGHT) }));
-    const { key: minted } = await again.json<{ key: string }>();
-    expect((await call(profile.onRequestGet, api('/api/profile', { key }))).status).toBe(401);
-    expect((await call(profile.onRequestGet, api('/api/profile', { key: minted }))).status).toBe(200);
-    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM device_keys').first<number>('n')).toBe(1);
-  });
-
-  it('a changed password signs out the other devices; the first one does not', async () => {
-    const key = newKey();
-    await save(key);
-    const other = await (await call(keys.onRequestPost, api('/api/keys', { method: 'POST', key }))).json<{ key: string }>();
-    expect(await (await setLogin(key, 'asha', RIGHT)).json()).toEqual({ username: 'asha', signedOut: 0 });
-    expect(await (await setLogin(key, 'asha', NEW)).json()).toEqual({ username: 'asha', signedOut: 1 });
-    expect((await call(profile.onRequestGet, api('/api/profile', { key: other.key }))).status).toBe(401);
-    expect((await signIn('asha', RIGHT)).status).toBe(401);
-    expect((await signIn('asha', NEW)).status).toBe(200);
-  });
-
-  it('removing the login, or the whole cloud copy, stops password sign-in', async () => {
-    const key = newKey();
-    await save(key);
-    await setLogin(key, 'asha', RIGHT);
-    expect((await call(login.onRequestDelete, api('/api/login', { method: 'DELETE', key }))).status).toBe(204);
-    expect((await signIn('asha', RIGHT)).status).toBe(401);
-
-    await setLogin(key, 'asha', RIGHT);
-    await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }));
-    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM logins').first<number>('n')).toBe(0);
-  });
-
-  it('asks for the bot check before counting or hashing anything', async () => {
-    const response = await signIn('asha', RIGHT, { env: { TURNSTILE_SECRET: 's', TURNSTILE_SITE_KEY: 'site' } });
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ challenge: true, siteKey: 'site' });
-    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM login_failures').first<number>('n')).toBe(0);
-  });
-});
-
 describe('/api/admin — the owner’s view', () => {
   const OWNER = 'o'.repeat(40);
   const withOwner = { env: { MCP_ADMIN_TOKEN: OWNER } };
@@ -395,27 +255,27 @@ describe('/api/admin — the owner’s view', () => {
     expect(ok.headers.get('Cache-Control')).toBe('no-store');
   });
 
-  it('counts visitors, lists them newest change first, and finds one by username', async () => {
+  it('counts visitors, lists them newest change first, and finds one by Google email', async () => {
     const [a, b] = [newKey(), newKey()];
+    await member(a, 'asha');
     await save(a, {
       customization: { edits: { metro: { name: 'Mine' } }, added: [{ id: 'my-1', baseId: 'metro' }], order: [] },
       customPlaylists: { metro: [{ id: 'p1' }, { id: 'p2' }], office: 'not a list' }, // odd shapes must not break it
     });
     await save(b, { note: 'b' });
-    await call(login.onRequestPut, api('/api/login', { method: 'PUT', key: a, body: JSON.stringify({ username: 'asha', proof: newKey() }) }));
 
     const body = await (await ask()).json<{
-      totals: { visitors: number; logins: number; devices: number };
-      visitors: { username: string | null; added_modes: number; edited_modes: number; playlists: number; devices: number }[];
+      totals: { visitors: number; google: number; devices: number };
+      visitors: { google: string | null; added_modes: number; edited_modes: number; playlists: number; devices: number }[];
       more: boolean;
     }>();
-    expect(body.totals).toMatchObject({ visitors: 2, logins: 1, devices: 2 });
+    expect(body.totals).toMatchObject({ visitors: 2, google: 2, devices: 2 });
     expect(body.more).toBe(false);
-    const asha = body.visitors.find((visitor) => visitor.username === 'asha')!;
+    const asha = body.visitors.find((visitor) => visitor.google === 'asha@gmail.com')!;
     expect(asha).toMatchObject({ added_modes: 1, edited_modes: 1, playlists: 2, devices: 1 });
 
-    const found = await (await ask('?q=ASH')).json<{ visitors: { username: string }[] }>();
-    expect(found.visitors.map((visitor) => visitor.username)).toEqual(['asha']);
+    const found = await (await ask('?q=ASHA@')).json<{ visitors: { google: string }[] }>();
+    expect(found.visitors.map((visitor) => visitor.google)).toEqual(['asha@gmail.com']);
   });
 
   it('shows everything stored for one visitor', async () => {
@@ -636,81 +496,65 @@ describe('/api/listen + /api/session — minutes, visit length, features used', 
   });
 });
 
-describe('/api/google — Continue with Google', () => {
+describe('/api/google — Continue with Google, the way into the cloud', () => {
   const CLIENT = { env: { GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com' } };
-  const as = (sub: string, email = `${sub}@gmail.com`) =>
-    vi.mocked(verifyGoogle).mockResolvedValue({ sub, email });
-  const post = (key?: string, replace = false) =>
-    call(
-      google.onRequestPost,
-      api('/api/google', { method: 'POST', key, body: JSON.stringify({ credential: 'token', replace }) }),
-      CLIENT,
-    );
-  const status = async (key?: string, extra: Record<string, unknown> = CLIENT) =>
-    (await call(google.onRequestGet, api('/api/google', { key }), extra)).json<{ clientId: string | null; email: string | null }>();
+  const as = (sub: string, extra: object = {}) =>
+    vi.mocked(verifyGoogle).mockResolvedValue({ sub, email: `${sub}@gmail.com`, name: sub.toUpperCase(), picture: null, ...extra });
+  const signIn = (key?: string, data: object = { note: 'this browser' }) =>
+    call(google.onRequestPost, api('/api/google', { method: 'POST', key, body: JSON.stringify({ credential: 't', data }) }), CLIENT);
+  const load = async (key: string) => (await call(profile.onRequestGet, api('/api/profile', { key }))).json<{ data: unknown; account: unknown }>();
 
-  it('says whether it is set up, and refuses sign-ins when it isn’t', async () => {
-    expect(await status(undefined, {})).toMatchObject({ clientId: null, email: null });
-    expect(await status()).toMatchObject({ clientId: 'client-1.apps.googleusercontent.com' });
+  it('says whether it is set up, and refuses sign-ins when it isn’t or Google didn’t vouch', async () => {
+    expect(await (await call(google.onRequestGet, api('/api/google'), {})).json()).toEqual({ clientId: null, account: null });
     as('g1');
     expect((await call(google.onRequestPost, api('/api/google', { method: 'POST', body: '{"credential":"t"}' }))).status).toBe(503);
-  });
-
-  it('refuses a token Google didn’t vouch for', async () => {
     vi.mocked(verifyGoogle).mockResolvedValue(null);
-    expect((await post()).status).toBe(401);
+    expect((await signIn()).status).toBe(401);
   });
 
-  it('links a new Google account to this browser’s cloud copy, then signs in with it on another device', async () => {
+  it('a first sign-in makes the account from this browser’s modes; signing in elsewhere loads them', async () => {
     as('g1');
-    expect(await (await post()).json()).toMatchObject({ link: true }); // nothing saved yet: save first
+    const first = await signIn(undefined, { note: 'my modes' });
+    expect(first.status).toBe(201);
+    const made = await first.json<{ key: string; created: boolean; version: number; account: { email: string; name: string } }>();
+    expect(made).toMatchObject({ created: true, account: { email: 'g1@gmail.com', name: 'G1' } });
+    expect(made.version).toBeGreaterThan(0);
+    expect(await load(made.key)).toMatchObject({ data: { note: 'my modes' }, account: { email: 'g1@gmail.com' } });
 
+    const again = await (await signIn(undefined, { note: 'another browser' })).json<{ key: string; created?: boolean }>();
+    expect(again.created).toBeUndefined(); // the existing account, not a new one
+    expect(await load(again.key)).toMatchObject({ data: { note: 'my modes' } });
+    expect(await (await signIn(again.key)).json()).toMatchObject({ same: true });
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profiles').first<number>('n')).toBe(1);
+  });
+
+  it('links a cloud copy from before Google, keeping its modes and key', async () => {
     const key = newKey();
-    await save(key, { note: 'mine' });
-    const linked = await post(key);
-    expect(linked.status).toBe(201);
-    expect(await linked.json()).toEqual({ linked: true, email: 'g1@gmail.com' });
-    expect(await status(key)).toMatchObject({ email: 'g1@gmail.com' });
-    expect(await (await post(key)).json()).toMatchObject({ same: true }); // already this account
-
-    const fresh = await (await post()).json<{ key: string }>(); // a new device, nothing of its own
-    const loaded = await call(profile.onRequestGet, api('/api/profile', { key: fresh.key }));
-    expect(await loaded.json()).toMatchObject({ data: { note: 'mine' } });
-  });
-
-  it('asks before replacing a browser’s own modes, and swaps keys only once confirmed', async () => {
-    const [owner, other] = [newKey(), newKey()];
-    await save(owner, { note: 'account' });
-    as('g1');
-    await post(owner);
-    await save(other, { note: 'this browser' });
-
-    const ask = await post(other);
-    expect(ask.status).toBe(409);
-    expect(await ask.json()).toMatchObject({ confirm: true, email: 'g1@gmail.com' });
-    expect((await call(profile.onRequestGet, api('/api/profile', { key: other }))).status).toBe(200); // untouched
-
-    const { key } = await (await post(other, true)).json<{ key: string }>();
-    expect(await (await call(profile.onRequestGet, api('/api/profile', { key }))).json()).toMatchObject({
-      data: { note: 'account' },
-    });
-    expect((await call(profile.onRequestGet, api('/api/profile', { key: other }))).status).toBe(401); // replaced key retired
-  });
-
-  it('one Google account per profile; disconnecting or deleting the cloud copy removes the link', async () => {
-    const key = newKey();
-    await save(key);
-    as('g1');
-    await post(key);
+    await legacy(key, '{"note":"kept"}');
+    expect((await call(profile.onRequestGet, api('/api/profile', { key }))).status).toBe(403); // not signed in yet
     as('g2');
-    expect((await post(key)).status).toBe(409); // this profile already has g1
+    expect(await (await signIn(key)).json()).toMatchObject({ linked: true, account: { email: 'g2@gmail.com' } });
+    expect(await load(key)).toMatchObject({ data: { note: 'kept' } });
+  });
 
-    expect((await call(google.onRequestDelete, api('/api/google', { method: 'DELETE', key }))).status).toBe(204);
-    expect(await status(key)).toMatchObject({ email: null });
+  it('switching accounts retires this browser’s old key, and keeps the old account for its Google sign-in', async () => {
+    as('g3');
+    await signIn(); // makes g3's account
+    const other = newKey();
+    await member(other, 'g4');
+    as('g3');
+    const switched = await (await signIn(other)).json<{ key: string }>();
+    expect(switched.key).not.toBe(other);
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: other }))).status).toBe(401); // retired
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM google_accounts WHERE sub = 'g4'").first<number>('n')).toBe(1);
+  });
 
-    await post(key); // g2 now
-    await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }));
-    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM google_accounts').first<number>('n')).toBe(0);
+  it('keeps the name and picture current on each sign-in', async () => {
+    as('g5', { picture: 'https://lh3.googleusercontent.com/a/one' });
+    const { key } = await (await signIn()).json<{ key: string }>();
+    as('g5', { name: 'New Name', picture: 'https://lh3.googleusercontent.com/a/two' });
+    await signIn();
+    expect(await load(key)).toMatchObject({ account: { name: 'New Name', picture: 'https://lh3.googleusercontent.com/a/two' } });
   });
 });
 
@@ -798,66 +642,41 @@ describe('linked activity — per-account history for the admin page', () => {
   });
 });
 
-describe('per-address limits and the bot check on sign-in', () => {
-  it('one address can create only a few profiles in a row', async () => {
-    const create = () =>
-      call(
-        profile.onRequestPut,
-        api('/api/profile', {
-          method: 'PUT',
-          key: newKey(),
-          body: JSON.stringify({ data: {}, create: true }),
-          headers: { 'CF-Connecting-IP': '198.51.100.7' },
-        }),
-      );
-    for (let i = 0; i < 10; i += 1) expect((await create()).status).toBe(201);
-    expect((await create()).status).toBe(429);
-  });
-
-  it('asks for the bot check before handing out a passkey sign-in challenge, once Turnstile is set', async () => {
-    const turnstile = { env: { TURNSTILE_SECRET: 'secret', TURNSTILE_SITE_KEY: 'site-key' } };
-    const login = await call(
-      options.onRequestPost,
-      api('/api/passkeys/options', { method: 'POST', body: JSON.stringify({ purpose: 'login' }) }),
-      turnstile,
-    );
-    expect(login.status).toBe(403);
-    expect(await login.json()).toMatchObject({ challenge: true, siteKey: 'site-key' });
-    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM challenges').first<number>('n')).toBe(0); // nothing stored
-  });
-});
-
 describe('audit fixes — saving, orphans, and races', () => {
   const put = (key: string, body: object) =>
     call(profile.onRequestPut, api('/api/profile', { method: 'PUT', key, body: JSON.stringify(body) }));
 
-  it('a key that has saved before, unknown now (signed out elsewhere), gets 401 — not a new, separate profile', async () => {
-    expect((await put(newKey(), { data: {}, create: false })).status).toBe(401);
+  it('a save never creates a profile: an unknown key gets 401, whatever it asks for', async () => {
+    expect((await put(newKey(), { data: {}, create: true })).status).toBe(401);
+    expect((await put(newKey(), { data: {} })).status).toBe(401);
     expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profiles').first<number>('n')).toBe(0);
-    expect((await put(newKey(), { data: {}, create: true })).status).toBe(201);
-    expect((await put(newKey(), { data: {} })).status).toBe(201); // an older tab, no flag: still allowed
   });
 
   it('measures saved data in bytes, so text that is small in characters but big in UTF-8 is refused cleanly', async () => {
     const emoji = '\u{1F600}'.repeat(300_000); // 600k UTF-16 units, 1.2 MB of UTF-8
-    expect((await put(newKey(), { data: { note: emoji } })).status).toBe(413);
+    const key = newKey();
+    await member(key);
+    expect((await put(key, { data: { note: emoji } })).status).toBe(413);
   });
 
   it('deletes the profile a browser leaves when signing in elsewhere, unless something else still reaches it', async () => {
-    const proof = newKey();
-    const target = newKey();
-    await save(target);
-    await call(login.onRequestPut, api('/api/login', { method: 'PUT', key: target, body: JSON.stringify({ username: 'asha', proof }) }));
+    const CLIENT = { env: { GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com' } };
+    const asAsha = () =>
+      vi.mocked(verifyGoogle).mockResolvedValue({ sub: 'asha', email: 'asha@gmail.com', name: null, picture: null });
+    await member(newKey(), 'asha'); // asha's account already exists
 
-    const lonely = newKey(); // a profile with nothing but this browser's key
-    await save(lonely, { note: 'nobody can reach me after this' });
-    await call(login.onRequestPost, api('/api/login', { method: 'POST', key: lonely, body: JSON.stringify({ username: 'asha', proof }) }));
-    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profiles').first<number>('n')).toBe(1);
+    // A copy from before Google, reached by nothing but this browser's key, signs in to asha:
+    const lonely = newKey();
+    await legacy(lonely);
+    asAsha();
+    const answer = await call(google.onRequestPost, api('/api/google', { method: 'POST', key: lonely, body: '{"credential":"t"}' }), CLIENT);
+    expect(await answer.json()).toMatchObject({ key: expect.any(String) });
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profiles').first<number>('n')).toBe(1); // nothing could reach it any more
 
-    const kept = newKey(); // this one has its own password, so it stays
-    await save(kept);
-    await call(login.onRequestPut, api('/api/login', { method: 'PUT', key: kept, body: JSON.stringify({ username: 'ravi', proof: newKey() }) }));
-    await call(login.onRequestPost, api('/api/login', { method: 'POST', key: kept, body: JSON.stringify({ username: 'asha', proof }) }));
+    const kept = newKey(); // signed in with its own Google account: it stays
+    await member(kept, 'ravi');
+    asAsha();
+    await call(google.onRequestPost, api('/api/google', { method: 'POST', key: kept, body: '{"credential":"t"}' }), CLIENT);
     expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profiles').first<number>('n')).toBe(2);
   });
 
@@ -880,14 +699,139 @@ describe('audit fixes — saving, orphans, and races', () => {
     expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM listen_daily').first<number>('n')).toBe(1); // anonymous minutes still count
   });
 
-  it('a Google account linked without a verified email still shows as linked', async () => {
+  it('an account whose email Google didn’t verify still counts as signed in', async () => {
+    const CLIENT = { env: { GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com' } };
+    vi.mocked(verifyGoogle).mockResolvedValue({ sub: 'no-email', email: null, name: null, picture: null });
+    const made = await (
+      await call(google.onRequestPost, api('/api/google', { method: 'POST', body: '{"credential":"t"}' }), CLIENT)
+    ).json<{ key: string }>();
+    const status = await (await call(google.onRequestGet, api('/api/google', { key: made.key }), CLIENT)).json();
+    expect(status).toMatchObject({ account: { email: null } });
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: made.key }))).status).toBe(200);
+  });
+});
+
+describe('signed in with Google — the gate on every cloud feature', () => {
+  it('a cloud copy from before Google is kept, but its cloud features answer 403 until it signs in', async () => {
     const key = newKey();
-    await save(key);
-    vi.mocked(verifyGoogle).mockResolvedValue({ sub: 'no-email', email: null });
-    const extra = { env: { GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com' } };
-    await call(google.onRequestPost, api('/api/google', { method: 'POST', key, body: '{"credential":"t"}' }), extra);
-    const status = await (await call(google.onRequestGet, api('/api/google', { key }), extra)).json();
-    expect(status).toMatchObject({ linked: true, email: null });
+    await legacy(key);
+    const gated = [
+      await call(profile.onRequestGet, api('/api/profile', { key })),
+      await call(profile.onRequestPut, api('/api/profile', { method: 'PUT', key, body: '{"data":{}}' })),
+      await call(uploads.onRequestPut, api('/api/uploads/metro', { method: 'PUT', key, body: still() }), { params: { mode: 'metro' } }),
+      await call(keys.onRequestPost, api('/api/keys', { method: 'POST', key })),
+      await call(remote.onRequestPost, api('/api/remote', { method: 'POST', key, body: '{}' })),
+    ];
+    for (const response of gated) {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ google: true });
+    }
+    // Leaving and deleting are never gated.
+    expect((await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }))).status).toBe(204);
+  });
+
+  it('signing out this browser retires only its own key', async () => {
+    const mine = newKey();
+    await save(mine);
+    const minted = await (await call(keys.onRequestPost, api('/api/keys', { method: 'POST', key: mine }))).json<{ key: string }>();
+    expect((await call(keys.onRequestDelete, api('/api/keys?self', { method: 'DELETE', key: mine }))).status).toBe(204);
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: mine }))).status).toBe(401);
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: minted.key }))).status).toBe(200);
+  });
+});
+
+describe('OAuth for the personal MCP server (/mcp)', () => {
+  const CLIENT = { env: { GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com' } };
+  const REDIRECT = 'https://claude.ai/api/mcp/auth_callback';
+  const register = (body: object) =>
+    call(oauthRegister.onRequestPost, api('/api/oauth/register', { method: 'POST', body: JSON.stringify(body) }));
+  const verifier = 'v'.repeat(50);
+  const approve = async (clientId: string, extra: object = {}) =>
+    call(
+      oauthAuthorize.onRequestPost,
+      api('/api/oauth/authorize', {
+        method: 'POST',
+        body: JSON.stringify({
+          credential: 't',
+          client_id: clientId,
+          redirect_uri: REDIRECT,
+          code_challenge: await challengeOf(verifier),
+          code_challenge_method: 'S256',
+          state: 'xyz',
+          ...extra,
+        }),
+      }),
+      CLIENT,
+    );
+  const token = (fields: Record<string, string>) =>
+    call(
+      oauthToken.onRequestPost,
+      api('/api/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(fields).toString(),
+      }),
+    );
+
+  it('registers apps with safe return addresses only', async () => {
+    expect((await register({ redirect_uris: ['javascript:alert(1)'] })).status).toBe(400);
+    expect((await register({ redirect_uris: ['http://evil.example/cb'] })).status).toBe(400); // http only on localhost
+    expect((await register({ redirect_uris: [] })).status).toBe(400);
+    const ok = await register({ redirect_uris: [REDIRECT, 'http://localhost:6274/cb'], client_name: 'Claude' });
+    expect(ok.status).toBe(201);
+    expect(ok.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(await ok.json()).toMatchObject({ client_name: 'Claude', token_endpoint_auth_method: 'none' });
+  });
+
+  it('runs the whole flow: approve with Google → code → token → MCP as that visitor', async () => {
+    const { client_id } = await (await register({ redirect_uris: [REDIRECT], client_name: 'Claude' })).json<{ client_id: string }>();
+    const lookup = (redirect: string) =>
+      call(oauthClient.onRequestGet, api(`/api/oauth/client?client_id=${client_id}&redirect_uri=${encodeURIComponent(redirect)}`));
+    expect(await (await lookup(REDIRECT)).json()).toEqual({ name: 'Claude' });
+    expect((await lookup('https://evil.example/cb')).status).toBe(400); // never redirect to an unregistered address
+
+    vi.mocked(verifyGoogle).mockResolvedValue({ sub: 'g-oauth', email: 'o@gmail.com', name: null, picture: null });
+    const approved = await (await approve(client_id)).json<{ redirect: string }>();
+    const back = new URL(approved.redirect);
+    expect(back.origin + back.pathname).toBe(REDIRECT);
+    expect(back.searchParams.get('state')).toBe('xyz');
+    const code = back.searchParams.get('code')!;
+
+    // Wrong verifier: refused, and the code is spent.
+    expect((await token({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT, client_id, code_verifier: 'w'.repeat(50) })).status).toBe(400);
+    const second = new URL((await (await approve(client_id)).json<{ redirect: string }>()).redirect).searchParams.get('code')!;
+    const granted = await token({ grant_type: 'authorization_code', code: second, redirect_uri: REDIRECT, client_id, code_verifier: verifier });
+    expect(granted.status).toBe(200);
+    const { access_token } = await granted.json<{ access_token: string; token_type: string }>();
+    // Used once.
+    expect((await token({ grant_type: 'authorization_code', code: second, redirect_uri: REDIRECT, client_id, code_verifier: verifier })).status).toBe(400);
+
+    // The token works at /mcp as a Bearer, for the visitor's own profile.
+    const init = await call(
+      mcp.onRequest,
+      api('/mcp', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
+      }),
+      { params: {} },
+    );
+    expect(init.status).toBe(200);
+  });
+
+  it('without a token, /mcp says where to sign in', async () => {
+    const response = await call(mcp.onRequest, api('/mcp', { method: 'POST', body: '{}' }), { params: {} });
+    expect(response.status).toBe(401);
+    expect(response.headers.get('WWW-Authenticate')).toBe(
+      'Bearer resource_metadata="https://vibe-mode.pages.dev/.well-known/oauth-protected-resource"',
+    );
+  });
+
+  it('refuses an approval without PKCE, or for an app that isn’t registered', async () => {
+    const { client_id } = await (await register({ redirect_uris: [REDIRECT] })).json<{ client_id: string }>();
+    vi.mocked(verifyGoogle).mockResolvedValue({ sub: 'g-x', email: null, name: null, picture: null });
+    expect((await approve(client_id, { code_challenge_method: 'plain' })).status).toBe(400);
+    expect((await approve('nobody')).status).toBe(400);
   });
 });
 

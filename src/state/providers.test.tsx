@@ -14,7 +14,6 @@ import { useVibe, type VibeContextValue } from './vibe-context';
 import { useSync, type SyncContextValue } from './sync-context';
 import { SYNC_STORAGE_KEY, fingerprint, splitBackup } from '@/sync/sync';
 import { STORAGE_KEYS } from '@/utils/storage';
-import { stretchPassword } from '@/sync/password';
 
 /*
  * The real providers, wired as in App.tsx, against an in-memory stand-in for
@@ -28,18 +27,31 @@ interface Stored {
   data: Record<string, unknown>;
   uploads: Record<string, string>;
   version: number;
+  /** Signed in with Google; null = a cloud copy from before Google (403 on cloud features). */
+  account: { email: string; name: string; picture: null } | null;
 }
 let server: {
+  /** Device key → profile (several keys may share one profile). */
   profiles: Map<string, Stored>;
+  /** Google account (the fake credential is its id) → profile. */
+  accounts: Map<string, Stored>;
   calls: string[];
   queued: { action: string; value: string | null }[];
   reported: unknown[];
-  /** The stretched password /api/login accepts for 'asha'. */
-  proof?: string;
 };
 
+const accountFor = (sub: string) => ({ email: `${sub}@gmail.com`, name: sub.toUpperCase(), picture: null });
+let minted = 0;
+/** Keys the fake server hands out: well-formed, and different each time. */
+const freshKey = () => `${'F'.repeat(40)}${String((minted += 1)).padStart(3, '0')}`;
+
+/**
+ * An in-memory stand-in for functions/api/ with the same rules: cloud features
+ * need a profile signed in with Google; Google sign-in makes, links or opens
+ * one (functions/api/google.ts). The real rules are tested in server/api.test.ts.
+ */
 function fakeApi() {
-  server = { profiles: new Map(), calls: [], queued: [], reported: [] };
+  server = { profiles: new Map(), accounts: new Map(), calls: [], queued: [], reported: [] };
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -48,43 +60,78 @@ function fakeApi() {
       server.calls.push(`${method} ${url.pathname}`);
       const key = new Headers(init.headers).get('Authorization')?.slice(7) ?? '';
       const found = server.profiles.get(key);
+      const gate = () =>
+        !found
+          ? Response.json({ error: 'Unknown key.' }, { status: 401 })
+          : !found.account
+            ? Response.json({ error: 'Sign in with Google.', google: true }, { status: 403 })
+            : null;
       if (url.pathname === '/api/config') return Response.json({ playlists: {}, images: {}, posters: {} });
-      if (url.pathname === '/api/profile' && method === 'GET') {
-        return found ? Response.json(found) : Response.json({ error: 'Unknown key.' }, { status: 401 });
+      if (url.pathname === '/api/google' && method === 'GET') {
+        return Response.json({ clientId: 'test-client', account: found?.account ?? null });
       }
+      if (url.pathname === '/api/google' && method === 'POST') {
+        const { credential, data } = JSON.parse(String(init.body));
+        const account = accountFor(credential);
+        const existing = server.accounts.get(credential);
+        if (existing) {
+          if (found === existing) return Response.json({ same: true, account });
+          const next = freshKey();
+          server.profiles.set(next, existing);
+          server.profiles.delete(key);
+          return Response.json({ key: next, account });
+        }
+        if (found && !found.account) {
+          found.account = account;
+          server.accounts.set(credential, found);
+          return Response.json({ linked: true, account }, { status: 201 });
+        }
+        const made: Stored = { data: data ?? {}, uploads: {}, version: 1, account };
+        const next = freshKey();
+        server.accounts.set(credential, made);
+        server.profiles.set(next, made);
+        server.profiles.delete(key);
+        return Response.json({ key: next, account, created: true, version: 1 }, { status: 201 });
+      }
+      if (url.pathname === '/api/profile' && method === 'GET') return gate() ?? Response.json(found);
       if (url.pathname === '/api/profile' && method === 'PUT') {
-        const { data, create } = JSON.parse(String(init.body));
-        if (!found && create === false) return Response.json({ error: 'Unknown key.' }, { status: 401 });
-        const version = (found?.version ?? 0) + 1;
-        server.profiles.set(key, { data, uploads: found?.uploads ?? {}, version });
-        return Response.json({ version }, { status: found ? 200 : 201 });
-      }
-      if (url.pathname === '/api/remote' && found) {
-        const { state } = JSON.parse(String(init.body));
-        if (state) server.reported.push(state);
-        const commands = server.queued.splice(0);
-        return Response.json({ commands, version: found.version });
-      }
-      if (url.pathname === '/api/login' && method === 'POST') {
-        const { username, proof } = JSON.parse(String(init.body));
-        return username === 'asha' && proof === server.proof
-          ? Response.json({ key: KEY })
-          : Response.json({ error: 'Wrong username or password.' }, { status: 401 });
+        const refused = gate();
+        if (refused) return refused;
+        found!.data = JSON.parse(String(init.body)).data;
+        found!.version += 1;
+        return Response.json({ version: found!.version });
       }
       if (url.pathname === '/api/profile' && method === 'DELETE') {
+        if (found) for (const [k, v] of server.profiles) if (v === found) server.profiles.delete(k);
+        return new Response(null, { status: 204 });
+      }
+      if (url.pathname === '/api/keys' && method === 'DELETE' && url.search === '?self') {
         server.profiles.delete(key);
         return new Response(null, { status: 204 });
       }
-      if (url.pathname.startsWith('/api/uploads/') && found) {
+      if (url.pathname === '/api/remote') {
+        const refused = gate();
+        if (refused) return refused;
+        const { state } = JSON.parse(String(init.body));
+        if (state) server.reported.push(state);
+        const commands = server.queued.splice(0);
+        return Response.json({ commands, version: found!.version });
+      }
+      if (url.pathname.startsWith('/api/uploads/')) {
+        const refused = gate();
+        if (refused) return refused;
         const mode = url.pathname.split('/').pop()!;
-        if (method === 'PUT') found.uploads[mode] = String(init.body);
-        else delete found.uploads[mode];
+        if (method === 'PUT') found!.uploads[mode] = String(init.body);
+        else delete found!.uploads[mode];
         return Response.json({ ok: true });
       }
       return Response.json({ error: 'Not found.' }, { status: 404 });
     }),
   );
 }
+
+/** Signs this browser in with the fake Google account `sub`. */
+const signIn = (sub = 'asha') => act(async () => void (await ctx.sync!.continueWithGoogle(sub)));
 
 const ctx: { vibe?: VibeContextValue; sync?: SyncContextValue; player?: PlayerContextValue } = {};
 function Probe() {
@@ -180,48 +227,95 @@ describe('customising modes', () => {
   });
 });
 
-describe('cloud save', () => {
+describe('cloud save — a signed-in (Google) feature', () => {
   it('sends nothing for a visitor who changed nothing', async () => {
     ({ unmount } = mountProviders());
     await settle(5000);
     expect(server.calls.filter((c) => c.includes('/api/profile'))).toEqual([]);
     expect(record()?.key ?? null).toBeNull();
+    expect(ctx.sync!.status).toBe('signed-out');
   });
 
-  it('saves a change two seconds later, under a new key', async () => {
+  it('not signed in, changes stay in this browser; the first sign-in makes the account from them', async () => {
     ({ unmount } = mountProviders());
     await settle();
     act(() => ctx.vibe!.editMode('metro', { name: 'My Metro' }));
+    await settle(5000);
+    expect(server.calls.filter((c) => c.includes('/api/profile'))).toEqual([]); // nothing left the browser
+
+    await signIn('asha');
+    await settle(100);
+    expect(ctx.sync!.account).toMatchObject({ email: 'asha@gmail.com' });
+    const saved = server.accounts.get('asha')!.data as { customization: { edits: Record<string, { name: string }> } };
+    expect(saved.customization.edits.metro.name).toBe('My Metro');
+
+    // From now on, changes are saved two seconds later.
+    act(() => ctx.vibe!.editMode('metro', { name: 'Later' }));
     await settle(1000);
     expect(server.calls).not.toContain('PUT /api/profile');
     await settle(1500);
     expect(server.calls).toContain('PUT /api/profile');
-    const key = record().key!;
-    expect(key).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    const saved = server.profiles.get(key)!.data as { customization: { edits: Record<string, { name: string }> } };
-    expect(saved.customization.edits.metro.name).toBe('My Metro');
     expect(ctx.sync!.status).toBe('saved');
   });
 
   it('sends a picture once, and deletes it from the cloud when removed', async () => {
     ({ unmount } = mountProviders());
     await settle();
+    await signIn();
     act(() => void ctx.vibe!.setUpload('metro', still(500)));
     await settle(2500);
-    const key = record().key!;
-    expect(server.profiles.get(key)!.uploads.metro).toBe(still(500));
+    const stored = server.accounts.get('asha')!;
+    expect(stored.uploads.metro).toBe(still(500));
     expect(server.calls.filter((c) => c === 'PUT /api/uploads/metro')).toHaveLength(1);
 
     act(() => ctx.vibe!.editMode('metro', { image: null }));
     await settle(2500);
-    expect(server.profiles.get(key)!.uploads.metro).toBeUndefined();
+    expect(stored.uploads.metro).toBeUndefined();
   });
 
-  it('a sync link on a fresh browser loads that profile and leaves the address bar', async () => {
+  it('signing in to an account that already has modes asks which to keep', async () => {
+    const mine: Stored = {
+      data: { customization: { edits: { metro: { name: 'From my account' } }, added: [], order: [] } },
+      uploads: {},
+      version: 3,
+      account: accountFor('asha'),
+    };
+    server.accounts.set('asha', mine);
+    ({ unmount } = mountProviders());
+    await settle();
+    act(() => ctx.vibe!.editMode('metro', { name: 'This browser' }));
+    await signIn('asha');
+    // The dialog: load the account's modes.
+    const load = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Load my account’s'))!;
+    await act(async () => {
+      load.click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await settle(100);
+    expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('From my account');
+    expect(ctx.sync!.account).toMatchObject({ email: 'asha@gmail.com' });
+  });
+
+  it('a cloud copy from before Google is kept and asks to sign in; signing in links it', async () => {
+    server.profiles.set(KEY, { data: { note: 'old' }, uploads: {}, version: 2, account: null });
+    localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify({ key: KEY, data: null, uploads: {}, version: 2, off: false }));
+    ({ unmount } = mountProviders());
+    await settle(100);
+    expect(ctx.sync!.status).toBe('needs-google');
+    expect(record().key).toBe(KEY); // kept
+
+    await signIn('ravi');
+    await settle(100);
+    expect(ctx.sync!.account).toMatchObject({ email: 'ravi@gmail.com' });
+    expect(server.profiles.get(KEY)!.account).not.toBeNull();
+  });
+
+  it('a sync link on a fresh browser signs it in and leaves the address bar', async () => {
     server.profiles.set(KEY, {
       data: { customization: { edits: { metro: { name: 'From my phone' } }, added: [], order: [] } },
       uploads: {},
       version: 7,
+      account: accountFor('asha'),
     });
     history.replaceState(null, '', `/#sync=${KEY}`);
     ({ unmount } = mountProviders());
@@ -229,29 +323,7 @@ describe('cloud save', () => {
     expect(location.hash).toBe('');
     expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('From my phone');
     expect(record().key).toBe(KEY);
-  });
-
-  it('a username and password load that profile; a wrong one changes nothing and isn’t a failed save', async () => {
-    server.proof = await stretchPassword('asha', 'long enough pw');
-    server.profiles.set(KEY, {
-      data: { customization: { edits: { metro: { name: 'From my account' } }, added: [], order: [] } },
-      uploads: {},
-      version: 3,
-    });
-    ({ unmount } = mountProviders());
-    await settle();
-
-    let ok = true;
-    await act(async () => void (ok = await ctx.sync!.signInWithPassword('asha', 'nope nope nope')));
-    expect(ok).toBe(false);
-    expect(ctx.sync!.message).toBe('Wrong username or password.');
-    expect(ctx.sync!.status).not.toBe('error');
-    expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).not.toBe('From my account');
-
-    await act(async () => void (ok = await ctx.sync!.signInWithPassword(' Asha ', 'long enough pw')));
-    expect(ok).toBe(true);
-    expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('From my account');
-    expect(record().key).toBe(KEY);
+    expect(ctx.sync!.account).toMatchObject({ email: 'asha@gmail.com' });
   });
 
   it('a browser signed out elsewhere forgets its key but keeps its modes', async () => {
@@ -261,7 +333,7 @@ describe('cloud save', () => {
     const data = splitBackup(ctx.vibe!.exportSettings()).data;
     localStorage.setItem(
       SYNC_STORAGE_KEY,
-      JSON.stringify({ key: KEY, data: fingerprint(JSON.stringify(data)), uploads: {}, version: 1, off: false }),
+      JSON.stringify({ key: KEY, account: accountFor('asha'), data: fingerprint(JSON.stringify(data)), uploads: {}, version: 1, off: false }),
     );
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
@@ -271,17 +343,27 @@ describe('cloud save', () => {
     expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('Local');
   });
 
-  it('"Delete my cloud copy" turns saving off until turned back on', async () => {
+  it('signing out keeps this browser’s modes and stops saving; so does deleting the cloud copy', async () => {
     ({ unmount } = mountProviders());
     await settle();
+    await signIn();
     act(() => ctx.vibe!.editMode('metro', { name: 'A' }));
     await settle(2500);
-    await act(async () => void (await ctx.sync!.deleteCloudCopy()));
-    expect(record()).toMatchObject({ key: null, off: true });
+    await act(async () => void (await ctx.sync!.signOut()));
+    expect(record().key).toBeNull();
+    expect(ctx.sync!.status).toBe('signed-out');
+    expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('A');
     const before = server.calls.length;
     act(() => ctx.vibe!.editMode('metro', { name: 'B' }));
     await settle(2500);
     expect(server.calls.slice(before).filter((c) => c.startsWith('PUT'))).toEqual([]);
+
+    // A new account (made from this browser's modes), then deleted: gone from the server.
+    await signIn('ravi');
+    await act(async () => void (await ctx.sync!.deleteCloudCopy()));
+    expect([...server.profiles.values()].includes(server.accounts.get('ravi')!)).toBe(false);
+    expect(record().key).toBeNull();
+    expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('B');
   });
 });
 
@@ -289,10 +371,10 @@ describe('audit fixes — cloud save', () => {
   it('a browser signed out from another device is told so, instead of quietly starting a second copy', async () => {
     ({ unmount } = mountProviders());
     await settle();
-    // This browser has saved before (it has a version) but the server no longer knows its key.
+    // Signed in once, but the server no longer knows the key.
     localStorage.setItem(
       SYNC_STORAGE_KEY,
-      JSON.stringify({ key: KEY, data: 'stale', uploads: {}, version: 5, off: false }),
+      JSON.stringify({ key: KEY, account: accountFor('asha'), data: 'stale', uploads: {}, version: 5, off: false }),
     );
     act(() => ctx.vibe!.editMode('metro', { name: 'Edited after sign-out' }));
     await settle(2500);
@@ -304,15 +386,16 @@ describe('audit fixes — cloud save', () => {
   it('"Reset everything" leaves the cloud copy alone for the other devices', async () => {
     ({ unmount } = mountProviders());
     await settle();
+    await signIn();
     act(() => ctx.vibe!.editMode('metro', { name: 'Keep me' }));
     await settle(2500);
-    const [key, before] = [...server.profiles.entries()][0];
+    const before = JSON.stringify(server.accounts.get('asha')!.data);
     act(() => {
       ctx.sync!.leaveCloud();
       ctx.vibe!.resetEverything();
     });
     await settle(2500);
-    expect(server.profiles.get(key)).toEqual(before); // not overwritten with the emptied browser
+    expect(JSON.stringify(server.accounts.get('asha')!.data)).toBe(before); // not overwritten with the emptied browser
     expect(record().key).toBeNull();
   });
 });
@@ -335,7 +418,8 @@ describe('an AI assistant driving the player', () => {
       </LazyMotion>,
     ));
     await settle();
-    act(() => ctx.vibe!.editMode('metro', { name: 'M' })); // gives this browser a cloud copy
+    await signIn(); // AI control of a tab is a signed-in feature
+    act(() => ctx.vibe!.editMode('metro', { name: 'M' }));
     act(() => ctx.vibe!.selectTheme('metro'));
     await settle(2500);
     expect(server.calls).not.toContain('POST /api/remote'); // off until switched on

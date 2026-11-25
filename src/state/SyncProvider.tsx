@@ -282,25 +282,27 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       const account = safeAccount(result.body.account);
       if (JSON.stringify(account) !== JSON.stringify(readRecord().account)) store({ ...readRecord(), account });
     }
+    // A refusal is about the key, whatever happened here meanwhile — handled
+    // before the staleness check below, or a browser with unsent changes (a
+    // copy from before Google always has some) would never hear it.
+    if (!result.ok) {
+      if (readRecord().key !== rec.key) return;
+      if (needsGoogle(result)) return; // kept: signing in with Google links this copy
+      if (result.status === 401) forget();
+      else report(result);
+      return;
+    }
     // The answer is stale if anything moved while it was on its way: a save
     // went out, an edit was made here, or the key changed. Laying it over
     // would replace newer work with older; send the edit instead.
     const now = readRecord();
     if (saving.current || now.key !== rec.key || unsaved(now)) {
-      if (ready.current && !saving.current && now.key && unsaved(now)) void save();
+      if (ready.current && !saving.current && now.key && now.account && unsaved(now)) void save();
       return;
     }
-    if (result.ok) {
-      // Unchanged since this browser last saw it: nothing to lay over.
-      if (result.body.version !== rec.version) adopt(result.body, rec.key);
-      else setStatus('saved');
-    } else if (needsGoogle(result)) {
-      // kept: signing in with Google links this copy
-    } else if (result.status === 401) {
-      forget();
-    } else {
-      report(result);
-    }
+    // Unchanged since this browser last saw it: nothing to lay over.
+    if (result.body.version !== rec.version) adopt(result.body, rec.key);
+    else setStatus('saved');
   }, [adopt, forget, report, save, unsaved, store, needsGoogle]);
 
   /* ── A sync link opened on this device (`#sync=…`) ─────────────────────── */
