@@ -21,6 +21,13 @@ const LISTENING_MS = 45_000;
 const PLAYING_MS = 150_000;
 const LOCKOUT_MS = 15 * 60_000;
 const PAGE = 50;
+/** Breakdowns of visits cover this many days, today included. */
+const VISIT_DAYS = 30;
+/** The columns of `visits` a breakdown may group by — names, so never bound, only picked from here. */
+const BUCKETS = ['browser', 'os', 'device', 'country'] as const;
+
+/** 'YYYY-MM-DD' (UTC) for `days` days before `now`, as functions/api/visit.ts writes it. */
+const dayOf = (now: number, days = 0) => new Date(now - days * DAY_MS).toISOString().slice(0, 10);
 
 interface AdminVisitor {
   id: string;
@@ -56,7 +63,8 @@ async function overview(env: Env, url: URL): Promise<Response> {
   const q = (url.searchParams.get('q') ?? '').trim().toLowerCase().slice(0, 60);
   const offset = Math.max(0, Math.min(Number(url.searchParams.get('offset')) || 0, 1_000_000));
 
-  const [totals, visitors, listening, lockouts, defaults, playing] = await env.DB.batch([
+  const since = dayOf(now, VISIT_DAYS - 1);
+  const [totals, visitors, listening, lockouts, defaults, playing, perDay, ...buckets] = await env.DB.batch([
     env.DB.prepare(
       `SELECT
          (SELECT COUNT(*) FROM profiles) AS visitors,
@@ -72,8 +80,19 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COALESCE(SUM(octet_length(data)), 0) FROM profiles) AS data_bytes,
          (SELECT COUNT(*) FROM remote_state WHERE seen_at > ?3) AS listening,
          (SELECT COUNT(*) FROM remote_commands) AS queued_commands,
-         (SELECT COUNT(*) FROM listeners WHERE playing = 1 AND seen_at > ?4) AS playing_now`,
-    ).bind(now - DAY_MS, now - 7 * DAY_MS, now - LISTENING_MS, now - PLAYING_MS),
+         (SELECT COUNT(*) FROM listeners WHERE playing = 1 AND seen_at > ?4) AS playing_now,
+         (SELECT COALESCE(SUM(count), 0) FROM visits WHERE day = ?5) AS visits_day,
+         (SELECT COALESCE(SUM(count), 0) FROM visits WHERE day >= ?6) AS visits_week,
+         (SELECT COALESCE(SUM(count), 0) FROM visits WHERE day >= ?7) AS visits_month`,
+    ).bind(
+      now - DAY_MS,
+      now - 7 * DAY_MS,
+      now - LISTENING_MS,
+      now - PLAYING_MS,
+      dayOf(now),
+      dayOf(now, 6),
+      since,
+    ),
     // `data` is stored as the browser sent it (it is sanitised on the way
     // back in), so the counts guard every shape: one odd profile must not
     // break the whole list. PAGE + 1 rows says whether there is a next page.
@@ -103,9 +122,15 @@ async function overview(env: Env, url: URL): Promise<Response> {
     env.DB.prepare('SELECT kind, id, value FROM defaults ORDER BY kind, id'),
     // Never the tab id: it is meaningless to the owner, and stays in the database.
     env.DB.prepare(
-      `SELECT mode, mode_name, playlist_name, track, seen_at FROM listeners
+      `SELECT mode, mode_name, playlist_name, track, seen_at, browser, os, device, country FROM listeners
        WHERE playing = 1 AND seen_at > ? ORDER BY seen_at DESC LIMIT 200`,
     ).bind(now - PLAYING_MS),
+    env.DB.prepare('SELECT day, SUM(count) AS n FROM visits WHERE day >= ? GROUP BY day ORDER BY day DESC').bind(since),
+    ...BUCKETS.map((bucket) =>
+      env.DB.prepare(
+        `SELECT ${bucket} AS name, SUM(count) AS n FROM visits WHERE day >= ? GROUP BY ${bucket} ORDER BY n DESC LIMIT 25`,
+      ).bind(since),
+    ),
   ]);
 
   const rows = visitors.results as unknown as AdminVisitor[];
@@ -120,6 +145,11 @@ async function overview(env: Env, url: URL): Promise<Response> {
     lockouts: lockouts.results,
     defaults: defaults.results,
     playing: playing.results,
+    visits: {
+      days: VISIT_DAYS,
+      perDay: perDay.results,
+      ...Object.fromEntries(BUCKETS.map((bucket, index) => [bucket, buckets[index].results])),
+    },
   });
 }
 

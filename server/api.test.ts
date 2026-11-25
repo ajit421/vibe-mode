@@ -17,6 +17,7 @@ import * as remote from '../functions/api/remote';
 import * as login from '../functions/api/login';
 import * as admin from '../functions/api/admin';
 import * as listen from '../functions/api/listen';
+import * as visit from '../functions/api/visit';
 
 /*
  * Every endpoint in functions/, run against Wrangler's local D1 (the same
@@ -50,7 +51,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -431,16 +432,26 @@ describe('/api/admin — the owner’s view', () => {
   });
 });
 
+const CHROME_ANDROID =
+  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
+const FIREFOX_LINUX = 'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0';
+
 describe('/api/listen — anonymous "now playing"', () => {
-  const ping = (body: unknown) =>
-    call(listen.onRequestPost, api('/api/listen', { method: 'POST', body: JSON.stringify(body) }));
+  const ping = (body: unknown, ua = CHROME_ANDROID) =>
+    call(
+      listen.onRequestPost,
+      api('/api/listen', { method: 'POST', body: JSON.stringify(body), headers: { 'User-Agent': ua } }),
+    );
   const OWNER = 'o'.repeat(40);
   const overview = async () =>
     (await (
       await call(admin.onRequestGet, api('/api/admin', { headers: { Authorization: `Bearer ${OWNER}` } }), {
         env: { MCP_ADMIN_TOKEN: OWNER },
       })
-    ).json()) as { totals: { playing_now: number }; playing: { mode: string; track: string | null }[] };
+    ).json()) as {
+      totals: { playing_now: number };
+      playing: { mode: string; track: string | null; browser: string; os: string; device: string }[];
+    };
 
   it('refuses anything but a tab id and a known-shaped mode', async () => {
     expect((await ping({ mode: 'metro', playing: true })).status).toBe(400);
@@ -458,7 +469,12 @@ describe('/api/listen — anonymous "now playing"', () => {
 
     let seen = await overview();
     expect(seen.totals.playing_now).toBe(2);
-    expect(seen.playing.find((row) => row.mode === 'metro')?.track).toBe('Song two');
+    expect(seen.playing.find((row) => row.mode === 'metro')).toMatchObject({
+      track: 'Song two',
+      browser: 'Chrome',
+      os: 'Android',
+      device: 'mobile',
+    });
     expect(JSON.stringify(seen)).not.toContain(a); // the tab id never leaves the database
 
     await ping({ tab: b, mode: 'office', playing: false }); // paused
@@ -466,6 +482,50 @@ describe('/api/listen — anonymous "now playing"', () => {
     seen = await overview();
     expect(seen.totals.playing_now).toBe(0);
     expect(seen.playing).toEqual([]);
+  });
+});
+
+describe('/api/visit — anonymous counts by browser, system, device', () => {
+  const OWNER = 'o'.repeat(40);
+  const open = (ua: string | null, hints: object = {}) =>
+    call(
+      visit.onRequestPost,
+      api('/api/visit', { method: 'POST', body: JSON.stringify(hints), headers: ua ? { 'User-Agent': ua } : {} }),
+    );
+
+  it('adds one to a day-and-bucket row, keeps no header, and leaves bots out', async () => {
+    expect((await open(CHROME_ANDROID)).status).toBe(204);
+    await open(CHROME_ANDROID);
+    await open(CHROME_ANDROID, { brave: true });
+    await open(FIREFOX_LINUX);
+    await open('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)');
+    await open(null);
+
+    const rows = (await env.DB.prepare('SELECT browser, os, device, count FROM visits ORDER BY count DESC, browser').all())
+      .results;
+    expect(rows).toEqual([
+      { browser: 'Chrome', os: 'Android', device: 'mobile', count: 2 },
+      { browser: 'Brave', os: 'Android', device: 'mobile', count: 1 },
+      { browser: 'Firefox', os: 'Linux', device: 'desktop', count: 1 },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain('Mozilla'); // buckets only, never the header
+
+    const admin_ = await call(
+      admin.onRequestGet,
+      api('/api/admin', { headers: { Authorization: `Bearer ${OWNER}` } }),
+      { env: { MCP_ADMIN_TOKEN: OWNER } },
+    );
+    const body = await admin_.json<{
+      totals: { visits_day: number; visits_month: number };
+      visits: { browser: { name: string; n: number }[]; device: { name: string; n: number }[]; perDay: { n: number }[] };
+    }>();
+    expect(body.totals).toMatchObject({ visits_day: 4, visits_month: 4 });
+    expect(body.visits.browser[0]).toEqual({ name: 'Chrome', n: 2 });
+    expect(body.visits.device).toEqual([
+      { name: 'mobile', n: 3 },
+      { name: 'desktop', n: 1 },
+    ]);
+    expect(body.visits.perDay).toEqual([expect.objectContaining({ n: 4 })]);
   });
 });
 

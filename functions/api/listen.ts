@@ -1,4 +1,5 @@
 import { SAFE_ID, fail, isKey, readText, type Handler } from '../../server/lib';
+import { classify, countryOf } from '../../server/ua';
 
 // Anonymous "now playing" (see migrations/0005_listeners.sql and
 // src/components/ListenPing.tsx). Open to anyone, like /api/config — it holds
@@ -28,14 +29,20 @@ export const onRequestPost: Handler = async ({ env, request }) => {
   if (typeof body.mode !== 'string' || !SAFE_ID.test(body.mode)) return fail(400, 'Bad request.');
   const playlist = typeof body.playlist === 'string' && SAFE_ID.test(body.playlist) ? body.playlist : null;
 
+  // Coarse buckets from the request itself (server/ua.ts); the header is not kept.
+  const client = classify(request.headers.get('User-Agent'), { brave: body.brave === true, touch: body.touch === true });
+  if (client.device === 'bot') return new Response(null, { status: 204 });
+
   const now = Date.now();
   const writes = [
     env.DB.prepare(
-      `INSERT INTO listeners (tab, mode, mode_name, playlist, playlist_name, track, playing, seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO listeners (tab, mode, mode_name, playlist, playlist_name, track, playing, seen_at,
+         browser, os, device, country)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (tab) DO UPDATE SET mode = excluded.mode, mode_name = excluded.mode_name,
          playlist = excluded.playlist, playlist_name = excluded.playlist_name, track = excluded.track,
-         playing = excluded.playing, seen_at = excluded.seen_at`,
+         playing = excluded.playing, seen_at = excluded.seen_at, browser = excluded.browser,
+         os = excluded.os, device = excluded.device, country = excluded.country`,
     ).bind(
       body.tab,
       body.mode,
@@ -45,6 +52,10 @@ export const onRequestPost: Handler = async ({ env, request }) => {
       text(body.track, 200),
       body.playing === true ? 1 : 0,
       now,
+      client.browser,
+      client.os,
+      client.device,
+      countryOf(request),
     ),
   ];
   if (Math.random() < SWEEP_ODDS) {

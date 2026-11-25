@@ -71,6 +71,15 @@ interface Totals {
   queued_commands: number;
   /** Anonymous tabs playing music right now (functions/api/listen.ts). */
   playing_now: number;
+  /** Tabs that opened the site (functions/api/visit.ts): today (UTC), last 7 and 30 days. */
+  visits_day: number;
+  visits_week: number;
+  visits_month: number;
+}
+
+interface Count {
+  name: string;
+  n: number;
 }
 
 /** An anonymous tab playing music: no name, no profile — see ListenPing.tsx. */
@@ -80,6 +89,10 @@ interface Playing {
   playlist_name: string | null;
   track: string | null;
   seen_at: number;
+  browser: string | null;
+  os: string | null;
+  device: string | null;
+  country: string | null;
 }
 
 interface Visitor {
@@ -117,6 +130,14 @@ interface Overview {
   lockouts: { username: string; count: number; since: number }[];
   defaults: { kind: string; id: string; value: string }[];
   playing: Playing[];
+  visits: {
+    days: number;
+    perDay: { day: string; n: number }[];
+    browser: Count[];
+    os: Count[];
+    device: Count[];
+    country: Count[];
+  };
 }
 
 interface Detail {
@@ -170,6 +191,63 @@ function bytes(n: number): string {
 }
 
 const shortId = (id: string) => id.slice(0, 8);
+
+const regions = new Intl.DisplayNames(undefined, { type: 'region' });
+/** 'IN' → 'India'. Cloudflare also sends 'XX' (unknown) and 'T1' (Tor), which aren't regions. */
+function countryName(code: string | null): string {
+  if (!code || code === 'XX') return 'Unknown';
+  if (code === 'T1') return 'Tor';
+  try {
+    return regions.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** One way of splitting the visits (by browser, system…): each value, its count, its share. */
+function Breakdown({
+  title,
+  rows,
+  total,
+  label = (name) => name,
+  shares = true,
+}: {
+  title: string;
+  rows: Count[];
+  total: number;
+  label?: (name: string) => string;
+  /** False when `total` is only the scale (visits per day), not the whole. */
+  shares?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 p-4">
+      <h3 className="text-sm font-medium text-zinc-300">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-zinc-500">No visits yet.</p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-2.5">
+          {rows.map((row) => {
+            const share = total ? Math.round((row.n / total) * 100) : 0;
+            return (
+              <li key={row.name} className="flex flex-col gap-1">
+                <div className="flex justify-between gap-3 text-sm">
+                  <span className="truncate">{label(row.name)}</span>
+                  <span className="text-zinc-400 tabular-nums">
+                    {shares ? `${row.n} · ${share}%` : row.n}
+                  </span>
+                </div>
+                {/* A native meter, not a styled div: the page's CSP allows no inline styles. */}
+                <meter className="h-1.5 w-full" min={0} max={total || 1} value={row.n} aria-label={`${label(row.name)}: ${share}%`} />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /** Listeners per mode, most first. */
 function byMode(rows: Playing[]): [string, number][] {
@@ -382,6 +460,11 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <Stat label="Listening now" value={t.playing_now} hint="tabs playing music · anonymous, all visitors" />
           <Stat
+            label="Visits today"
+            value={t.visits_day}
+            hint={`tabs that opened the site · ${t.visits_week} in 7 days · ${t.visits_month} in 30`}
+          />
+          <Stat
             label="Visitors with a cloud copy"
             value={t.visitors}
             hint={`${t.new_day} new in the last 24 h · ${t.new_week} in 7 days`}
@@ -417,7 +500,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
             </ul>
           )}
           <Table
-            head={['Mode', 'Playlist', 'Song', 'Heard']}
+            head={['Mode', 'Playlist', 'Song', 'On', 'Where', 'Heard']}
             empty={data.playing.length === 0 ? 'Nobody is playing music right now.' : undefined}
           >
             {data.playing.map((row, index) => (
@@ -426,11 +509,35 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
                 <td className={TD}>{row.playlist_name ?? '—'}</td>
                 <td className="max-w-md truncate px-3 py-2">{row.track ?? <span className="text-zinc-500">—</span>}</td>
                 <td className={TD}>
+                  {row.browser ? `${row.browser} · ${row.os} · ${capital(row.device ?? '')}` : '—'}
+                </td>
+                <td className={TD}>{countryName(row.country)}</td>
+                <td className={TD}>
                   <Time ms={row.seen_at} now={now} />
                 </td>
               </tr>
             ))}
           </Table>
+        </Section>
+      )}
+
+      {data && t && (
+        <Section title={`Browsers, systems and devices · last ${data.visits.days} days`}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Breakdown title="Browser" rows={data.visits.browser} total={t.visits_month} />
+            <Breakdown title="System" rows={data.visits.os} total={t.visits_month} />
+            <Breakdown title="Device" rows={data.visits.device} total={t.visits_month} label={capital} />
+            <Breakdown title="Country" rows={data.visits.country} total={t.visits_month} label={countryName} />
+          </div>
+          {data.visits.perDay.length > 0 && (
+            <Breakdown
+              title="Visits per day (UTC)"
+              rows={data.visits.perDay.map((row) => ({ name: row.day, n: row.n }))}
+              total={Math.max(...data.visits.perDay.map((row) => row.n))}
+              shares={false}
+              label={(day) => new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })}
+            />
+          )}
         </Section>
       )}
 
