@@ -28,7 +28,7 @@ import {
 import type { VibeColors, VibeEffects, VibeHudItem, VibeStat, VibeTheme } from '@/types/theme';
 import { safeCustomImage } from '@/themes/backgrounds';
 import { normaliseSource, sourceFields } from '@/music/resolve';
-import { LINE_LIMITS, MAX_IMAGE_LENGTH, TEXT_LIMITS, UPLOAD_BUDGET } from '@/themes/limits';
+import { LINE_LIMITS, MAX_ADDED_MODES, MAX_IMAGE_LENGTH, TEXT_LIMITS, UPLOAD_BUDGET } from '@/themes/limits';
 
 /* ══════════════════════════════════════════════════════════════════════════
  *  LISTENER CUSTOMISATION
@@ -446,7 +446,7 @@ export function sanitizeCustomization(raw: unknown, builtInIds: ReadonlySet<stri
 
   const added: AddedMode[] = [];
   const seen = new Set<string>();
-  for (const entry of Array.isArray(raw.added) ? raw.added.slice(0, 50) : []) {
+  for (const entry of Array.isArray(raw.added) ? raw.added.slice(0, MAX_ADDED_MODES) : []) {
     if (!isRecord(entry)) continue;
     const { id, baseId } = entry;
     if (typeof id !== 'string' || !ADDED_ID.test(id) || seen.has(id)) continue;

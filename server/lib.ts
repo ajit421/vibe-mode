@@ -30,7 +30,7 @@ export interface Env {
 export type Handler = PagesFunction<Env>;
 
 export { MAX_IMAGE_LENGTH, UPLOAD_BUDGET };
-/** A profile's text data. Generous — it is typed text — but bounded. */
+/** A profile's text data, in UTF-8 bytes. Generous — it is typed text — but bounded, and well under D1's ~2 MB per value. */
 export const DATA_LIMIT = 1_000_000;
 /** Device keys per profile: every browser, sync link and passkey sign-in mints one. */
 export const MAX_KEYS = 25;
@@ -164,7 +164,45 @@ export async function addKey(env: Env, profileId: string): Promise<string | null
  */
 export async function retireCallerKey(env: Env, request: Request): Promise<void> {
   const key = bearer(request);
-  if (key) await env.DB.prepare('DELETE FROM device_keys WHERE key_hash = ?').bind(await hashKey(key)).run();
+  if (!key) return;
+  const left = await env.DB.prepare('DELETE FROM device_keys WHERE key_hash = ? RETURNING profile_id')
+    .bind(await hashKey(key))
+    .first<string>('profile_id');
+  if (!left) return;
+  // The profile this browser leaves: if nothing can reach it any more (no
+  // other device, sync link, passkey, password or Google), it is data nobody
+  // can ever open again — up to 3.5 MB of pictures included — so it goes.
+  const reachable = await env.DB.prepare(
+    `SELECT EXISTS (SELECT 1 FROM device_keys WHERE profile_id = ?1)
+         OR EXISTS (SELECT 1 FROM passkeys WHERE profile_id = ?1)
+         OR EXISTS (SELECT 1 FROM logins WHERE profile_id = ?1)
+         OR EXISTS (SELECT 1 FROM google_accounts WHERE profile_id = ?1) AS kept`,
+  )
+    .bind(left)
+    .first<number>('kept');
+  if (!reachable) await deleteProfile(env, left);
+}
+
+/**
+ * Deletes a profile and everything that belongs to it, in one transaction.
+ * Its visits stay only as anonymous counts. Shared by "Delete my cloud copy"
+ * (functions/api/profile.ts) and the orphan cleanup above, so both remove the
+ * same things.
+ */
+export async function deleteProfile(env: Env, id: string): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM uploads WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM passkeys WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM logins WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM google_accounts WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM profile_listens WHERE profile_id = ?').bind(id),
+    env.DB.prepare('UPDATE sessions SET profile_id = NULL, events = NULL WHERE profile_id = ?').bind(id),
+    env.DB.prepare('UPDATE listeners SET profile_id = NULL WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM device_keys WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM remote_commands WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM remote_state WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM profiles WHERE id = ?').bind(id),
+  ]);
 }
 
 /**

@@ -20,10 +20,34 @@ import { Analytics } from '@/components/Analytics';
 
 // Only people who customise need the editor, so it is its own chunk, fetched on
 // first open — everyone else never downloads it.
+//
+// A tab opened before a deploy asks for the chunk by its old name, which the
+// deploy removed (Pages answers with index.html). Reload once to pick up the
+// new build instead of falling to the crash screen — whose main button clears
+// data. A second failure in the same tab is a real error and is let through.
+const RELOADED_FOR_CHUNK = 'vibe-mode.reloadedForChunk';
 const CustomizePanel = lazy(() =>
-  import('@/components/panels/CustomizePanel').then((module) => ({
-    default: module.CustomizePanel,
-  })),
+  import('@/components/panels/CustomizePanel')
+    .then((module) => {
+      try {
+        sessionStorage.removeItem(RELOADED_FOR_CHUNK);
+      } catch {
+        /* storage blocked: nothing to clear */
+      }
+      return { default: module.CustomizePanel };
+    })
+    .catch((error: unknown) => {
+      try {
+        if (!sessionStorage.getItem(RELOADED_FOR_CHUNK)) {
+          sessionStorage.setItem(RELOADED_FOR_CHUNK, '1');
+          window.location.reload();
+          return new Promise<never>(() => {});
+        }
+      } catch {
+        /* storage blocked: can't tell a second try from a first, so don't loop */
+      }
+      throw error;
+    }),
 );
 
 // The per-mode keys (A to announce, R to reroute, T to tune) are gone with the

@@ -26,6 +26,12 @@ export interface SyncContextValue {
   signOutOtherDevices: () => Promise<boolean>;
   /** Deletes the cloud copy for good and stops saving. The modes on this browser stay. */
   deleteCloudCopy: () => Promise<boolean>;
+  /**
+   * Stops this browser using its cloud copy, without touching the copy: other
+   * devices keep it, and signing in or a sync link brings it back. Used before
+   * "Reset everything", so the emptied browser isn't saved over the cloud copy.
+   */
+  leaveCloud: () => void;
   /** Starts saving to the cloud again after `deleteCloudCopy`. */
   turnOn: () => void;
   /** An MCP server URL for an AI assistant, carrying a fresh device key; null on failure. */
@@ -46,7 +52,7 @@ export interface SyncContextValue {
   /** Signs in with a username and password. This browser's modes are replaced by that profile's. */
   signInWithPassword: (username: string, password: string) => Promise<boolean>;
   /** Google sign-in: set up here (a Client ID), and the Google account this profile is linked to. */
-  googleStatus: () => Promise<{ clientId: string | null; email: string | null }>;
+  googleStatus: () => Promise<{ clientId: string | null; email: string | null; linked: boolean }>;
   /**
    * Handles the ID token from Google's button: signs in to the linked profile,
    * or links the Google account to this browser's. May ask first (a dialog)

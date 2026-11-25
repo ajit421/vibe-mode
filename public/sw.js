@@ -80,7 +80,10 @@ self.addEventListener('fetch', (event) => {
         const hit = await caches.match(request);
         if (hit) return hit;
         const response = await fetch(request);
-        if (cacheable(response)) {
+        // Never an HTML page under /assets/: a chunk removed by a deploy is
+        // answered with the SPA's index.html (200), and caching it as the chunk
+        // would break that import in this browser for good.
+        if (cacheable(response) && !response.headers.get('content-type')?.includes('text/html')) {
           const copy = response.clone();
           event.waitUntil(
             caches

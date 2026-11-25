@@ -26,6 +26,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { ConfirmButton, SMALL_BUTTON } from '@/components/ui/ConfirmButton';
 import { IconButton } from '@/components/ui/IconButton';
 import { Switch } from '@/components/ui/Switch';
 import { useVibe } from '@/state/vibe-context';
@@ -46,7 +47,9 @@ import {
   type FontKey,
   type IconKey,
 } from '@/themes/customize';
-import { PASSWORD_LENGTH, USERNAME_PATTERN } from '@/themes/limits';
+import { MAX_ADDED_MODES, PASSWORD_LENGTH, USERNAME_PATTERN } from '@/themes/limits';
+
+const FULL = `You have ${MAX_ADDED_MODES} modes of your own — delete one to add another.`;
 import type { VibeColors, VibeEffects, VibePlaylist } from '@/types/theme';
 import { cn } from '@/utils/cn';
 import { track } from '@/utils/analytics';
@@ -82,9 +85,6 @@ const MORE_COLORS = COLOR_KEYS.slice(4);
 const INPUT =
   'w-full min-w-0 rounded-lg border border-line bg-canvas/60 px-3 py-2 text-base text-ink placeholder:text-muted/60 focus-visible:border-primary/60 sm:text-sm';
 
-const SMALL_BUTTON =
-  'inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-primary/50 disabled:pointer-events-none disabled:opacity-40';
-
 /**
  * Shrinks an uploaded picture to a background-sized still and returns it as a
  * data URL that fits in localStorage — a phone photo straight off the camera
@@ -119,51 +119,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <h3 className="vm-label text-muted">{title}</h3>
       {children}
     </section>
-  );
-}
-
-/**
- * A destructive button that asks twice: the first press arms it for a few
- * seconds, the second does it. Cheaper and calmer than a confirm dialog, and
- * it can't be dismissed on autopilot.
- */
-function ConfirmButton({
-  label,
-  confirmLabel,
-  icon,
-  onConfirm,
-  disabled,
-  className,
-}: {
-  label: string;
-  confirmLabel: string;
-  icon: ReactNode;
-  onConfirm: () => void;
-  disabled?: boolean;
-  className?: string;
-}) {
-  const [armed, setArmed] = useState(false);
-  useEffect(() => {
-    if (!armed) return;
-    const id = window.setTimeout(() => setArmed(false), 3500);
-    return () => window.clearTimeout(id);
-  }, [armed]);
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (!armed) return setArmed(true);
-        setArmed(false);
-        onConfirm();
-      }}
-      disabled={disabled}
-      aria-label={armed ? confirmLabel : label}
-      className={cn(SMALL_BUTTON, className, armed && 'border-primary/70 bg-primary/15 text-primary')}
-    >
-      {icon}
-      {armed ? confirmLabel : label}
-    </button>
   );
 }
 
@@ -287,7 +242,12 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
     } catch {
       /* falls through to the message below */
     }
-    push('That file isn’t a Vibe Mode backup or shared mode.', 'IMPORT');
+    push(
+      customization.added.length >= MAX_ADDED_MODES
+        ? FULL
+        : 'That file isn’t a Vibe Mode backup or shared mode.',
+      'IMPORT',
+    );
   };
 
   return (
@@ -306,7 +266,7 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-canvas transition-[filter] hover:brightness-110"
             onClick={() => {
               const id = addMode(theme.id, true);
-              if (!id) return;
+              if (!id) return push(FULL, 'CUSTOMIZE');
               setSelectedId(id);
               push('New mode added. Give it a name, a picture and some music.', 'CUSTOMIZE');
             }}
@@ -407,7 +367,7 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
               className={SMALL_BUTTON}
               onClick={() => {
                 const id = addMode(mode.id);
-                if (!id) return;
+                if (!id) return push(FULL, 'CUSTOMIZE');
                 setSelectedId(id);
                 push(`New mode added — a copy of ${mode.name}.`, 'CUSTOMIZE');
               }}
@@ -887,9 +847,10 @@ function CloudSection() {
   const [login, setLogin] = useState<string | null>(null);
   // Whether Google sign-in is set up here, and which account is linked. Also
   // asked only when the panel opens (one request), never on a page load.
-  const [google, setGoogle] = useState<{ clientId: string | null; email: string | null }>({
+  const [google, setGoogle] = useState<{ clientId: string | null; email: string | null; linked: boolean }>({
     clientId: null,
     email: null,
+    linked: false,
   });
   const { hasKey, loginName, googleStatus } = sync;
   useEffect(() => {
@@ -1131,9 +1092,9 @@ function CloudSection() {
           <LogIn className="size-3.5" />
           Sign in with a password
         </button>
-        {sync.hasKey && google.email && (
+        {sync.hasKey && google.linked && (
           <ConfirmButton
-            label={`Google: ${google.email} · Disconnect`}
+            label={`Google: ${google.email ?? 'connected'} · Disconnect`}
             confirmLabel="Sure? Disconnect Google"
             icon={<LogOut className="size-3.5" />}
             disabled={busy}
@@ -1164,7 +1125,7 @@ function CloudSection() {
         )}
       </div>
 
-      {google.clientId && !google.email && sync.status !== 'off' && (
+      {google.clientId && !google.linked && sync.status !== 'off' && (
         <div className="flex flex-col gap-1.5">
           <GoogleButton
             clientId={google.clientId}

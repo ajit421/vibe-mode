@@ -57,12 +57,18 @@ export interface Profile {
 
 export const loadProfile = (key: string) => call<Profile>('GET', '/api/profile', key);
 
-export const saveProfile = (key: string, data: SyncData, turnstileToken?: string) =>
+/**
+ * `create`: this is the key's first save, so an unknown key may make a new
+ * profile. False for a key that has saved before — if the server no longer
+ * knows it (signed out from another device), it answers 401 instead of
+ * quietly starting a second, separate cloud copy.
+ */
+export const saveProfile = (key: string, data: SyncData, create: boolean, turnstileToken?: string) =>
   call<{ version: number }>(
     'PUT',
     '/api/profile',
     key,
-    { data },
+    { data, create },
     turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
   );
 

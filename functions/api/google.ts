@@ -23,10 +23,13 @@ const NOT_SET_UP = 'Google sign-in isn’t set up on this site yet.';
 export const onRequestGet: Handler = async ({ env, request }) => {
   const clientId = env.GOOGLE_CLIENT_ID ?? null;
   const who = await caller(env, request);
-  const email = who
-    ? await env.DB.prepare('SELECT email FROM google_accounts WHERE profile_id = ?').bind(who.profileId).first<string>('email')
+  // A row, not just its email: a linked account whose email Google didn't verify has none.
+  const row = who
+    ? await env.DB.prepare('SELECT email FROM google_accounts WHERE profile_id = ?')
+        .bind(who.profileId)
+        .first<{ email: string | null }>()
     : null;
-  return json({ clientId, email: email ?? null, linked: email !== null });
+  return json({ clientId, email: row?.email ?? null, linked: row !== null });
 };
 
 export const onRequestPost: Handler = async ({ env, request }) => {

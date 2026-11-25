@@ -15,6 +15,13 @@ export const LINE_LIMITS = {
   ticker: [20, 120],
 } as const;
 
+/**
+ * Modes a listener can add (new, copied or from a shared file). Enforced where
+ * they are added (VibeProvider) and where they are read back (sanitizeCustomization),
+ * so a 51st can't be made and then silently dropped on the next load.
+ */
+export const MAX_ADDED_MODES = 50;
+
 /** Room for uploaded pictures: under the ~5 MB browsers give a site, with space left for the rest. */
 export const UPLOAD_BUDGET = 3_500_000;
 

@@ -110,6 +110,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   /** The next state change is the cloud copy arriving: record it as saved, don't send it back. */
   const adopting = useRef<number | null>(null);
   const saving = useRef(false);
+  /** Settles when the save in flight ends — what a forced save waits for. */
+  const saveDone = useRef<Promise<void>>(Promise.resolve());
   const saveAgain = useRef(false);
   const lastPull = useRef(0);
   const timer = useRef<number | undefined>(undefined);
@@ -151,6 +153,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const save = useCallback(
     async (force = false): Promise<boolean> => {
       window.clearTimeout(timer.current);
+      // A forced save (a link, passkey, password or Google needs a cloud copy
+      // now) waits for the autosave in flight instead of failing silently.
+      while (saving.current && force) await saveDone.current;
       if (saving.current) {
         saveAgain.current = true;
         return false;
@@ -165,6 +170,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       saving.current = true;
+      let finished = () => {};
+      saveDone.current = new Promise<void>((resolve) => (finished = resolve));
       setStatus('saving');
       try {
         // The key is stored before the first request, so a second tab saving
@@ -174,10 +181,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           store(rec);
         }
         const key = rec.key as string;
+        const create = rec.version === null;
+        // After every wait: if the key changed meanwhile (signed out, signed in
+        // elsewhere, cloud copy deleted), this save is over — writing its old
+        // key back would undo that.
+        const superseded = () => readRecord().key !== key;
 
         const dataPrint = fingerprint(dataJson);
         if (rec.data !== dataPrint) {
-          let result = await saveProfile(key, data);
+          let result = await saveProfile(key, data, create);
           if (!result.ok && result.status === 403 && result.body?.challenge) {
             const siteKey = result.body.siteKey;
             const token = typeof siteKey === 'string' ? await turnstileToken(siteKey) : null;
@@ -186,7 +198,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
               setMessage('Couldn’t confirm you’re not a robot, so nothing was saved to the cloud.');
               return false;
             }
-            result = await saveProfile(key, data, token);
+            result = await saveProfile(key, data, create, token);
+          }
+          if (superseded()) return false;
+          if (!result.ok && result.status === 401) {
+            forget(); // signed out from another device
+            return false;
           }
           if (!result.ok && (result.status === 429 || result.status === 409)) {
             saveAgain.current = true; // too soon, or a race — try again shortly
@@ -203,6 +220,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         const { put, remove } = diffUploads(uploads, rec.uploads);
         for (const id of put) {
           const result = await saveUpload(key, id, uploads[id]);
+          if (superseded()) return false;
           if (!result.ok) {
             if (result.status === 401) forget();
             else report(result);
@@ -213,6 +231,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         }
         for (const id of remove) {
           const result = await deleteUpload(key, id);
+          if (superseded()) return false;
           if (!result.ok && result.status !== 401) {
             report(result);
             return false;
@@ -229,6 +248,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         return true;
       } finally {
         saving.current = false;
+        finished();
         if (saveAgain.current) {
           saveAgain.current = false;
           timer.current = window.setTimeout(() => void save(), SAVE_DELAY_MS);
@@ -243,6 +263,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     if (!rec.key || rec.off) return;
     lastPull.current = Date.now();
     const result = await loadProfile(rec.key);
+    // The answer is stale if anything moved while it was on its way: a save
+    // went out, an edit was made here, or the key changed. Laying it over
+    // would replace newer work with older; send the edit instead.
+    const now = readRecord();
+    if (saving.current || now.key !== rec.key || unsaved(now)) {
+      if (ready.current && !saving.current && now.key && unsaved(now)) void save();
+      return;
+    }
     if (result.ok) {
       // Unchanged since this browser last saw it: nothing to lay over.
       if (result.body.version !== rec.version) adopt(result.body, rec.key);
@@ -252,7 +280,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     } else {
       report(result);
     }
-  }, [adopt, forget, report]);
+  }, [adopt, forget, report, save, unsaved]);
 
   /* ── A sync link opened on this device (`#sync=…`) ─────────────────────── */
   const [incoming, setIncoming] = useState<string | null>(() => parseSyncLink(window.location.hash));
@@ -298,6 +326,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     } else {
       void pull().finally(() => {
         ready.current = true;
+        // An edit made during the first load wasn't scheduled (not ready yet): send it now.
+        if (adopting.current === null && unsaved(readRecord())) void save();
       });
     }
   }, [pull, save, unsaved]);
@@ -444,6 +474,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     track('cloud_deleted');
     return true;
   }, [report, store, toast]);
+
+  const leaveCloud = useCallback(() => {
+    window.clearTimeout(timer.current);
+    store({ ...EMPTY_RECORD });
+    setStatus('idle');
+    setMessage(null);
+  }, [store]);
 
   const turnOn = useCallback(() => {
     store({ ...EMPTY_RECORD });
@@ -612,7 +649,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   const googleStatus = useCallback(async () => {
     const result = await fetchGoogleStatus(readRecord().key);
-    return result.ok ? { clientId: result.body.clientId, email: result.body.email } : { clientId: null, email: null };
+    return result.ok
+      ? { clientId: result.body.clientId, email: result.body.email, linked: result.body.linked }
+      : { clientId: null, email: null, linked: false };
   }, []);
 
   const continueWithGoogle = useCallback(
@@ -680,6 +719,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       adoptLink,
       signOutOtherDevices,
       deleteCloudCopy,
+      leaveCloud,
       turnOn,
       connectAssistant,
       remoteControl,
@@ -704,6 +744,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       adoptLink,
       signOutOtherDevices,
       deleteCloudCopy,
+      leaveCloud,
       turnOn,
       connectAssistant,
       remoteControl,

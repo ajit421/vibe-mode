@@ -40,6 +40,7 @@ import {
 } from './vibe-context';
 import { sanitizeCustomPlaylists, sanitizeOverrides, sanitizePreferences } from './sanitize';
 import { track } from '@/utils/analytics';
+import { MAX_ADDED_MODES } from '@/themes/limits';
 
 const BUILT_IN_IDS: ReadonlySet<string> = new Set(THEMES.map((theme) => theme.id));
 
@@ -485,7 +486,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
   const addMode = useCallback(
     (sourceId: string, blank = false): string | null => {
       const source = findIn(allThemes, sourceId);
-      if (!source) return null;
+      if (!source || customization.added.length >= MAX_ADDED_MODES) return null;
       const id = newAddedId();
 
       // A copy carries over what the listener did to the source. A blank mode
@@ -659,7 +660,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
         const baseId =
           typeof raw.baseId === 'string' && BUILT_IN_IDS.has(raw.baseId) ? raw.baseId : null;
         const sanitized = sanitizeEdit(raw.edit);
-        if (!baseId || !sanitized) return null;
+        if (!baseId || !sanitized || customization.added.length >= MAX_ADDED_MODES) return null;
         const id = newAddedId();
         const offered = sanitizeUploads({ [id]: raw.upload })[id];
         // Same storage budget as an upload made here, or the picture would show

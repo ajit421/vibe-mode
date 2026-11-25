@@ -3,6 +3,7 @@ import {
   MIN_SAVE_INTERVAL_MS,
   bearer,
   caller,
+  deleteProfile,
   fail,
   hashKey,
   json,
@@ -51,6 +52,10 @@ export const onRequestPut: Handler = async ({ env, request }) => {
   // like a restored backup file, so nothing here can reach the page unchecked.
   if (!isRecord(body) || !isRecord(body.data)) return fail(400, 'Expected { data: {…} }.');
   const data = JSON.stringify(body.data);
+  // Bytes, not characters: D1 refuses a value over ~2 MB, and 1M characters
+  // of Hindi or emoji is 3-4 MB of UTF-8. Refused here with a clear 413
+  // instead of a database error.
+  if (new TextEncoder().encode(data).length > DATA_LIMIT) return fail(413, 'Too much to save.');
   const now = Date.now();
 
   const who = await caller(env, request);
@@ -65,8 +70,15 @@ export const onRequestPut: Handler = async ({ env, request }) => {
     return json({ version: now });
   }
 
-  // A key nobody has seen: this save creates the profile. It is the only
-  // write open to anyone, so it is the one behind the bot check.
+  // A key nobody has seen. The browser says whether it means to create a
+  // profile (`create: true` on its first save). A key that was signed out
+  // from another device comes with `create: false`: answering 401 tells that
+  // browser it was signed out, instead of quietly starting a second, separate
+  // cloud copy its other devices never see. (Missing = an older tab: allowed.)
+  if (body.create === false) return fail(401, 'Unknown key.');
+
+  // Creating a profile is the only write open to anyone, so it is the one
+  // behind the bot check.
   if (!(await passesTurnstile(env, request))) {
     return json({ error: 'Check needed.', challenge: true, siteKey: env.TURNSTILE_SITE_KEY ?? null }, 403);
   }
@@ -84,9 +96,12 @@ export const onRequestPut: Handler = async ({ env, request }) => {
       ).bind(await hashKey(key), profileId, now),
     ]);
   } catch {
-    // Two first saves raced with the same key; the other one won. Retrying
-    // finds the profile and updates it.
-    return fail(409, 'Try again.');
+    // Two first saves raced with the same key and the other one won: retrying
+    // finds the profile and updates it (409, the browser retries). Anything
+    // else is the database: 503, so the browser reports it instead of
+    // retrying every two seconds for ever.
+    const raced = await caller(env, request).catch(() => null);
+    return raced ? fail(409, 'Try again.') : fail(503, 'Couldn’t save to the cloud just now. Your changes are kept here.');
   }
   return json({ version: now }, 201);
 };
@@ -94,20 +109,6 @@ export const onRequestPut: Handler = async ({ env, request }) => {
 export const onRequestDelete: Handler = async ({ env, request }) => {
   const who = await caller(env, request);
   if (!who) return fail(401, 'Unknown key.');
-  const id = who.profileId;
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM uploads WHERE profile_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM passkeys WHERE profile_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM logins WHERE profile_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM google_accounts WHERE profile_id = ?').bind(id),
-    // The account's activity history goes too; its visits stay only as anonymous counts.
-    env.DB.prepare('DELETE FROM profile_listens WHERE profile_id = ?').bind(id),
-    env.DB.prepare('UPDATE sessions SET profile_id = NULL, events = NULL WHERE profile_id = ?').bind(id),
-    env.DB.prepare('UPDATE listeners SET profile_id = NULL WHERE profile_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM device_keys WHERE profile_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM remote_commands WHERE profile_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM remote_state WHERE profile_id = ?').bind(id),
-    env.DB.prepare('DELETE FROM profiles WHERE id = ?').bind(id),
-  ]);
+  await deleteProfile(env, who.profileId);
   return new Response(null, { status: 204 });
 };

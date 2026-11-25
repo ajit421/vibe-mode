@@ -15,8 +15,8 @@ import { readStorage, writeStorage } from '@/utils/storage';
  * puts back whatever it last saw — a listener customising in two tabs lost the
  * first tab's work. It is opt-in because some values are per tab on purpose
  * (the mode you are in shouldn't change because another tab moved). A synced
- * value goes through `reconcile` too, so it is checked like a stored one.
- * No ping-pong: the browser only fires `storage` when a value actually changes.
+ * value goes through `reconcile` too, so it is checked like a stored one, and
+ * is not written back (see `fromStorage` below) — no ping-pong between tabs.
  */
 export function useLocalStorage<T>(
   key: string,
@@ -29,7 +29,15 @@ export function useLocalStorage<T>(
     return reconcile ? reconcile(stored) : stored;
   });
 
+  // The last value that came from another tab. It is already in storage, so it
+  // is not written back: `reconcile` (a sanitiser) can rebuild it with its keys
+  // in another order, and writing that copy back fired a `storage` event in the
+  // tab it came from — one write behind, so a listener typing there saw their
+  // newest characters replaced by an older value.
+  const fromStorage = useRef<T | undefined>(undefined);
+
   useEffect(() => {
+    if (value === fromStorage.current) return;
     writeStorage(key, value);
   }, [key, value]);
 
@@ -44,7 +52,9 @@ export function useLocalStorage<T>(
       if (event.key !== key || event.storageArea !== window.localStorage) return;
       const { initialValue: fallback, reconcile: check } = latest.current;
       const stored = readStorage(key, fallback);
-      setValue(check ? check(stored) : stored);
+      const next = check ? check(stored) : stored;
+      fromStorage.current = next;
+      setValue(next);
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);

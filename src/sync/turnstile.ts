@@ -33,7 +33,11 @@ function loadTurnstile(): Promise<TurnstileApi> {
     const script = document.createElement('script');
     script.src = SCRIPT;
     script.async = true;
-    script.onload = () => (window.turnstile ? resolve(window.turnstile) : reject(new Error()));
+    script.onload = () => {
+      if (window.turnstile) return resolve(window.turnstile);
+      loading = null; // let the next try fetch it again
+      reject(new Error('The check didn’t load.'));
+    };
     script.onerror = () => {
       // Drop the failed tag so the next try fetches it again.
       script.remove();
@@ -54,7 +58,10 @@ export async function turnstileToken(siteKey: string): Promise<string | null> {
       const box = document.createElement('div');
       box.style.cssText =
         'position:fixed;left:50%;bottom:calc(var(--safe-bottom, 0px) + 1rem);transform:translateX(-50%);z-index:80';
-      document.body.appendChild(box);
+      // Inside an open panel when there is one: a modal <dialog> makes the
+      // rest of the page inert, and the first save usually happens while
+      // Customize is open — a box behind it could never be clicked.
+      (document.querySelector('dialog[open]') ?? document.body).appendChild(box);
       const done = (token: string | null) => {
         box.remove();
         resolve(token);

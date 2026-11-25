@@ -61,6 +61,9 @@ export const onRequestPost: Handler = async ({ env, request }) => {
       `INSERT INTO profile_listens (profile_id, day, mode, mode_name, playlist, playlist_name, track, ms)
        SELECT profile_id, ?1, mode, mode_name, COALESCE(playlist, ''), playlist_name, COALESCE(track, ''), ?2 - seen_at
        FROM listeners WHERE tab = ?3 AND playing = 1 AND seen_at > ?2 - ?4 AND profile_id IS NOT NULL
+         -- A profile deleted since the last ping: its id would break the foreign
+         -- key, failing this whole batch on every ping from the tab until swept.
+         AND EXISTS (SELECT 1 FROM profiles WHERE id = listeners.profile_id)
        ON CONFLICT (profile_id, day, mode, playlist, track) DO UPDATE SET ms = ms + excluded.ms,
          mode_name = excluded.mode_name, playlist_name = excluded.playlist_name`,
     ).bind(day, now, body.tab, CREDIT_MS),

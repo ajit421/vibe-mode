@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Download, ListMusic, Moon, Palette, RotateCcw } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Switch } from '@/components/ui/Switch';
+import { ConfirmButton } from '@/components/ui/ConfirmButton';
+import { useSync } from '@/state/sync-context';
 import { Slider } from '@/components/ui/Slider';
 import { PlaylistChips } from '@/components/player/PlaylistChips';
 import { useVibe } from '@/state/vibe-context';
@@ -28,6 +30,7 @@ function minutesLeft(endsAt: number, now: number): number {
 
 export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelProps) {
   const { theme, preferences, setPreference, systemReducedMotion, resetEverything } = useVibe();
+  const { leaveCloud } = useSync();
   const { volume, setVolume, isMuted, toggleMute, sleepEndsAt, setSleepTimer } = usePlayer();
   const { push } = useToast();
   const { canInstall, install } = useInstallPrompt();
@@ -211,21 +214,23 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
         </section>
 
         <section className="border-t border-line/60 pt-5">
-          <button
-            type="button"
-            onClick={() => {
+          {/* Asks twice, and leaves the cloud copy alone first: otherwise the emptied
+              browser was autosaved over it, emptying every linked device too. */}
+          <ConfirmButton
+            label="Reset everything"
+            confirmLabel="Sure? Reset this browser"
+            icon={<RotateCcw className="size-3.5" />}
+            onConfirm={() => {
+              leaveCloud();
               resetEverything();
               onClose();
-              push('Everything back to defaults.', 'RESET');
+              push('Everything back to defaults. Your cloud copy is untouched.', 'RESET');
             }}
-            className="inline-flex items-center gap-2 rounded-lg border border-line px-3.5 py-2 text-xs font-medium text-muted transition-colors hover:border-primary/50 hover:text-ink"
-          >
-            <RotateCcw className="size-3.5" />
-            Reset everything
-          </button>
+          />
           <p className="mt-2 text-xs text-muted">
             Clears the saved mode, playlist choices, volume and every customisation from this
-            browser. Download a backup in Customize first if you might want it back.
+            browser. Your cloud copy stays as it is for your other devices — sign in or use a sync
+            link to bring it back here. Download a backup in Customize first if you might want it.
           </p>
         </section>
       </div>
