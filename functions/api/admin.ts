@@ -10,12 +10,15 @@ import { fail, isOwner, json, type Env, type Handler } from '../../server/lib';
 //       &offset=<n>                     … the next page
 //   GET /api/admin?user=<profile id>    one visitor: everything stored for them
 //
-// It shows what is already stored and nothing more — there is no IP, page
-// view or location log, and adding one would need a privacy notice first.
+// Besides what visitors save, it shows the anonymous "now playing" pings
+// (functions/api/listen.ts), which the app tells visitors about. There is no
+// IP, page view or location log; adding one would need a privacy notice first.
 
 const DAY_MS = 86_400_000;
 /** A tab counts as listening if it polled this recently (it polls every 4 s); as in server/mcp.ts. */
 const LISTENING_MS = 45_000;
+/** An anonymous listener counts if it pinged this recently (it pings every 60 s; background tabs can run late). */
+const PLAYING_MS = 150_000;
 const LOCKOUT_MS = 15 * 60_000;
 const PAGE = 50;
 
@@ -53,7 +56,7 @@ async function overview(env: Env, url: URL): Promise<Response> {
   const q = (url.searchParams.get('q') ?? '').trim().toLowerCase().slice(0, 60);
   const offset = Math.max(0, Math.min(Number(url.searchParams.get('offset')) || 0, 1_000_000));
 
-  const [totals, visitors, listening, lockouts, defaults] = await env.DB.batch([
+  const [totals, visitors, listening, lockouts, defaults, playing] = await env.DB.batch([
     env.DB.prepare(
       `SELECT
          (SELECT COUNT(*) FROM profiles) AS visitors,
@@ -68,8 +71,9 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COALESCE(SUM(octet_length(still)), 0) FROM uploads) AS upload_bytes,
          (SELECT COALESCE(SUM(octet_length(data)), 0) FROM profiles) AS data_bytes,
          (SELECT COUNT(*) FROM remote_state WHERE seen_at > ?3) AS listening,
-         (SELECT COUNT(*) FROM remote_commands) AS queued_commands`,
-    ).bind(now - DAY_MS, now - 7 * DAY_MS, now - LISTENING_MS),
+         (SELECT COUNT(*) FROM remote_commands) AS queued_commands,
+         (SELECT COUNT(*) FROM listeners WHERE playing = 1 AND seen_at > ?4) AS playing_now`,
+    ).bind(now - DAY_MS, now - 7 * DAY_MS, now - LISTENING_MS, now - PLAYING_MS),
     // `data` is stored as the browser sent it (it is sanitised on the way
     // back in), so the counts guard every shape: one odd profile must not
     // break the whole list. PAGE + 1 rows says whether there is a next page.
@@ -97,6 +101,11 @@ async function overview(env: Env, url: URL): Promise<Response> {
       'SELECT username, count, since FROM login_failures WHERE since > ? ORDER BY count DESC LIMIT 50',
     ).bind(now - LOCKOUT_MS),
     env.DB.prepare('SELECT kind, id, value FROM defaults ORDER BY kind, id'),
+    // Never the tab id: it is meaningless to the owner, and stays in the database.
+    env.DB.prepare(
+      `SELECT mode, mode_name, playlist_name, track, seen_at FROM listeners
+       WHERE playing = 1 AND seen_at > ? ORDER BY seen_at DESC LIMIT 200`,
+    ).bind(now - PLAYING_MS),
   ]);
 
   const rows = visitors.results as unknown as AdminVisitor[];
@@ -110,6 +119,7 @@ async function overview(env: Env, url: URL): Promise<Response> {
     ),
     lockouts: lockouts.results,
     defaults: defaults.results,
+    playing: playing.results,
   });
 }
 

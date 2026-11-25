@@ -190,6 +190,16 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
           </section>
         )}
 
+        {/* What ListenPing.tsx sends — said where a visitor looks for settings. */}
+        <section className="flex flex-col gap-1.5 border-t border-line/60 pt-5">
+          <h3 className="vm-label text-muted">Listening count</h3>
+          <p className="text-xs text-muted">
+            While music plays, this tab tells the site — anonymously — which mode, playlist and song,
+            so the site’s owner can see how many people are listening. No name, no IP. Browsers with
+            Global Privacy Control turned on send nothing.
+          </p>
+        </section>
+
         <section className="border-t border-line/60 pt-5">
           <button
             type="button"

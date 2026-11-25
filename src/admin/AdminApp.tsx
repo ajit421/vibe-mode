@@ -69,6 +69,17 @@ interface Totals {
   data_bytes: number;
   listening: number;
   queued_commands: number;
+  /** Anonymous tabs playing music right now (functions/api/listen.ts). */
+  playing_now: number;
+}
+
+/** An anonymous tab playing music: no name, no profile — see ListenPing.tsx. */
+interface Playing {
+  mode: string;
+  mode_name: string | null;
+  playlist_name: string | null;
+  track: string | null;
+  seen_at: number;
 }
 
 interface Visitor {
@@ -105,6 +116,7 @@ interface Overview {
   listening: { profile_id: string; username: string | null; state: NowPlaying; seen_at: number }[];
   lockouts: { username: string; count: number; since: number }[];
   defaults: { kind: string; id: string; value: string }[];
+  playing: Playing[];
 }
 
 interface Detail {
@@ -158,6 +170,16 @@ function bytes(n: number): string {
 }
 
 const shortId = (id: string) => id.slice(0, 8);
+
+/** Listeners per mode, most first. */
+function byMode(rows: Playing[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const name = row.mode_name ?? row.mode;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1]);
+}
 
 /* ── Pieces ─────────────────────────────────────────────────────────────── */
 
@@ -358,9 +380,23 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
 
       {t && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <Stat label="Visitors with a cloud copy" value={t.visitors} hint={`${t.new_week} new this week · ${t.new_day} today`} />
-          <Stat label="Active (changed something)" value={t.active_day} hint={`today · ${t.active_week} this week`} />
-          <Stat label="Listening now" value={t.listening} hint={`tabs with AI control on · ${t.queued_commands} commands queued`} />
+          <Stat label="Listening now" value={t.playing_now} hint="tabs playing music · anonymous, all visitors" />
+          <Stat
+            label="Visitors with a cloud copy"
+            value={t.visitors}
+            hint={`${t.new_day} new in the last 24 h · ${t.new_week} in 7 days`}
+          />
+          <Stat
+            label="Changed something"
+            value={t.active_day}
+            hint={`in the last 24 h · ${t.active_week} in 7 days`}
+          />
+          {/* Only tabs that report: playback alone sends nothing (see RemoteControl.tsx). */}
+          <Stat
+            label="AI-controlled tabs"
+            value={t.listening}
+            hint={`only tabs with “Let AI control this tab” on · ${t.queued_commands} commands queued`}
+          />
           <Stat label="Devices signed in" value={t.devices} hint="browsers, sync links and AI links" />
           <Stat label="Password logins" value={t.logins} />
           <Stat label="Passkeys" value={t.passkeys} />
@@ -369,8 +405,37 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
         </div>
       )}
 
-      {data && data.listening.length > 0 && (
+      {data && (
         <Section title="Listening now">
+          {data.playing.length > 0 && (
+            <ul className="flex flex-wrap gap-2" aria-label="Listeners by mode">
+              {byMode(data.playing).map(([mode, count]) => (
+                <li key={mode} className="rounded-full border border-zinc-700 px-3 py-1 text-sm">
+                  {mode} <span className="text-zinc-400 tabular-nums">· {count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Table
+            head={['Mode', 'Playlist', 'Song', 'Heard']}
+            empty={data.playing.length === 0 ? 'Nobody is playing music right now.' : undefined}
+          >
+            {data.playing.map((row, index) => (
+              <tr key={index}>
+                <td className={TD}>{row.mode_name ?? row.mode}</td>
+                <td className={TD}>{row.playlist_name ?? '—'}</td>
+                <td className="max-w-md truncate px-3 py-2">{row.track ?? <span className="text-zinc-500">—</span>}</td>
+                <td className={TD}>
+                  <Time ms={row.seen_at} now={now} />
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </Section>
+      )}
+
+      {data && data.listening.length > 0 && (
+        <Section title="AI-controlled tabs, now">
           <Table head={['Visitor', 'Mode', 'Playlist', 'Track', 'Volume', 'Seen']}>
             {data.listening.map((row) => (
               <tr key={row.profile_id}>

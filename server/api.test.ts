@@ -16,6 +16,7 @@ import * as mcp from '../functions/mcp/[[path]]';
 import * as remote from '../functions/api/remote';
 import * as login from '../functions/api/login';
 import * as admin from '../functions/api/admin';
+import * as listen from '../functions/api/listen';
 
 /*
  * Every endpoint in functions/, run against Wrangler's local D1 (the same
@@ -49,7 +50,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -427,6 +428,44 @@ describe('/api/admin — the owner’s view', () => {
     expect(detail.login).toBeNull();
     expect(JSON.stringify(detail)).not.toContain(key); // device keys never leave the database
     expect((await ask('?user=nobody')).status).toBe(404);
+  });
+});
+
+describe('/api/listen — anonymous "now playing"', () => {
+  const ping = (body: unknown) =>
+    call(listen.onRequestPost, api('/api/listen', { method: 'POST', body: JSON.stringify(body) }));
+  const OWNER = 'o'.repeat(40);
+  const overview = async () =>
+    (await (
+      await call(admin.onRequestGet, api('/api/admin', { headers: { Authorization: `Bearer ${OWNER}` } }), {
+        env: { MCP_ADMIN_TOKEN: OWNER },
+      })
+    ).json()) as { totals: { playing_now: number }; playing: { mode: string; track: string | null }[] };
+
+  it('refuses anything but a tab id and a known-shaped mode', async () => {
+    expect((await ping({ mode: 'metro', playing: true })).status).toBe(400);
+    expect((await ping({ tab: 'short', mode: 'metro', playing: true })).status).toBe(400);
+    expect((await ping({ tab: newKey(), mode: 'Not A Mode!', playing: true })).status).toBe(400);
+    expect((await call(listen.onRequestPost, api('/api/listen', { method: 'POST', body: '{nope' }))).status).toBe(400);
+  });
+
+  it('keeps one row per tab, and the admin page counts only tabs playing now', async () => {
+    const [a, b] = [newKey(), newKey()];
+    expect((await ping({ tab: a, mode: 'metro', modeName: 'Metro', track: 'Song one', playing: true })).status).toBe(204);
+    await ping({ tab: a, mode: 'metro', modeName: 'Metro', track: 'Song two', playing: true });
+    await ping({ tab: b, mode: 'office', playlist: 'Bad Id!', playing: true }); // a bad playlist is dropped, not refused
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM listeners').first<number>('n')).toBe(2);
+
+    let seen = await overview();
+    expect(seen.totals.playing_now).toBe(2);
+    expect(seen.playing.find((row) => row.mode === 'metro')?.track).toBe('Song two');
+    expect(JSON.stringify(seen)).not.toContain(a); // the tab id never leaves the database
+
+    await ping({ tab: b, mode: 'office', playing: false }); // paused
+    await env.DB.prepare('UPDATE listeners SET seen_at = 0 WHERE tab = ?').bind(a).run(); // gone quiet
+    seen = await overview();
+    expect(seen.totals.playing_now).toBe(0);
+    expect(seen.playing).toEqual([]);
   });
 });
 
