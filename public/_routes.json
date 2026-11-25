@@ -1,5 +1,10 @@
 {
   "version": 1,
-  "include": ["/backgrounds/*.mp4", "/api/*", "/mcp/*"],
+  "include": [
+    "/backgrounds/*.mp4",
+    "/api/*",
+    "/mcp",
+    "/mcp/*"
+  ],
   "exclude": []
 }

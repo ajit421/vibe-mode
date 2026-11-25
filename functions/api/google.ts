@@ -1,85 +1,106 @@
-import { addKey, caller, fail, json, overLimit, readText, retireCallerKey, slowDown, type Handler } from '../../server/lib';
-import { verifyGoogle } from '../../server/google';
+import {
+  DATA_LIMIT,
+  accountOf,
+  addKey,
+  caller,
+  fail,
+  json,
+  overLimit,
+  readText,
+  retireCallerKey,
+  slowDown,
+  type Account,
+  type Handler,
+} from '../../server/lib';
+import { verifyGoogle, type GoogleAccount } from '../../server/google';
+import { googleProfile } from '../../server/oauth';
 
-// "Continue with Google" (migrations/0008_google.sql). Optional, never a wall.
-//   GET    { clientId, email }: whether Google sign-in is set up, and which
-//          Google account the caller's profile is linked to (with a key).
-//   POST   { credential, replace? } — a Google ID token from the browser:
-//          - linked to a profile → mint a key for it (sign in), retiring the
-//            caller's key, like a passkey or password sign-in. If that would
-//            replace the caller's own modes, the first answer is
-//            409 { confirm: true, email }: nothing is minted until the browser
-//            asks again with `replace: true` (the visitor confirmed).
-//          - not linked, caller has a cloud copy → link it to that profile.
-//          - not linked, no cloud copy → 404 { link: true }: the browser saves
-//            first (creating its profile) and asks again.
-//   DELETE unlink the caller's Google account (keys and passkeys keep working).
-//
+// "Continue with Google" — the way into a cloud account, and the only way one
+// is created (migrations/0010_google_only.sql). Optional: the site works fully
+// without it; only the cloud features ("premium") need it.
+//   GET   { clientId, account }: whether Google sign-in is set up here, and the
+//         Google account the caller's profile is signed in with (if any).
+//   POST  { credential, data? } — a Google ID token from the browser:
+//         - the account already has a profile → a key for it (`key`, not
+//           `created`): this browser signs in; its old key, if any, retires.
+//           The browser then asks whether to load the account's modes or keep
+//           its own (src/state/SyncProvider.tsx).
+//         - a new account, and the caller has a cloud copy from before Google
+//           → that copy is linked (`linked`): nothing is lost.
+//         - a new account otherwise → a profile is created from `data` (this
+//           browser's modes) with a key (`key`, `created`).
+//         - the caller is already this account → `same`.
 // The token is the proof: a browser can't make one for an account it doesn't
 // hold, and server/google.ts checks it was issued by Google for this site.
 
 const NOT_SET_UP = 'Google sign-in isn’t set up on this site yet.';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const accountFrom = ({ email, name, picture }: GoogleAccount): Account => ({ email, name, picture });
+
 export const onRequestGet: Handler = async ({ env, request }) => {
-  const clientId = env.GOOGLE_CLIENT_ID ?? null;
   const who = await caller(env, request);
-  // A row, not just its email: a linked account whose email Google didn't verify has none.
-  const row = who
-    ? await env.DB.prepare('SELECT email FROM google_accounts WHERE profile_id = ?')
-        .bind(who.profileId)
-        .first<{ email: string | null }>()
-    : null;
-  return json({ clientId, email: row?.email ?? null, linked: row !== null });
+  const account = who ? await accountOf(env, who.profileId) : null;
+  return json({ clientId: env.GOOGLE_CLIENT_ID ?? null, account });
 };
 
 export const onRequestPost: Handler = async ({ env, request }) => {
   if (!env.GOOGLE_CLIENT_ID) return fail(503, NOT_SET_UP);
   if (overLimit(request, 'google', 30, 10 * 60_000)) return slowDown();
-  let body: { credential?: unknown; replace?: unknown };
+
+  let body: { credential?: unknown; data?: unknown };
   try {
-    body = JSON.parse((await readText(request, 8_000)) ?? '');
+    body = JSON.parse((await readText(request, DATA_LIMIT + 10_000)) ?? '');
   } catch {
     return fail(400, 'Bad request.');
   }
   if (typeof body?.credential !== 'string') return fail(400, 'Bad request.');
 
-  const account = await verifyGoogle(body.credential, env.GOOGLE_CLIENT_ID);
-  if (!account) return fail(401, 'Google couldn’t confirm that sign-in. Try again.');
+  const google = await verifyGoogle(body.credential, env.GOOGLE_CLIENT_ID);
+  if (!google) return fail(401, 'Google couldn’t confirm that sign-in. Try again.');
+  const account = accountFrom(google);
 
   const who = await caller(env, request);
   const linked = await env.DB.prepare('SELECT profile_id FROM google_accounts WHERE sub = ?')
-    .bind(account.sub)
+    .bind(google.sub)
     .first<string>('profile_id');
 
   if (linked) {
-    if (who?.profileId === linked) return json({ same: true, email: account.email });
-    // Signing in here would swap this browser's own cloud copy for the account's.
-    if (who && body.replace !== true) return json({ error: 'Confirm first.', confirm: true, email: account.email }, 409);
+    // Keep what the icon shows current: names and pictures change on Google's side.
+    await env.DB.prepare('UPDATE google_accounts SET email = ?, name = ?, picture = ? WHERE sub = ?')
+      .bind(google.email, google.name, google.picture, google.sub)
+      .run();
+    if (who?.profileId === linked) return json({ same: true, account });
     const key = await addKey(env, linked);
     if (!key) return fail(429, 'Too many devices. Sign out the other devices from one you have.');
     await retireCallerKey(env, request);
-    // Keep the shown email current: it can change on Google's side.
-    if (account.email) {
-      await env.DB.prepare('UPDATE google_accounts SET email = ? WHERE sub = ?').bind(account.email, account.sub).run();
-    }
-    return json({ key, email: account.email });
+    return json({ key, account });
   }
 
-  if (!who) return json({ error: 'Save first.', link: true }, 404);
-  try {
-    await env.DB.prepare('INSERT INTO google_accounts (sub, profile_id, email, created_at) VALUES (?, ?, ?, ?)')
-      .bind(account.sub, who.profileId, account.email, Date.now())
+  // A Google account new to the site. A cloud copy from before Google became
+  // the way in is linked as it is, keeping its modes and its key.
+  if (who && !(await accountOf(env, who.profileId))) {
+    await env.DB.prepare(
+      'INSERT INTO google_accounts (sub, profile_id, email, name, picture, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+      .bind(google.sub, who.profileId, google.email, google.name, google.picture, Date.now())
       .run();
-  } catch {
-    // UNIQUE(profile_id): this profile already has another Google account.
-    return fail(409, 'This browser’s account is already connected to another Google account. Disconnect that one first.');
+    return json({ linked: true, account }, 201);
   }
-  return json({ linked: true, email: account.email }, 201);
-};
 
-export const onRequestDelete: Handler = async ({ env, request }) => {
-  const who = await caller(env, request);
-  if (!who) return fail(401, 'Unknown key.');
-  await env.DB.prepare('DELETE FROM google_accounts WHERE profile_id = ?').bind(who.profileId).run();
-  return new Response(null, { status: 204 });
+  // Otherwise a new profile, starting from this browser's modes.
+  const data = isRecord(body.data) ? JSON.stringify(body.data) : '{}';
+  if (new TextEncoder().encode(data).length > DATA_LIMIT) return fail(413, 'Too much to save.');
+  let made;
+  try {
+    made = await googleProfile(env, google, data, true);
+  } catch {
+    // The same Google account signed in twice at once and the other one won.
+    return fail(409, 'Try again.');
+  }
+  await retireCallerKey(env, request);
+  const version = await env.DB.prepare('SELECT version FROM profiles WHERE id = ?').bind(made.profileId).first<number>('version');
+  return json({ key: made.key, account, created: true, version }, 201);
 };

@@ -18,3 +18,10 @@
 /admin
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Robots-Tag: noindex
+
+# OAuth discovery (public/_redirects): readable by browser-based MCP clients.
+/oauth/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=3600
+/.well-known/*
+  Access-Control-Allow-Origin: *

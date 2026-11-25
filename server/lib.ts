@@ -8,16 +8,18 @@ import { MAX_IMAGE_LENGTH, UPLOAD_BUDGET } from '../src/themes/limits';
  * bits) and sends it as `Authorization: Bearer <key>`. The database stores
  * only its SHA-256 (`device_keys.key_hash`), which maps to a profile. The key
  * *is* the credential, like a long unguessable link; see
- * migrations/0002_profiles.sql. Sync links, passkeys and the optional
- * username + password (functions/api/login.ts) are only ways to get a new
- * key for a profile — nothing else ever checks a password.
+ * migrations/0002_profiles.sql.
+ *
+ * Cloud features are for visitors signed in with Google (the "premium" tier):
+ * a profile counts as signed in when it is linked to a Google account
+ * (google_accounts). Google sign-in (functions/api/google.ts), a sync link
+ * from a signed-in device, and an assistant's OAuth sign-in (/mcp) are the
+ * only ways to get a key — `signedIn()` below is the gate every cloud
+ * endpoint checks. Nothing here checks a password.
  */
 
 export interface Env {
   DB: D1Database;
-  /** Turnstile (bot check on creating a profile). Both unset = no check. */
-  TURNSTILE_SITE_KEY?: string;
-  TURNSTILE_SECRET?: string;
   /**
    * The owner's MCP key (secret, 32+ characters): `/mcp/<it>` adds the tools
    * that change the site's defaults for every visitor. Unset = no owner access.
@@ -32,7 +34,7 @@ export type Handler = PagesFunction<Env>;
 export { MAX_IMAGE_LENGTH, UPLOAD_BUDGET };
 /** A profile's text data, in UTF-8 bytes. Generous — it is typed text — but bounded, and well under D1's ~2 MB per value. */
 export const DATA_LIMIT = 1_000_000;
-/** Device keys per profile: every browser, sync link and passkey sign-in mints one. */
+/** Device keys per profile: every browser, sync link and AI assistant sign-in mints one. */
 export const MAX_KEYS = 25;
 /** One profile may save at most this often; the browser waits 2s between saves anyway. */
 export const MIN_SAVE_INTERVAL_MS = 1_000;
@@ -129,6 +131,45 @@ export function bearer(request: Request): string | null {
 /** The caller's profile id and key hash, or null when the key is missing or unknown. */
 export const caller = (env: Env, request: Request) => profileForKey(env, bearer(request));
 
+/** The Google account a profile is signed in with, or null. */
+export interface Account {
+  email: string | null;
+  name: string | null;
+  picture: string | null;
+}
+
+export async function accountOf(env: Env, profileId: string): Promise<Account | null> {
+  return env.DB.prepare('SELECT email, name, picture FROM google_accounts WHERE profile_id = ?')
+    .bind(profileId)
+    .first<Account>();
+}
+
+/**
+ * The gate on every cloud feature: the caller's profile and its Google
+ * account — or the answer to send instead. 401 = unknown key (the browser
+ * forgets it). 403 { google: true } = a cloud copy from before Google became
+ * the way in: the browser keeps its key, and signing in with Google links it.
+ */
+export async function signedIn(
+  env: Env,
+  request: Request,
+): Promise<{ profileId: string; keyHash: string; account: Account } | Response> {
+  const who = await caller(env, request);
+  if (!who) return fail(401, 'Unknown key.');
+  const account = await accountOf(env, who.profileId);
+  if (!account) return json({ error: 'Sign in with Google to use cloud save.', google: true }, 403);
+  return { ...who, account };
+}
+
+/** Like `profileForKey`, but only for a profile signed in with Google (the MCP server's visitors). */
+export async function memberForKey(
+  env: Env,
+  key: string | null | undefined,
+): Promise<{ profileId: string; keyHash: string } | null> {
+  const who = await profileForKey(env, key);
+  return who && (await accountOf(env, who.profileId)) ? who : null;
+}
+
 /** The profile a device key belongs to — from a header, or from an MCP link's path. */
 export async function profileForKey(
   env: Env,
@@ -196,6 +237,7 @@ export async function deleteProfile(env: Env, id: string): Promise<void> {
     env.DB.prepare('DELETE FROM logins WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM google_accounts WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM profile_listens WHERE profile_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM oauth_codes WHERE profile_id = ?').bind(id),
     env.DB.prepare('UPDATE sessions SET profile_id = NULL, events = NULL WHERE profile_id = ?').bind(id),
     env.DB.prepare('UPDATE listeners SET profile_id = NULL WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM device_keys WHERE profile_id = ?').bind(id),
@@ -213,7 +255,7 @@ export async function deleteProfile(env: Env, id: string): Promise<void> {
  * because nothing better is available here: Pages has no rate-limit binding
  * (Wrangler rejects `ratelimits` for Pages), and a *.pages.dev site can't have
  * WAF rate-limiting rules (they belong to a zone you own). Move to a WAF rule
- * once the site has its own domain. Turnstile stays the real gate on creation.
+ * once the site has its own domain. Google sign-in is the real gate on accounts.
  */
 const counts = new Map<string, { start: number; n: number }>();
 const SWEEP_AT = 5_000;
@@ -241,33 +283,6 @@ export function overLimit(request: Request, bucket: string, max: number, windowM
 
 /** The answer when `overLimit` says so — worded for a person, as every failure here is. */
 export const slowDown = (): Response => fail(429, 'Too many requests from here. Wait a few minutes and try again.');
-
-/**
- * Turnstile check for creating a profile — the one write anybody can make
- * without already holding a key. Passes when Turnstile isn't configured, so
- * the site works before the keys are set; set both TURNSTILE_* variables in
- * the Pages project to turn it on.
- */
-export async function passesTurnstile(env: Env, request: Request): Promise<boolean> {
-  if (!env.TURNSTILE_SECRET) return true;
-  const token = request.headers.get('X-Turnstile-Token');
-  if (!token) return false;
-  const form = new FormData();
-  form.append('secret', env.TURNSTILE_SECRET);
-  form.append('response', token);
-  const ip = request.headers.get('CF-Connecting-IP');
-  if (ip) form.append('remoteip', ip);
-  try {
-    const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      body: form,
-    });
-    const outcome = await result.json<{ success?: boolean }>();
-    return outcome.success === true;
-  } catch {
-    return false;
-  }
-}
 
 /** Reads a body as text, refusing anything over `limit` characters before it is all read. */
 export async function readText(request: Request, limit: number): Promise<string | null> {

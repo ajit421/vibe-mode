@@ -2,7 +2,7 @@ import {
   MAX_IMAGE_LENGTH,
   SAFE_ID,
   UPLOAD_BUDGET,
-  caller,
+  signedIn,
   fail,
   isStill,
   json,
@@ -21,8 +21,8 @@ export const onRequestPut: Handler = async ({ env, request, params }) => {
   if (!SAFE_ID.test(mode)) return fail(400, 'Unknown mode.');
   // Pictures are the biggest thing in the database: a steady trickle, not a flood.
   if (overLimit(request, 'upload', 60, 10 * 60_000)) return slowDown();
-  const who = await caller(env, request);
-  if (!who) return fail(401, 'Unknown key.');
+  const who = await signedIn(env, request);
+  if (who instanceof Response) return who;
 
   const still = await readText(request, MAX_IMAGE_LENGTH);
   if (still === null) return fail(413, 'Picture too large.');
@@ -47,8 +47,8 @@ export const onRequestPut: Handler = async ({ env, request, params }) => {
 export const onRequestDelete: Handler = async ({ env, request, params }) => {
   const mode = String(params.mode);
   if (!SAFE_ID.test(mode)) return fail(400, 'Unknown mode.');
-  const who = await caller(env, request);
-  if (!who) return fail(401, 'Unknown key.');
+  const who = await signedIn(env, request);
+  if (who instanceof Response) return who;
   await env.DB.prepare('DELETE FROM uploads WHERE profile_id = ? AND mode_id = ?')
     .bind(who.profileId, mode)
     .run();

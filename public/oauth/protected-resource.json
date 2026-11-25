@@ -1,0 +1,7 @@
+{
+  "resource": "https://vibe-mode.pages.dev/mcp",
+  "resource_name": "Vibe Mode",
+  "authorization_servers": ["https://vibe-mode.pages.dev"],
+  "scopes_supported": ["vibe"],
+  "bearer_methods_supported": ["header"]
+}

@@ -1,21 +1,30 @@
-import { addKey, caller, fail, json, type Handler } from '../../server/lib';
+import { addKey, caller, fail, json, signedIn, type Handler } from '../../server/lib';
 
 // Device keys for the caller's profile.
-//   POST   mints a new key — the one a sync link carries to another device.
-//   DELETE signs out every *other* device: all keys but the caller's go.
-//          The way to revoke a sync link that went somewhere it shouldn't.
+//   POST          mints a new key — the one a sync link carries to another
+//                 device. Signed in with Google only (`signedIn`).
+//   DELETE        signs out every *other* device: all keys but the caller's
+//                 go — browsers, sync links and AI assistants alike. The way
+//                 to revoke a link that went somewhere it shouldn't.
+//   DELETE ?self  signs out just this browser: its own key goes. Allowed for
+//                 any key — leaving is never gated.
 
 export const onRequestPost: Handler = async ({ env, request }) => {
-  const who = await caller(env, request);
-  if (!who) return fail(401, 'Unknown key.');
+  const who = await signedIn(env, request);
+  if (who instanceof Response) return who;
   const key = await addKey(env, who.profileId);
   if (!key) return fail(429, 'Too many devices. Sign out the other devices first.');
   return json({ key }, 201);
 };
 
 export const onRequestDelete: Handler = async ({ env, request }) => {
-  const who = await caller(env, request);
-  if (!who) return fail(401, 'Unknown key.');
+  if (new URL(request.url).searchParams.has('self')) {
+    const who = await caller(env, request);
+    if (who) await env.DB.prepare('DELETE FROM device_keys WHERE key_hash = ?').bind(who.keyHash).run();
+    return new Response(null, { status: 204 });
+  }
+  const who = await signedIn(env, request);
+  if (who instanceof Response) return who;
   const result = await env.DB.prepare('DELETE FROM device_keys WHERE profile_id = ? AND key_hash <> ?')
     .bind(who.profileId, who.keyHash)
     .run();

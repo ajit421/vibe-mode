@@ -1,29 +1,28 @@
 import {
   DATA_LIMIT,
   MIN_SAVE_INTERVAL_MS,
-  bearer,
   caller,
   deleteProfile,
   fail,
-  hashKey,
   json,
-  overLimit,
-  passesTurnstile,
-  slowDown,
   readText,
+  signedIn,
   type Handler,
 } from '../../server/lib';
 
-// One visitor's saved changes. GET loads them, PUT saves them (creating the
-// profile on a key's first save), DELETE removes the cloud copy for good.
+// One visitor's cloud copy. GET loads it, PUT saves it, DELETE removes it for
+// good. Cloud save is for visitors signed in with Google: GET and PUT go
+// through `signedIn` (401 unknown key, 403 not signed in with Google). A
+// profile is only ever created by a Google sign-in (functions/api/google.ts),
+// never by a save — so strangers can't fill the database with copies.
 // The browser keeps its own copy too; see src/sync/.
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export const onRequestGet: Handler = async ({ env, request }) => {
-  const who = await caller(env, request);
-  if (!who) return fail(401, 'Unknown key.');
+  const who = await signedIn(env, request);
+  if (who instanceof Response) return who;
 
   const [profiles, stills] = await env.DB.batch([
     env.DB.prepare('SELECT data, version FROM profiles WHERE id = ?').bind(who.profileId),
@@ -35,12 +34,13 @@ export const onRequestGet: Handler = async ({ env, request }) => {
   const uploads = Object.fromEntries(
     (stills.results as { mode_id: string; still: string }[]).map((row) => [row.mode_id, row.still]),
   );
-  return json({ data: JSON.parse(profile.data), uploads, version: profile.version });
+  // The account rides along, so the profile icon is current without a request of its own.
+  return json({ data: JSON.parse(profile.data), uploads, version: profile.version, account: who.account });
 };
 
 export const onRequestPut: Handler = async ({ env, request }) => {
-  const key = bearer(request);
-  if (!key) return fail(401, 'Missing key.');
+  const who = await signedIn(env, request);
+  if (who instanceof Response) return who;
 
   const text = await readText(request, DATA_LIMIT);
   if (text === null) return fail(413, 'Too much to save.');
@@ -58,58 +58,17 @@ export const onRequestPut: Handler = async ({ env, request }) => {
   // of Hindi or emoji is 3-4 MB of UTF-8. Refused here with a clear 413
   // instead of a database error.
   if (new TextEncoder().encode(data).length > DATA_LIMIT) return fail(413, 'Too much to save.');
+
+  // The version check doubles as a throttle: one write a second at most.
   const now = Date.now();
-
-  const who = await caller(env, request);
-  if (who) {
-    // The version check doubles as a throttle: one write a second at most.
-    const result = await env.DB.prepare(
-      'UPDATE profiles SET data = ?, version = ? WHERE id = ? AND version <= ?',
-    )
-      .bind(data, now, who.profileId, now - MIN_SAVE_INTERVAL_MS)
-      .run();
-    if (!result.meta.changes) return fail(429, 'Saving too fast.');
-    return json({ version: now });
-  }
-
-  // A key nobody has seen. The browser says whether it means to create a
-  // profile (`create: true` on its first save). A key that was signed out
-  // from another device comes with `create: false`: answering 401 tells that
-  // browser it was signed out, instead of quietly starting a second, separate
-  // cloud copy its other devices never see. (Missing = an older tab: allowed.)
-  if (body.create === false) return fail(401, 'Unknown key.');
-
-  // Creating a profile is the only write open to anyone, so it is the one
-  // behind the bot check — and a few per address, so one script can't fill
-  // the database even before Turnstile is set up.
-  if (overLimit(request, 'create', 10, 10 * 60_000)) return slowDown();
-  if (!(await passesTurnstile(env, request))) {
-    return json({ error: 'Check needed.', challenge: true, siteKey: env.TURNSTILE_SITE_KEY ?? null }, 403);
-  }
-  const profileId = crypto.randomUUID();
-  try {
-    await env.DB.batch([
-      env.DB.prepare('INSERT INTO profiles (id, data, version, created_at) VALUES (?, ?, ?, ?)').bind(
-        profileId,
-        data,
-        now,
-        now,
-      ),
-      env.DB.prepare(
-        'INSERT INTO device_keys (key_hash, profile_id, created_at) VALUES (?, ?, ?)',
-      ).bind(await hashKey(key), profileId, now),
-    ]);
-  } catch {
-    // Two first saves raced with the same key and the other one won: retrying
-    // finds the profile and updates it (409, the browser retries). Anything
-    // else is the database: 503, so the browser reports it instead of
-    // retrying every two seconds for ever.
-    const raced = await caller(env, request).catch(() => null);
-    return raced ? fail(409, 'Try again.') : fail(503, 'Couldn’t save to the cloud just now. Your changes are kept here.');
-  }
-  return json({ version: now }, 201);
+  const result = await env.DB.prepare('UPDATE profiles SET data = ?, version = ? WHERE id = ? AND version <= ?')
+    .bind(data, now, who.profileId, now - MIN_SAVE_INTERVAL_MS)
+    .run();
+  if (!result.meta.changes) return fail(429, 'Saving too fast.');
+  return json({ version: now });
 };
 
+/** Deleting your own data is always allowed, signed in with Google or not. */
 export const onRequestDelete: Handler = async ({ env, request }) => {
   const who = await caller(env, request);
   if (!who) return fail(401, 'Unknown key.');

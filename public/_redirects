@@ -1,0 +1,9 @@
+# OAuth discovery for the personal MCP server (/mcp, see server/oauth.ts).
+# Served as static JSON from public/oauth/ — free, no Function call. Clients
+# ask for these at /.well-known/…, sometimes with the resource path appended
+# (/.well-known/oauth-protected-resource/mcp), so both forms rewrite (200).
+/.well-known/oauth-authorization-server     /oauth/authorization-server.json  200
+/.well-known/oauth-authorization-server/*   /oauth/authorization-server.json  200
+/.well-known/openid-configuration           /oauth/authorization-server.json  200
+/.well-known/oauth-protected-resource       /oauth/protected-resource.json    200
+/.well-known/oauth-protected-resource/*     /oauth/protected-resource.json    200

@@ -1,4 +1,4 @@
-import { caller, fail, json, readText, type Handler } from '../../server/lib';
+import { fail, json, readText, signedIn, type Handler } from '../../server/lib';
 
 // A tab with "Let AI control this tab" on polls here every few seconds
 // (src/components/RemoteControl.tsx). It sends what it is playing when that
@@ -13,8 +13,9 @@ const SEEN_EVERY_MS = 20_000;
 const COMMAND_TTL_MS = 120_000;
 
 export const onRequestPost: Handler = async ({ env, request }) => {
-  const who = await caller(env, request);
-  if (!who) return fail(401, 'Unknown key.');
+  // AI control of a tab is a signed-in feature, like everything cloud.
+  const who = await signedIn(env, request);
+  if (who instanceof Response) return who;
   const text = await readText(request, STATE_LIMIT);
   if (text === null) return fail(413, 'Too large.');
   let state: unknown;

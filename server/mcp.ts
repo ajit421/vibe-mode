@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { normaliseSource } from '../src/music/resolve';
 import { safeImageUrl } from '../src/themes/backgrounds';
-import { DATA_LIMIT, isOwner, profileForKey, type Env } from './lib';
+import { DATA_LIMIT, isOwner, memberForKey, type Env } from './lib';
 import {
   BUILT_IN_MODES,
   COLOR_KEYS,
@@ -36,7 +36,8 @@ export type Access = { kind: 'visitor'; profileId: string } | { kind: 'owner' };
 /** Who an MCP link belongs to, or null. The owner key is compared in constant time. */
 export async function accessFor(env: Env, secret: string): Promise<Access | null> {
   if (await isOwner(env, secret)) return { kind: 'owner' };
-  const who = await profileForKey(env, secret);
+  // Visitors' tools are a signed-in (Google) feature, like the rest of the cloud.
+  const who = await memberForKey(env, secret);
   return who ? { kind: 'visitor', profileId: who.profileId } : null;
 }
 

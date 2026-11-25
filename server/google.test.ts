@@ -24,11 +24,23 @@ const token = (claims: Record<string, unknown> = {}, key = google.privateKey, ex
 
 describe('verifyGoogle', () => {
   it('accepts a token Google signed for this site, with the verified email', async () => {
-    expect(await verifyGoogle(await token(), CLIENT, keys)).toEqual({ sub: 'google-sub-1', email: 'asha@example.com' });
+    expect(await verifyGoogle(await token(), CLIENT, keys)).toEqual({
+      sub: 'google-sub-1',
+      email: 'asha@example.com',
+      name: null,
+      picture: null,
+    });
+    const named = await token({ name: 'Asha', picture: 'https://lh3.googleusercontent.com/a/abc=s96-c' });
+    expect(await verifyGoogle(named, CLIENT, keys)).toMatchObject({
+      name: 'Asha',
+      picture: 'https://lh3.googleusercontent.com/a/abc=s96-c',
+    });
+    // A picture from anywhere else is not shown.
+    expect(await verifyGoogle(await token({ picture: 'https://evil.example/x.png' }), CLIENT, keys)).toMatchObject({ picture: null });
   });
 
   it('keeps an unverified email out', async () => {
-    expect(await verifyGoogle(await token({ email_verified: false }), CLIENT, keys)).toEqual({
+    expect(await verifyGoogle(await token({ email_verified: false }), CLIENT, keys)).toMatchObject({
       sub: 'google-sub-1',
       email: null,
     });
