@@ -86,6 +86,7 @@ Visitors have full control from the Customize panel (palette icon in the top bar
 - Everything from storage or an imported file goes through `sanitizeCustomization` / `sanitizeUploads` (hex-only colours, `safeCustomImage` for pictures, known ids only). Keep any new editable field behind them, and add a case to the test.
 - Uploaded pictures live under their **own** key (`vibe-mode.uploads`, by mode id); the mode's `image` is just the marker `UPLOADED`. Don't put stills back in the customisation record — it is rewritten on every keystroke in the panel.
 - Visitor data (`customization`, `uploads`, `customPlaylists`, `preferences`, `playlistOverrides`) syncs across open tabs via `useLocalStorage(..., syncAcrossTabs)`, and to the cloud (D1) via [SyncProvider.tsx](src/state/SyncProvider.tsx), whose header comment explains the rules; tables in [migrations/0002_profiles.sql](migrations/0002_profiles.sql). Which mode a tab shows does neither.
+- Sign-in is optional and never gates the site. The device key (`Authorization: Bearer`) is the only session; a sync link, a passkey or a username + password ([functions/api/login.ts](functions/api/login.ts), table in [migrations/0004_logins.sql](migrations/0004_logins.sql)) is just a way to mint a new key for a profile with `addKey`. Passwords are PBKDF2-SHA256 via WebCrypto (100k iterations — Workers' maximum; no bcrypt/argon2 WASM), salted per login; sign-in is behind Turnstile and a 10-tries-per-15-minutes lockout per username, and answers the same for unknown users and wrong passwords. There's no email, so no password reset. Changing a password signs out the profile's other devices. Shared limits (`PASSWORD_LENGTH`, `USERNAME_PATTERN`) live in [src/themes/limits.ts](src/themes/limits.ts).
 - "Restore from file" takes a full backup (replaces everything) or a shared single mode (`kind: 'mode'`, always *added* under a new id). The crash screen downloads the same backup before it clears anything.
 
 ### Theming works through CSS custom properties, not components
@@ -103,7 +104,7 @@ Tailwind v4, CSS-first: there is no `tailwind.config.js`. Design tokens live in 
 | Provider | Owns |
 | --- | --- |
 | `VibeProvider` | active theme, per-theme selected playlist, preferences, transition wipe, `?mode=`/`?playlist=` URL sync, localStorage, site defaults |
-| `SyncProvider` | cloud save of the visitor's data, sync links, passkeys, the "load from another device?" dialog |
+| `SyncProvider` | cloud save of the visitor's data, sync links, passkeys, username + password sign-in, the "load from another device?" dialog |
 | `PlayerProvider` | the YouTube IFrame player, play state, progress, volume, error states |
 | `ToastProvider` | interaction messages |
 

@@ -38,6 +38,13 @@ export interface SyncContextValue {
   addPasskey: () => Promise<boolean>;
   /** Signs in with a passkey. This browser's modes are replaced by that profile's. */
   signInWithPasskey: () => Promise<boolean>;
+  /** This profile's sign-in username; null when none is set or there is no cloud copy. */
+  loginName: () => Promise<string | null>;
+  /** Sets or changes the username and password (saving first if needed). A change signs other devices out. */
+  setPassword: (username: string, password: string) => Promise<boolean>;
+  removePassword: () => Promise<boolean>;
+  /** Signs in with a username and password. This browser's modes are replaced by that profile's. */
+  signInWithPassword: (username: string, password: string) => Promise<boolean>;
 }
 
 export const SyncContext = createContext<SyncContextValue | null>(null);

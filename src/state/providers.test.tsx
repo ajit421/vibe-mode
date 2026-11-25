@@ -61,6 +61,12 @@ function fakeApi() {
         const commands = server.queued.splice(0);
         return Response.json({ commands, version: found.version });
       }
+      if (url.pathname === '/api/login' && method === 'POST') {
+        const { username, password } = JSON.parse(String(init.body));
+        return username === 'asha' && password === 'long enough pw'
+          ? Response.json({ key: KEY })
+          : Response.json({ error: 'Wrong username or password.' }, { status: 401 });
+      }
       if (url.pathname === '/api/profile' && method === 'DELETE') {
         server.profiles.delete(key);
         return new Response(null, { status: 204 });
@@ -218,6 +224,28 @@ describe('cloud save', () => {
     await settle(100);
     expect(location.hash).toBe('');
     expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('From my phone');
+    expect(record().key).toBe(KEY);
+  });
+
+  it('a username and password load that profile; a wrong one changes nothing and isn’t a failed save', async () => {
+    server.profiles.set(KEY, {
+      data: { customization: { edits: { metro: { name: 'From my account' } }, added: [], order: [] } },
+      uploads: {},
+      version: 3,
+    });
+    ({ unmount } = mountProviders());
+    await settle();
+
+    let ok = true;
+    await act(async () => void (ok = await ctx.sync!.signInWithPassword('asha', 'nope nope nope')));
+    expect(ok).toBe(false);
+    expect(ctx.sync!.message).toBe('Wrong username or password.');
+    expect(ctx.sync!.status).not.toBe('error');
+    expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).not.toBe('From my account');
+
+    await act(async () => void (ok = await ctx.sync!.signInWithPassword('asha', 'long enough pw')));
+    expect(ok).toBe(true);
+    expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('From my account');
     expect(record().key).toBe(KEY);
   });
 

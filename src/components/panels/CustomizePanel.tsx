@@ -13,6 +13,8 @@ import {
   ImagePlus,
   KeyRound,
   Link2,
+  LockKeyhole,
+  LogIn,
   LogOut,
   Play,
   Plus,
@@ -44,6 +46,7 @@ import {
   type FontKey,
   type IconKey,
 } from '@/themes/customize';
+import { PASSWORD_LENGTH, USERNAME_PATTERN } from '@/themes/limits';
 import type { VibeColors, VibeEffects, VibePlaylist } from '@/types/theme';
 import { cn } from '@/utils/cn';
 import { downloadJson } from '@/utils/backup';
@@ -760,9 +763,81 @@ const SYNC_STATUS: Record<Exclude<SyncStatus, 'saved'>, string> = {
 };
 
 /**
- * Cloud save (phase 2), sync links (phase 3) and passkeys (phase 4) — see
- * `state/SyncProvider.tsx`. No sign-up: changes save on their own, and these
- * controls only matter for a second device or a lost browser.
+ * Username + password, for setting one or signing in with it. A real <form>
+ * with the standard autocomplete names, so password managers offer to save
+ * and fill it. Lowercased as typed: usernames are case-insensitive anyway.
+ */
+function PasswordForm({
+  purpose,
+  username: initial,
+  busy,
+  onSubmit,
+}: {
+  purpose: 'set' | 'sign-in';
+  username: string | null;
+  busy: boolean;
+  onSubmit: (username: string, password: string) => void;
+}) {
+  const [username, setUsername] = useState(initial ?? '');
+  const [password, setPassword] = useState('');
+  const setting = purpose === 'set';
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault(); // inside a <dialog>: never navigate or close it
+        onSubmit(username, password);
+      }}
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="Username">
+          <input
+            className={INPUT}
+            name="username"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            required
+            pattern={USERNAME_PATTERN}
+            title="3 to 30 letters, numbers, dashes or underscores"
+            value={username}
+            onChange={(event) => setUsername(event.currentTarget.value.toLowerCase())}
+          />
+        </Field>
+        <Field label={setting ? `New password (at least ${PASSWORD_LENGTH.min} characters)` : 'Password'}>
+          <input
+            className={INPUT}
+            type="password"
+            name="password"
+            autoComplete={setting ? 'new-password' : 'current-password'}
+            required
+            minLength={setting ? PASSWORD_LENGTH.min : undefined}
+            maxLength={PASSWORD_LENGTH.max}
+            value={password}
+            onChange={(event) => setPassword(event.currentTarget.value)}
+          />
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="submit" className={SMALL_BUTTON} disabled={busy}>
+          {setting ? <LockKeyhole className="size-3.5" /> : <LogIn className="size-3.5" />}
+          {setting ? 'Save username & password' : 'Sign in'}
+        </button>
+        <p className="text-xs text-muted">
+          {setting
+            ? 'There’s no email, so a forgotten password can’t be reset — keep a passkey or another device too.'
+            : 'Replaces this browser’s modes with that account’s.'}
+        </p>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Cloud save (phase 2), sync links (phase 3), passkeys (phase 4) and the
+ * optional username + password — see `state/SyncProvider.tsx`. No sign-up:
+ * changes save on their own, and these controls only matter for a second
+ * device or a lost browser.
  */
 function CloudSection() {
   const sync = useSync();
@@ -771,6 +846,14 @@ function CloudSection() {
   const [mcpLink, setMcpLink] = useState<string | null>(null);
   const [incoming, setIncoming] = useState('');
   const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState<'set' | 'sign-in' | null>(null);
+  // Asked only when the panel opens with a cloud copy — not on every page load.
+  const [login, setLogin] = useState<string | null>(null);
+  const { hasKey, loginName } = sync;
+  useEffect(() => {
+    if (hasKey) void loginName().then(setLogin);
+    else setLogin(null);
+  }, [hasKey, loginName]);
 
   const run = (task: () => Promise<unknown>) => {
     setBusy(true);
@@ -790,8 +873,14 @@ function CloudSection() {
     <section className="mt-6 flex flex-col gap-3 border-t border-line/60 pt-4">
       <h3 className="vm-label text-muted">Cloud save &amp; your devices</h3>
       <p className="text-xs text-muted">
-        What you change here saves itself — no sign-up, no password. Come back on this browser
-        and it’s all still here. <span className="text-ink">{status}</span>
+        What you change here saves itself — no sign-up needed. Come back on this browser and
+        it’s all still here. <span className="text-ink">{status}</span>
+        {login && (
+          <>
+            {' '}
+            Signed in as <span className="text-ink">{login}</span>.
+          </>
+        )}
       </p>
       {sync.message && (
         <p className="text-xs text-primary" role="status">
@@ -835,6 +924,50 @@ function CloudSection() {
               <KeyRound className="size-3.5" />
               Add a passkey
             </button>
+          )}
+          <button
+            type="button"
+            className={SMALL_BUTTON}
+            disabled={busy}
+            aria-expanded={form === 'set'}
+            onClick={() => setForm(form === 'set' ? null : 'set')}
+          >
+            <LockKeyhole className="size-3.5" />
+            {login ? 'Change password' : 'Set a username & password'}
+          </button>
+        </div>
+      )}
+
+      {form === 'set' && sync.status !== 'off' && (
+        <div className="flex flex-col gap-2">
+          <PasswordForm
+            purpose="set"
+            username={login}
+            busy={busy}
+            onSubmit={(username, password) =>
+              run(async () => {
+                if (!(await sync.setPassword(username, password))) return;
+                setLogin(username);
+                setForm(null);
+              })
+            }
+          />
+          {login && (
+            <div>
+              <ConfirmButton
+                label="Remove password sign-in"
+                confirmLabel="Sure? Remove it"
+                icon={<Trash2 className="size-3.5" />}
+                disabled={busy}
+                onConfirm={() =>
+                  run(async () => {
+                    if (!(await sync.removePassword())) return;
+                    setLogin(null);
+                    setForm(null);
+                  })
+                }
+              />
+            </div>
           )}
         </div>
       )}
@@ -945,6 +1078,16 @@ function CloudSection() {
             onConfirm={() => run(sync.signInWithPasskey)}
           />
         )}
+        <button
+          type="button"
+          className={SMALL_BUTTON}
+          disabled={busy}
+          aria-expanded={form === 'sign-in'}
+          onClick={() => setForm(form === 'sign-in' ? null : 'sign-in')}
+        >
+          <LogIn className="size-3.5" />
+          Sign in with a password
+        </button>
         {sync.hasKey && (
           <>
             <ConfirmButton
@@ -964,6 +1107,21 @@ function CloudSection() {
           </>
         )}
       </div>
+
+      {form === 'sign-in' && (
+        <PasswordForm
+          purpose="sign-in"
+          username={null}
+          busy={busy}
+          onSubmit={(username, password) =>
+            run(async () => {
+              if (!(await sync.signInWithPassword(username, password))) return;
+              setForm(null);
+              setLogin(await sync.loginName());
+            })
+          }
+        />
+      )}
     </section>
   );
 }

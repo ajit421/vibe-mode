@@ -97,3 +97,21 @@ export const passkeyOptions = (purpose: 'register' | 'login', key: string | null
 
 export const passkeyVerify = (challengeId: string, response: unknown, key: string | null) =>
   call<{ ok?: true; key?: string }>('POST', '/api/passkeys/verify', key, { challengeId, response });
+
+/** The caller's sign-in username, or null when none is set. */
+export const getLogin = (key: string) => call<{ username: string | null }>('GET', '/api/login', key);
+
+export const setLogin = (key: string, username: string, password: string) =>
+  call<{ username: string; signedOut: number }>('PUT', '/api/login', key, { username, password });
+
+export const removeLogin = (key: string) => call<null>('DELETE', '/api/login', key);
+
+/** A right password answers with a fresh device key, like a passkey sign-in. */
+export const passwordLogin = (username: string, password: string, turnstileToken?: string) =>
+  call<{ key: string }>(
+    'POST',
+    '/api/login',
+    null,
+    { username, password },
+    turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
+  );

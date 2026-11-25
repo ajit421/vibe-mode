@@ -14,6 +14,7 @@ import * as verify from '../functions/api/passkeys/verify';
 import * as backgrounds from '../functions/backgrounds/[[path]]';
 import * as mcp from '../functions/mcp/[[path]]';
 import * as remote from '../functions/api/remote';
+import * as login from '../functions/api/login';
 
 /*
  * Every endpoint in functions/, run against Wrangler's local D1 (the same
@@ -44,7 +45,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -231,6 +232,106 @@ describe('/api/passkeys — sign-in', () => {
     const expired = await (await ask('login')).json<{ challengeId: string }>();
     await env.DB.prepare('UPDATE challenges SET expires_at = 0').run();
     expect((await answer(expired.challengeId, { id: 'x' })).status).toBe(400);
+  });
+});
+
+describe('/api/login — username and password', () => {
+  const body = (username: string, password: string) => JSON.stringify({ username, password });
+  const setLogin = (key: string, username: string, password: string) =>
+    call(login.onRequestPut, api('/api/login', { method: 'PUT', key, body: body(username, password) }));
+  const signIn = (username: string, password: string, extra = {}) =>
+    call(login.onRequestPost, api('/api/login', { method: 'POST', body: body(username, password) }), extra);
+  const nameOf = async (key: string) =>
+    (await (await call(login.onRequestGet, api('/api/login', { key }))).json<{ username: string | null }>()).username;
+
+  it('sets a login on a profile, then signs in on a new device with it', async () => {
+    const key = newKey();
+    expect((await setLogin(key, 'asha', 'long enough pw')).status).toBe(401); // no profile yet
+    await save(key, { note: 'mine' });
+    expect(await nameOf(key)).toBeNull();
+    expect((await setLogin(key, ' Asha ', 'long enough pw')).status).toBe(200);
+    expect(await nameOf(key)).toBe('asha');
+
+    const answer = await signIn('ASHA', 'long enough pw'); // usernames ignore case
+    expect(answer.status).toBe(200);
+    const { key: minted } = await answer.json<{ key: string }>();
+    const loaded = await call(profile.onRequestGet, api('/api/profile', { key: minted }));
+    expect(await loaded.json()).toMatchObject({ data: { note: 'mine' } });
+  });
+
+  it('never stores the password, and salts each login', async () => {
+    const [a, b] = [newKey(), newKey()];
+    await save(a);
+    await save(b);
+    await setLogin(a, 'one', 'same password!');
+    await setLogin(b, 'two', 'same password!');
+    const rows = (await env.DB.prepare('SELECT hash, salt FROM logins').all<{ hash: string; salt: string }>()).results;
+    expect(rows[0].hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(rows[0].hash).not.toBe(rows[1].hash);
+    expect(JSON.stringify(rows)).not.toContain('same password!');
+  });
+
+  it('refuses bad usernames, short or huge passwords, and a name someone else has', async () => {
+    const [a, b] = [newKey(), newKey()];
+    await save(a);
+    await save(b);
+    expect((await setLogin(a, 'no spaces', 'long enough pw')).status).toBe(400);
+    expect((await setLogin(a, 'ab', 'long enough pw')).status).toBe(400);
+    expect((await setLogin(a, 'asha', 'short')).status).toBe(400);
+    expect((await setLogin(a, 'asha', 'x'.repeat(129))).status).toBe(400);
+    expect((await setLogin(a, 'asha', 'long enough pw')).status).toBe(200);
+    expect((await setLogin(b, 'ASHA', 'long enough pw')).status).toBe(409);
+    expect(await nameOf(a)).toBe('asha'); // the failed one changed nothing
+  });
+
+  it('says the same for an unknown user and a wrong password', async () => {
+    const key = newKey();
+    await save(key);
+    await setLogin(key, 'asha', 'long enough pw');
+    const wrong = await signIn('asha', 'not the password');
+    const unknown = await signIn('nobody', 'long enough pw');
+    expect(wrong.status).toBe(401);
+    expect(unknown.status).toBe(401);
+    expect(await wrong.json()).toEqual(await unknown.json());
+  });
+
+  it('locks a username after ten wrong tries, even for the right password, until the window passes', async () => {
+    const key = newKey();
+    await save(key);
+    await setLogin(key, 'asha', 'long enough pw');
+    for (let i = 0; i < 10; i += 1) expect((await signIn('asha', 'wrong password')).status).toBe(401);
+    expect((await signIn('asha', 'long enough pw')).status).toBe(429);
+    await env.DB.prepare('UPDATE login_failures SET since = 0').run();
+    expect((await signIn('asha', 'long enough pw')).status).toBe(200);
+  });
+
+  it('a changed password signs out the other devices; the first one does not', async () => {
+    const key = newKey();
+    await save(key);
+    const other = await (await call(keys.onRequestPost, api('/api/keys', { method: 'POST', key }))).json<{ key: string }>();
+    expect(await (await setLogin(key, 'asha', 'long enough pw')).json()).toEqual({ username: 'asha', signedOut: 0 });
+    expect(await (await setLogin(key, 'asha', 'a new password')).json()).toEqual({ username: 'asha', signedOut: 1 });
+    expect((await call(profile.onRequestGet, api('/api/profile', { key: other.key }))).status).toBe(401);
+    expect((await signIn('asha', 'long enough pw')).status).toBe(401);
+    expect((await signIn('asha', 'a new password')).status).toBe(200);
+  });
+
+  it('removing the login, or the whole cloud copy, stops password sign-in', async () => {
+    const key = newKey();
+    await save(key);
+    await setLogin(key, 'asha', 'long enough pw');
+    expect((await call(login.onRequestDelete, api('/api/login', { method: 'DELETE', key }))).status).toBe(204);
+    expect((await signIn('asha', 'long enough pw')).status).toBe(401);
+
+    await setLogin(key, 'asha', 'long enough pw');
+    await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }));
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM logins').first<number>('n')).toBe(0);
+  });
+
+  it('asks for the bot check before hashing anything', async () => {
+    const response = await signIn('asha', 'long enough pw', { env: { TURNSTILE_SECRET: 's', TURNSTILE_SITE_KEY: 'site' } });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ challenge: true, siteKey: 'site' });
   });
 });
 

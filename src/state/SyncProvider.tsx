@@ -20,7 +20,11 @@ import {
 import {
   deleteProfile,
   deleteUpload,
+  getLogin,
   loadProfile,
+  passwordLogin,
+  removeLogin,
+  setLogin,
   mintKey,
   passkeyOptions,
   passkeyVerify,
@@ -483,6 +487,82 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     return adoptLink(result.body.key);
   }, [adoptLink, report]);
 
+  /* ── Username + password (functions/api/login.ts) ──────────────────────── */
+
+  /** A refusal of what was typed (taken name, wrong password) is no failed save: the save status stays. */
+  const refuse = useCallback(
+    (result: ApiResult<unknown>) => {
+      if (result.ok) return;
+      if (result.status === 0) report(result);
+      else setMessage(result.error);
+    },
+    [report],
+  );
+
+  const loginName = useCallback(async () => {
+    const key = readRecord().key;
+    if (!key) return null;
+    const result = await getLogin(key);
+    return result.ok ? result.body.username : null;
+  }, []);
+
+  const setPassword = useCallback(
+    async (username: string, password: string) => {
+      // A login belongs to a profile, so there has to be one: save first, as for a passkey.
+      if (!readRecord().key || unsaved(readRecord())) {
+        if (!(await save(true))) return false;
+      }
+      const result = await setLogin(readRecord().key as string, username, password);
+      if (!result.ok) {
+        refuse(result);
+        return false;
+      }
+      setMessage(null);
+      const { signedOut } = result.body;
+      toast(
+        signedOut
+          ? `Password changed. ${signedOut} other ${signedOut === 1 ? 'device was' : 'devices were'} signed out.`
+          : 'Username and password set. Use them to sign in on a new device.',
+        'SYNC',
+      );
+      return true;
+    },
+    [save, unsaved, refuse, toast],
+  );
+
+  const removePassword = useCallback(async () => {
+    const key = readRecord().key;
+    if (!key) return false;
+    const result = await removeLogin(key);
+    if (!result.ok) {
+      refuse(result);
+      return false;
+    }
+    toast('Password sign-in removed. Passkeys and sync links still work.', 'SYNC');
+    return true;
+  }, [refuse, toast]);
+
+  const signInWithPassword = useCallback(
+    async (username: string, password: string) => {
+      let result = await passwordLogin(username, password);
+      if (!result.ok && result.status === 403 && result.body?.challenge) {
+        const siteKey = result.body.siteKey;
+        const token = typeof siteKey === 'string' ? await turnstileToken(siteKey) : null;
+        if (!token) {
+          setMessage('Couldn’t confirm you’re not a robot. Try again.');
+          return false;
+        }
+        result = await passwordLogin(username, password, token);
+      }
+      if (!result.ok) {
+        refuse(result);
+        return false;
+      }
+      return adoptLink(result.body.key);
+    },
+    [adoptLink, refuse],
+  );
+
   const value = useMemo<SyncContextValue>(
     () => ({
       status,
@@ -501,6 +581,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       refresh,
       addPasskey,
       signInWithPasskey,
+      loginName,
+      setPassword,
+      removePassword,
+      signInWithPassword,
     }),
     [
       status,
@@ -518,6 +602,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       refresh,
       addPasskey,
       signInWithPasskey,
+      loginName,
+      setPassword,
+      removePassword,
+      signInWithPassword,
     ],
   );
 

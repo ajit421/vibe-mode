@@ -17,3 +17,12 @@ export const LINE_LIMITS = {
 
 /** Room for uploaded pictures: under the ~5 MB browsers give a site, with space left for the rest. */
 export const UPLOAD_BUDGET = 3_500_000;
+
+/** A sign-in password (functions/api/login.ts); the upper bound caps the hashing work. */
+export const PASSWORD_LENGTH = { min: 10, max: 128 } as const;
+/**
+ * A sign-in username: lowercase letters, numbers, dashes, underscores. The
+ * dash is escaped because browsers compile `pattern` with the `v` flag,
+ * where a bare `-` in a class is a syntax error and the check is dropped.
+ */
+export const USERNAME_PATTERN = '[a-z0-9_\\-]{3,30}';
