@@ -824,9 +824,11 @@ function PasswordForm({
           {setting ? 'Save username & password' : 'Sign in'}
         </button>
         <p className="text-xs text-muted">
-          {setting
-            ? 'There’s no email, so a forgotten password can’t be reset — keep a passkey or another device too.'
-            : 'Replaces this browser’s modes with that account’s.'}
+          {!setting
+            ? 'Replaces this browser’s modes with that account’s.'
+            : initial
+              ? 'Changing it signs out your other devices and AI assistant links.'
+              : 'There’s no email, so a forgotten password can’t be reset — keep a passkey or another device too.'}
         </p>
       </div>
     </form>

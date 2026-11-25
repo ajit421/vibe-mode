@@ -35,6 +35,8 @@ import {
   type Profile,
 } from '@/sync/api';
 import { turnstileToken } from '@/sync/turnstile';
+import { normaliseUsername, stretchPassword } from '@/sync/password';
+import { PASSWORD_LENGTH } from '@/themes/limits';
 
 /** Quiet time after the last change before saving — the Customize panel changes state per keystroke. */
 const SAVE_DELAY_MS = 2_000;
@@ -506,13 +508,31 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     return result.ok ? result.body.username : null;
   }, []);
 
+  /** The stretched password, or null (with a message) when this browser can't make one. */
+  const proofOf = useCallback(async (username: string, password: string) => {
+    try {
+      return await stretchPassword(username, password);
+    } catch {
+      setMessage('This browser can’t do password sign-in on this page. Try a passkey or a sync link.');
+      return null;
+    }
+  }, []);
+
   const setPassword = useCallback(
     async (username: string, password: string) => {
+      // Checked only here: the server sees the stretched password, never its length.
+      if (password.length < PASSWORD_LENGTH.min || password.length > PASSWORD_LENGTH.max) {
+        setMessage(`A password is ${PASSWORD_LENGTH.min} to ${PASSWORD_LENGTH.max} characters.`);
+        return false;
+      }
+      const name = normaliseUsername(username);
+      const proof = await proofOf(name, password);
+      if (!proof) return false;
       // A login belongs to a profile, so there has to be one: save first, as for a passkey.
       if (!readRecord().key || unsaved(readRecord())) {
         if (!(await save(true))) return false;
       }
-      const result = await setLogin(readRecord().key as string, username, password);
+      const result = await setLogin(readRecord().key as string, name, proof);
       if (!result.ok) {
         refuse(result);
         return false;
@@ -527,7 +547,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       );
       return true;
     },
-    [save, unsaved, refuse, toast],
+    [proofOf, save, unsaved, refuse, toast],
   );
 
   const removePassword = useCallback(async () => {
@@ -544,7 +564,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   const signInWithPassword = useCallback(
     async (username: string, password: string) => {
-      let result = await passwordLogin(username, password);
+      const name = normaliseUsername(username);
+      const proof = await proofOf(name, password);
+      if (!proof) return false;
+      let result = await passwordLogin(name, proof);
       if (!result.ok && result.status === 403 && result.body?.challenge) {
         const siteKey = result.body.siteKey;
         const token = typeof siteKey === 'string' ? await turnstileToken(siteKey) : null;
@@ -552,7 +575,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           setMessage('Couldn’t confirm you’re not a robot. Try again.');
           return false;
         }
-        result = await passwordLogin(username, password, token);
+        result = await passwordLogin(name, proof, token);
       }
       if (!result.ok) {
         refuse(result);
@@ -560,7 +583,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
       return adoptLink(result.body.key);
     },
-    [adoptLink, refuse],
+    [adoptLink, proofOf, refuse],
   );
 
   const value = useMemo<SyncContextValue>(

@@ -101,17 +101,18 @@ export const passkeyVerify = (challengeId: string, response: unknown, key: strin
 /** The caller's sign-in username, or null when none is set. */
 export const getLogin = (key: string) => call<{ username: string | null }>('GET', '/api/login', key);
 
-export const setLogin = (key: string, username: string, password: string) =>
-  call<{ username: string; signedOut: number }>('PUT', '/api/login', key, { username, password });
+/** `proof` is the stretched password (./password.ts), never the password itself. */
+export const setLogin = (key: string, username: string, proof: string) =>
+  call<{ username: string; signedOut: number }>('PUT', '/api/login', key, { username, proof });
 
 export const removeLogin = (key: string) => call<null>('DELETE', '/api/login', key);
 
 /** A right password answers with a fresh device key, like a passkey sign-in. */
-export const passwordLogin = (username: string, password: string, turnstileToken?: string) =>
+export const passwordLogin = (username: string, proof: string, turnstileToken?: string) =>
   call<{ key: string }>(
     'POST',
     '/api/login',
     null,
-    { username, password },
+    { username, proof },
     turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
   );

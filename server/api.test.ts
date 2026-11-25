@@ -236,102 +236,116 @@ describe('/api/passkeys — sign-in', () => {
 });
 
 describe('/api/login — username and password', () => {
-  const body = (username: string, password: string) => JSON.stringify({ username, password });
-  const setLogin = (key: string, username: string, password: string) =>
-    call(login.onRequestPut, api('/api/login', { method: 'PUT', key, body: body(username, password) }));
-  const signIn = (username: string, password: string, extra = {}) =>
-    call(login.onRequestPost, api('/api/login', { method: 'POST', body: body(username, password) }), extra);
+  // What the browser sends: the password stretched (src/sync/password.ts), 43 base64url chars.
+  const [RIGHT, OTHER, NEW] = [newKey(), newKey(), newKey()];
+  const body = (username: string, proof: string) => JSON.stringify({ username, proof });
+  const setLogin = (key: string, username: string, proof: string) =>
+    call(login.onRequestPut, api('/api/login', { method: 'PUT', key, body: body(username, proof) }));
+  const signIn = (username: string, proof: string, extra = {}) =>
+    call(login.onRequestPost, api('/api/login', { method: 'POST', body: body(username, proof) }), extra);
   const nameOf = async (key: string) =>
     (await (await call(login.onRequestGet, api('/api/login', { key }))).json<{ username: string | null }>()).username;
 
   it('sets a login on a profile, then signs in on a new device with it', async () => {
     const key = newKey();
-    expect((await setLogin(key, 'asha', 'long enough pw')).status).toBe(401); // no profile yet
+    expect((await setLogin(key, 'asha', RIGHT)).status).toBe(401); // no profile yet
     await save(key, { note: 'mine' });
     expect(await nameOf(key)).toBeNull();
-    expect((await setLogin(key, ' Asha ', 'long enough pw')).status).toBe(200);
+    expect((await setLogin(key, ' Asha ', RIGHT)).status).toBe(200);
     expect(await nameOf(key)).toBe('asha');
 
-    const answer = await signIn('ASHA', 'long enough pw'); // usernames ignore case
+    const answer = await signIn('ASHA', RIGHT); // usernames ignore case
     expect(answer.status).toBe(200);
     const { key: minted } = await answer.json<{ key: string }>();
     const loaded = await call(profile.onRequestGet, api('/api/profile', { key: minted }));
     expect(await loaded.json()).toMatchObject({ data: { note: 'mine' } });
   });
 
-  it('never stores the password, and salts each login', async () => {
+  it('stores neither the proof nor a hash that repeats across logins', async () => {
     const [a, b] = [newKey(), newKey()];
     await save(a);
     await save(b);
-    await setLogin(a, 'one', 'same password!');
-    await setLogin(b, 'two', 'same password!');
+    await setLogin(a, 'one', RIGHT);
+    await setLogin(b, 'two', RIGHT);
     const rows = (await env.DB.prepare('SELECT hash, salt FROM logins').all<{ hash: string; salt: string }>()).results;
     expect(rows[0].hash).toMatch(/^[0-9a-f]{64}$/);
     expect(rows[0].hash).not.toBe(rows[1].hash);
-    expect(JSON.stringify(rows)).not.toContain('same password!');
+    expect(JSON.stringify(rows)).not.toContain(RIGHT);
   });
 
-  it('refuses bad usernames, short or huge passwords, and a name someone else has', async () => {
+  it('refuses bad usernames, anything but a stretched proof, and a name someone else has', async () => {
     const [a, b] = [newKey(), newKey()];
     await save(a);
     await save(b);
-    expect((await setLogin(a, 'no spaces', 'long enough pw')).status).toBe(400);
-    expect((await setLogin(a, 'ab', 'long enough pw')).status).toBe(400);
-    expect((await setLogin(a, 'asha', 'short')).status).toBe(400);
-    expect((await setLogin(a, 'asha', 'x'.repeat(129))).status).toBe(400);
-    expect((await setLogin(a, 'asha', 'long enough pw')).status).toBe(200);
-    expect((await setLogin(b, 'ASHA', 'long enough pw')).status).toBe(409);
+    expect((await setLogin(a, 'no spaces', RIGHT)).status).toBe(400);
+    expect((await setLogin(a, 'ab', RIGHT)).status).toBe(400);
+    expect((await setLogin(a, 'asha', 'a plain password')).status).toBe(400);
+    expect((await signIn('asha', 'a plain password')).status).toBe(400);
+    expect((await setLogin(a, 'asha', RIGHT)).status).toBe(200);
+    expect((await setLogin(b, 'ASHA', RIGHT)).status).toBe(409);
     expect(await nameOf(a)).toBe('asha'); // the failed one changed nothing
   });
 
   it('says the same for an unknown user and a wrong password', async () => {
     const key = newKey();
     await save(key);
-    await setLogin(key, 'asha', 'long enough pw');
-    const wrong = await signIn('asha', 'not the password');
-    const unknown = await signIn('nobody', 'long enough pw');
+    await setLogin(key, 'asha', RIGHT);
+    const wrong = await signIn('asha', OTHER);
+    const unknown = await signIn('nobody', RIGHT);
     expect(wrong.status).toBe(401);
     expect(unknown.status).toBe(401);
     expect(await wrong.json()).toEqual(await unknown.json());
   });
 
-  it('locks a username after ten wrong tries, even for the right password, until the window passes', async () => {
+  it('locks a username after ten tries, even for the right password, until the window passes', async () => {
     const key = newKey();
     await save(key);
-    await setLogin(key, 'asha', 'long enough pw');
-    for (let i = 0; i < 10; i += 1) expect((await signIn('asha', 'wrong password')).status).toBe(401);
-    expect((await signIn('asha', 'long enough pw')).status).toBe(429);
+    await setLogin(key, 'asha', RIGHT);
+    for (let i = 0; i < 10; i += 1) expect((await signIn('asha', OTHER)).status).toBe(401);
+    expect((await signIn('asha', RIGHT)).status).toBe(429);
     await env.DB.prepare('UPDATE login_failures SET since = 0').run();
-    expect((await signIn('asha', 'long enough pw')).status).toBe(200);
+    expect((await signIn('asha', RIGHT)).status).toBe(200);
+    expect((await signIn('asha', OTHER)).status).toBe(401); // a right answer reset the count
+  });
+
+  it('holds the limit when guesses arrive all at once', async () => {
+    const key = newKey();
+    await save(key);
+    await setLogin(key, 'asha', RIGHT);
+    const answers = await Promise.all(Array.from({ length: 20 }, () => signIn('asha', OTHER)));
+    const statuses = answers.map((answer) => answer.status);
+    expect(statuses.filter((status) => status === 401)).toHaveLength(10);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(10);
   });
 
   it('a changed password signs out the other devices; the first one does not', async () => {
     const key = newKey();
     await save(key);
     const other = await (await call(keys.onRequestPost, api('/api/keys', { method: 'POST', key }))).json<{ key: string }>();
-    expect(await (await setLogin(key, 'asha', 'long enough pw')).json()).toEqual({ username: 'asha', signedOut: 0 });
-    expect(await (await setLogin(key, 'asha', 'a new password')).json()).toEqual({ username: 'asha', signedOut: 1 });
+    expect(await (await setLogin(key, 'asha', RIGHT)).json()).toEqual({ username: 'asha', signedOut: 0 });
+    expect(await (await setLogin(key, 'asha', NEW)).json()).toEqual({ username: 'asha', signedOut: 1 });
     expect((await call(profile.onRequestGet, api('/api/profile', { key: other.key }))).status).toBe(401);
-    expect((await signIn('asha', 'long enough pw')).status).toBe(401);
-    expect((await signIn('asha', 'a new password')).status).toBe(200);
+    expect((await signIn('asha', RIGHT)).status).toBe(401);
+    expect((await signIn('asha', NEW)).status).toBe(200);
   });
 
   it('removing the login, or the whole cloud copy, stops password sign-in', async () => {
     const key = newKey();
     await save(key);
-    await setLogin(key, 'asha', 'long enough pw');
+    await setLogin(key, 'asha', RIGHT);
     expect((await call(login.onRequestDelete, api('/api/login', { method: 'DELETE', key }))).status).toBe(204);
-    expect((await signIn('asha', 'long enough pw')).status).toBe(401);
+    expect((await signIn('asha', RIGHT)).status).toBe(401);
 
-    await setLogin(key, 'asha', 'long enough pw');
+    await setLogin(key, 'asha', RIGHT);
     await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }));
     expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM logins').first<number>('n')).toBe(0);
   });
 
-  it('asks for the bot check before hashing anything', async () => {
-    const response = await signIn('asha', 'long enough pw', { env: { TURNSTILE_SECRET: 's', TURNSTILE_SITE_KEY: 'site' } });
+  it('asks for the bot check before counting or hashing anything', async () => {
+    const response = await signIn('asha', RIGHT, { env: { TURNSTILE_SECRET: 's', TURNSTILE_SITE_KEY: 'site' } });
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ challenge: true, siteKey: 'site' });
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM login_failures').first<number>('n')).toBe(0);
   });
 });
 

@@ -14,6 +14,7 @@ import { useVibe, type VibeContextValue } from './vibe-context';
 import { useSync, type SyncContextValue } from './sync-context';
 import { SYNC_STORAGE_KEY, fingerprint, splitBackup } from '@/sync/sync';
 import { STORAGE_KEYS } from '@/utils/storage';
+import { stretchPassword } from '@/sync/password';
 
 /*
  * The real providers, wired as in App.tsx, against an in-memory stand-in for
@@ -33,6 +34,8 @@ let server: {
   calls: string[];
   queued: { action: string; value: string | null }[];
   reported: unknown[];
+  /** The stretched password /api/login accepts for 'asha'. */
+  proof?: string;
 };
 
 function fakeApi() {
@@ -62,8 +65,8 @@ function fakeApi() {
         return Response.json({ commands, version: found.version });
       }
       if (url.pathname === '/api/login' && method === 'POST') {
-        const { username, password } = JSON.parse(String(init.body));
-        return username === 'asha' && password === 'long enough pw'
+        const { username, proof } = JSON.parse(String(init.body));
+        return username === 'asha' && proof === server.proof
           ? Response.json({ key: KEY })
           : Response.json({ error: 'Wrong username or password.' }, { status: 401 });
       }
@@ -228,6 +231,7 @@ describe('cloud save', () => {
   });
 
   it('a username and password load that profile; a wrong one changes nothing and isn’t a failed save', async () => {
+    server.proof = await stretchPassword('asha', 'long enough pw');
     server.profiles.set(KEY, {
       data: { customization: { edits: { metro: { name: 'From my account' } }, added: [], order: [] } },
       uploads: {},
@@ -243,7 +247,7 @@ describe('cloud save', () => {
     expect(ctx.sync!.status).not.toBe('error');
     expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).not.toBe('From my account');
 
-    await act(async () => void (ok = await ctx.sync!.signInWithPassword('asha', 'long enough pw')));
+    await act(async () => void (ok = await ctx.sync!.signInWithPassword(' Asha ', 'long enough pw')));
     expect(ok).toBe(true);
     expect(ctx.vibe!.allThemes.find((t) => t.id === 'metro')!.name).toBe('From my account');
     expect(record().key).toBe(KEY);

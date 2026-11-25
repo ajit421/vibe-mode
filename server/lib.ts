@@ -73,13 +73,15 @@ export async function hashKey(key: string): Promise<string> {
 }
 
 /**
- * PBKDF2 rounds for a new password. 100k is the most Workers' WebCrypto
- * accepts (it throws above), and bcrypt/argon2 would mean a WASM bundle and
- * far more CPU per request. Stored per login, so it can change later.
+ * PBKDF2 rounds for the server's half of password hashing. Few on purpose:
+ * the browser already spent 600k rounds (src/sync/password.ts), because even
+ * 100k here measured 17 ms — over a free-plan Function's 10 ms of CPU. This
+ * half only makes what is stored differ from what is sent, per random salt.
+ * Stored per login, so it can change later.
  */
-export const PASSWORD_ITERATIONS = 100_000;
+export const PASSWORD_ITERATIONS = 1_000;
 
-/** PBKDF2-SHA256 of a password, as hex. `salt` is base64url. */
+/** PBKDF2-SHA256 of a (stretched) password, as hex. `salt` is base64url. */
 export async function hashPassword(password: string, salt: string, iterations: number): Promise<string> {
   const material = await crypto.subtle.importKey(
     'raw',
