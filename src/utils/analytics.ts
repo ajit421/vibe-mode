@@ -1,4 +1,4 @@
-import { newSyncKey } from '@/sync/sync';
+import { newSyncKey, readRecord } from '@/sync/sync';
 
 /*
  * Anonymous usage counts for the owner's admin page — the client half of
@@ -12,10 +12,15 @@ import { newSyncKey } from '@/sync/sync';
  *    open, on screen and playing music, and is sent with sendBeacon whenever
  *    the tab is hidden or closed (src/components/Analytics.tsx wires that).
  *
- * Nothing names a person: the only id is random, lives in this tab's
- * sessionStorage, and is never the device key. Counting is off in
- * development (`npm run dev` proxies /api to the live site) and in browsers
- * that send Global Privacy Control — then every function here does nothing.
+ * For a visitor without a cloud copy, nothing names a person: the only id is
+ * random, lives in this tab's sessionStorage, and is never the device key.
+ * A visitor WITH a cloud copy who leaves Settings → "Link my activity to my
+ * account" on (the default) also sends their device key, so the server can
+ * note the visit, listening and features against their profile for the
+ * owner's admin page (migrations/0009_account_activity.sql). Settings and
+ * /privacy say so. Counting is off in development (`npm run dev` proxies /api
+ * to the live site) and in browsers that send Global Privacy Control — then
+ * every function here does nothing.
  */
 
 export const counting = (): boolean =>
@@ -29,6 +34,23 @@ export const hints = () => ({ brave: 'brave' in navigator, touch: navigator.maxT
 
 const TAB_KEY = 'vibe-mode.tab';
 let tab: string | null = null;
+
+/** Mirrors the "Link my activity" preference (set by src/components/Analytics.tsx). */
+let linking = true;
+export function setLinking(on: boolean): void {
+  linking = on;
+}
+
+/**
+ * This browser's device key, when its activity may be linked to its account:
+ * it has a cloud copy, cloud save isn't off, and the visitor hasn't switched
+ * linking off. Otherwise null, and reports stay anonymous.
+ */
+export function accountKey(): string | null {
+  if (!linking) return null;
+  const record = readRecord();
+  return record.off ? null : record.key;
+}
 
 /** A random id for this tab only, so its reports update one row instead of adding many. */
 export function tabId(): string {
@@ -104,6 +126,7 @@ export function snapshot(now = Date.now()) {
     listenedMs: session.listenedMs + (session.playingSince === null ? 0 : now - session.playingSince),
     firstMode: session.firstMode,
     events,
+    key: accountKey(),
     ...hints(),
   };
 }

@@ -44,6 +44,9 @@ interface AdminVisitor {
   passkeys: number;
   uploads: number;
   seen_at: number | null;
+  /** Linked activity (migrations/0009_account_activity.sql): the last visit, and all listening. */
+  last_visit: number | null;
+  listened_ms: number;
 }
 
 export const onRequestGet: Handler = async ({ env, request }) => {
@@ -125,12 +128,14 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COUNT(*) FROM device_keys k WHERE k.profile_id = p.id) AS devices,
          (SELECT COUNT(*) FROM passkeys k WHERE k.profile_id = p.id) AS passkeys,
          (SELECT COUNT(*) FROM uploads u WHERE u.profile_id = p.id) AS uploads,
-         (SELECT seen_at FROM remote_state r WHERE r.profile_id = p.id) AS seen_at
+         (SELECT seen_at FROM remote_state r WHERE r.profile_id = p.id) AS seen_at,
+         (SELECT MAX(last_at) FROM sessions s WHERE s.profile_id = p.id) AS last_visit,
+         (SELECT COALESCE(SUM(ms), 0) FROM profile_listens pl WHERE pl.profile_id = p.id) AS listened_ms
        FROM profiles p
          LEFT JOIN logins l ON l.profile_id = p.id
          LEFT JOIN google_accounts g ON g.profile_id = p.id
        WHERE ?1 = '' OR instr(p.id, ?1) = 1 OR instr(l.username, ?1) > 0 OR instr(lower(g.email), ?1) > 0
-       ORDER BY p.version DESC
+       ORDER BY MAX(p.version, COALESCE(last_visit, 0)) DESC
        LIMIT ?2 OFFSET ?3`,
     ).bind(q, PAGE + 1, offset),
     env.DB.prepare(
@@ -233,7 +238,8 @@ async function overview(env: Env, url: URL): Promise<Response> {
 
 async function visitor(env: Env, id: string): Promise<Response> {
   const one = (sql: string) => env.DB.prepare(sql).bind(id);
-  const [profile, login, keys, passkeys, uploads, remote, commands, google] = await env.DB.batch([
+  const [profile, login, keys, passkeys, uploads, remote, commands, google, visits, songs, modes, playlists, days] =
+    await env.DB.batch([
     one('SELECT id, data, version, created_at FROM profiles WHERE id = ?'),
     one('SELECT username, created_at FROM logins WHERE profile_id = ?'),
     one('SELECT created_at FROM device_keys WHERE profile_id = ? ORDER BY created_at DESC'),
@@ -242,6 +248,24 @@ async function visitor(env: Env, id: string): Promise<Response> {
     one('SELECT state, seen_at FROM remote_state WHERE profile_id = ?'),
     one('SELECT action, value, created_at FROM remote_commands WHERE profile_id = ? ORDER BY id'),
     one('SELECT email, created_at FROM google_accounts WHERE profile_id = ?'),
+    // Linked activity — present only while the visitor leaves "Link my activity" on.
+    one(
+      `SELECT started_at, last_at, open_ms, visible_ms, listened_ms, first_mode, browser, os, device, country, events
+       FROM sessions WHERE profile_id = ? ORDER BY started_at DESC LIMIT 200`,
+    ),
+    one(
+      `SELECT track AS name, MAX(mode_name) AS mode, SUM(ms) AS ms FROM profile_listens
+       WHERE profile_id = ? AND track <> '' GROUP BY track ORDER BY ms DESC LIMIT 50`,
+    ),
+    one(
+      `SELECT mode, MAX(mode_name) AS name, SUM(ms) AS ms FROM profile_listens
+       WHERE profile_id = ? GROUP BY mode ORDER BY ms DESC LIMIT 20`,
+    ),
+    one(
+      `SELECT MAX(playlist_name) AS name, MAX(mode_name) AS mode, SUM(ms) AS ms FROM profile_listens
+       WHERE profile_id = ? AND playlist <> '' GROUP BY mode, playlist ORDER BY ms DESC LIMIT 25`,
+    ),
+    one('SELECT day, SUM(ms) AS ms FROM profile_listens WHERE profile_id = ? GROUP BY day ORDER BY day DESC LIMIT 90'),
   ]);
   const row = profile.results[0] as { id: string; data: string; version: number; created_at: number } | undefined;
   if (!row) return fail(404, 'No visitor with that id.');
@@ -254,6 +278,16 @@ async function visitor(env: Env, id: string): Promise<Response> {
     data: parse(row.data),
     login: login.results[0] ?? null,
     google: google.results[0] ?? null,
+    activity: {
+      visits: (visits.results as Record<string, unknown>[]).map((visit) => ({
+        ...visit,
+        events: visit.events ? parse(visit.events as string) : [],
+      })),
+      songs: songs.results,
+      modes: modes.results,
+      playlists: playlists.results,
+      perDay: days.results,
+    },
     // Key hashes say nothing useful; when each device was added does.
     devices: (keys.results as { created_at: number }[]).map((key) => key.created_at),
     passkeys: (passkeys.results as { credential_id: string; transports: string | null; created_at: number }[]).map(

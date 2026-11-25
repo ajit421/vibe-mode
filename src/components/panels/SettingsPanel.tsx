@@ -192,14 +192,22 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
 
         {/* What src/utils/analytics.ts sends — said where a visitor looks for settings. */}
         <section className="flex flex-col gap-1.5 border-t border-line/60 pt-5">
-          <h3 className="vm-label text-muted">Anonymous counts</h3>
+          <h3 className="vm-label text-muted">Usage counts</h3>
           <p className="text-xs text-muted">
-            So the site’s owner can see how it’s used, each tab is counted once — by browser, system,
-            device type and country — with how long it stays open, on screen and playing music. While
-            music plays it says which mode, playlist and song, and it counts which features are used
-            (panels, shortcuts, skips…). No name, no IP, nothing that links one visit to another.
-            Browsers with Global Privacy Control turned on send nothing.
+            So the site’s owner can see how it’s used, each tab is counted — by browser, system, device
+            type and country — with how long it stays open, on screen and playing music, which mode,
+            playlist and song play, and which features are used (panels, shortcuts, skips…). No IP is
+            kept. Browsers with Global Privacy Control turned on send nothing.{' '}
+            <a className="underline hover:text-ink" href="/privacy" target="_blank" rel="noopener">
+              Privacy
+            </a>
           </p>
+          <Switch
+            label="Link my activity to my account"
+            description="Only if you have a cloud copy or sign in: your visits, listening and features used are saved with your account, and the site’s owner can see them. Off, you’re counted anonymously, like someone without an account."
+            checked={preferences.linkActivity}
+            onChange={(value) => setPreference('linkActivity', value)}
+          />
         </section>
 
         <section className="border-t border-line/60 pt-5">

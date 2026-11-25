@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { report, setPlaying, setVisible, snapshot, track } from './analytics';
+import { report, setLinking, setPlaying, setVisible, snapshot, track } from './analytics';
+import { SYNC_STORAGE_KEY } from '@/sync/sync';
 
 /*
  * The client half of the admin page's analytics. Module state (the visit's
@@ -57,5 +58,24 @@ describe('analytics', () => {
     expect(beacon).not.toHaveBeenCalled();
     vi.stubEnv('PROD', true);
     expect(snapshot().events).toEqual([]);
+  });
+});
+
+describe('linking activity to an account', () => {
+  it('sends the device key only with a cloud copy, cloud save on, and linking on', () => {
+    const KEY = 'K'.repeat(43);
+    localStorage.removeItem(SYNC_STORAGE_KEY);
+    expect(snapshot().key).toBeNull(); // no cloud copy: anonymous
+
+    localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify({ key: KEY, data: null, uploads: {}, version: 1, off: false }));
+    setLinking(true);
+    expect(snapshot().key).toBe(KEY);
+
+    setLinking(false); // "Link my activity" off
+    expect(snapshot().key).toBeNull();
+
+    setLinking(true);
+    localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify({ key: null, data: null, uploads: {}, version: null, off: true }));
+    expect(snapshot().key).toBeNull(); // cloud save off
   });
 });

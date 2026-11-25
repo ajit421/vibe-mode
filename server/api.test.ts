@@ -59,7 +59,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['google_accounts', 'sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['profile_listens', 'google_accounts', 'sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -711,6 +711,90 @@ describe('/api/google — Continue with Google', () => {
     await post(key); // g2 now
     await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }));
     expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM google_accounts').first<number>('n')).toBe(0);
+  });
+});
+
+describe('linked activity — per-account history for the admin page', () => {
+  const OWNER = 'o'.repeat(40);
+  const listenPing = (body: object) =>
+    call(
+      listen.onRequestPost,
+      api('/api/listen', { method: 'POST', body: JSON.stringify(body), headers: { 'User-Agent': CHROME_ANDROID } }),
+    );
+  const report = (body: object) =>
+    call(
+      session.onRequestPost,
+      api('/api/session', { method: 'POST', body: JSON.stringify(body), headers: { 'User-Agent': CHROME_ANDROID } }),
+    );
+  const detailOf = async () => {
+    const headers = { Authorization: `Bearer ${OWNER}` };
+    const extra = { env: { MCP_ADMIN_TOKEN: OWNER } };
+    const { visitors } = await (await call(admin.onRequestGet, api('/api/admin', { headers }), extra)).json<{
+      visitors: { id: string; last_visit: number | null; listened_ms: number }[];
+    }>();
+    const id = (await env.DB.prepare('SELECT profile_id FROM device_keys').first<string>('profile_id'))!;
+    const row = visitors.find((visitor) => visitor.id === id)!;
+    const detail = await (await call(admin.onRequestGet, api(`/api/admin?user=${id}`, { headers }), extra)).json<{
+      activity: { visits: { visible_ms: number; events: { name: string; n: number }[] }[]; songs: { name: string; ms: number }[] };
+    }>();
+    return { row, activity: detail.activity };
+  };
+
+  it('saves a visit, its features and its listening to the account only when the report carries the key', async () => {
+    const key = newKey();
+    await save(key);
+    const tab = newKey();
+
+    // Linked: the key comes along.
+    await report({ tab, key, openMs: 60_000, visibleMs: 50_000, events: [{ name: 'panel', detail: 'Customize', n: 1 }] });
+    await report({ tab, key, openMs: 90_000, visibleMs: 80_000, events: [{ name: 'panel', detail: 'Customize', n: 2 }] });
+    const song = { tab, key, mode: 'metro', modeName: 'Metro', playlist: 'metro-vibes', track: 'Song one', playing: true };
+    await listenPing(song);
+    await env.DB.prepare('UPDATE listeners SET seen_at = seen_at - 60000').run();
+    await listenPing(song);
+
+    // Anonymous: another tab, no key.
+    await report({ tab: newKey(), openMs: 10_000, visibleMs: 10_000 });
+
+    const { row, activity } = await detailOf();
+    expect(row.last_visit).toBeGreaterThan(0);
+    expect(row.listened_ms).toBeGreaterThanOrEqual(60_000);
+    expect(activity.visits).toHaveLength(1); // the anonymous one isn't theirs
+    expect(activity.visits[0]).toMatchObject({ visible_ms: 80_000, events: [{ name: 'panel', detail: 'Customize', n: 3 }] });
+    expect(activity.songs).toEqual([expect.objectContaining({ name: 'Song one' })]);
+    // The anonymous totals still count everything, linked or not.
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM sessions').first<number>('n')).toBe(2);
+  });
+
+  it('a report without the key (linking switched off) unlinks the visit; an unknown key links nothing', async () => {
+    const key = newKey();
+    await save(key);
+    const tab = newKey();
+    await report({ tab, key, openMs: 5_000, visibleMs: 5_000 });
+    await report({ tab, openMs: 6_000, visibleMs: 6_000 }); // switched off mid-visit
+    expect(await env.DB.prepare('SELECT profile_id, events FROM sessions WHERE tab = ?').bind(tab).first()).toEqual({
+      profile_id: null,
+      events: null,
+    });
+    await report({ tab: newKey(), key: newKey(), openMs: 1_000 }); // a key nobody has
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM sessions WHERE profile_id IS NOT NULL').first<number>('n')).toBe(0);
+  });
+
+  it('deleting the cloud copy deletes the listening history and unlinks the visits', async () => {
+    const key = newKey();
+    await save(key);
+    const tab = newKey();
+    await report({ tab, key, openMs: 5_000, visibleMs: 5_000, events: [{ name: 'skip', n: 1 }] });
+    const song = { tab, key, mode: 'metro', track: 'Song one', playing: true };
+    await listenPing(song);
+    await env.DB.prepare('UPDATE listeners SET seen_at = seen_at - 60000').run();
+    await listenPing(song);
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profile_listens').first<number>('n')).toBe(1);
+
+    await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', key }));
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profile_listens').first<number>('n')).toBe(0);
+    expect(await env.DB.prepare('SELECT profile_id, events FROM sessions').first()).toEqual({ profile_id: null, events: null });
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM listen_daily').first<number>('n')).toBe(1); // anonymous totals stay
   });
 });
 

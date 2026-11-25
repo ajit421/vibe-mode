@@ -100,6 +100,10 @@ export const onRequestDelete: Handler = async ({ env, request }) => {
     env.DB.prepare('DELETE FROM passkeys WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM logins WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM google_accounts WHERE profile_id = ?').bind(id),
+    // The account's activity history goes too; its visits stay only as anonymous counts.
+    env.DB.prepare('DELETE FROM profile_listens WHERE profile_id = ?').bind(id),
+    env.DB.prepare('UPDATE sessions SET profile_id = NULL, events = NULL WHERE profile_id = ?').bind(id),
+    env.DB.prepare('UPDATE listeners SET profile_id = NULL WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM device_keys WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM remote_commands WHERE profile_id = ?').bind(id),
     env.DB.prepare('DELETE FROM remote_state WHERE profile_id = ?').bind(id),

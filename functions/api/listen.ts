@@ -1,4 +1,4 @@
-import { SAFE_ID, fail, isKey, readText, type Handler } from '../../server/lib';
+import { SAFE_ID, fail, isKey, profileForKey, readText, type Handler } from '../../server/lib';
 import { classify, countryOf } from '../../server/ua';
 
 // Anonymous "now playing", and the listening time behind the admin page's
@@ -37,7 +37,13 @@ export const onRequestPost: Handler = async ({ env, request }) => {
   const client = classify(request.headers.get('User-Agent'), { brave: body.brave === true, touch: body.touch === true });
   if (client.device === 'bot') return new Response(null, { status: 204 });
 
+  // A linked account (migrations/0009_account_activity.sql): the tab sends
+  // its device key when the visitor has a cloud copy and leaves "Link my
+  // activity" on. No key, or an unknown one: anonymous, as before.
+  const who = typeof body.key === 'string' ? await profileForKey(env, body.key) : null;
+
   const now = Date.now();
+  const day = new Date(now).toISOString().slice(0, 10);
   const writes = [
     // Listening time: what this tab was playing since its last ping (about a
     // minute ago) is credited to that mode, playlist and song — read from the
@@ -49,15 +55,24 @@ export const onRequestPost: Handler = async ({ env, request }) => {
        FROM listeners WHERE tab = ?3 AND playing = 1 AND seen_at > ?2 - ?4
        ON CONFLICT (day, mode, playlist, track) DO UPDATE SET ms = ms + excluded.ms,
          mode_name = excluded.mode_name, playlist_name = excluded.playlist_name`,
-    ).bind(new Date(now).toISOString().slice(0, 10), now, body.tab, CREDIT_MS),
+    ).bind(day, now, body.tab, CREDIT_MS),
+    // The same minutes for the account the tab belonged to at its last ping, if any.
+    env.DB.prepare(
+      `INSERT INTO profile_listens (profile_id, day, mode, mode_name, playlist, playlist_name, track, ms)
+       SELECT profile_id, ?1, mode, mode_name, COALESCE(playlist, ''), playlist_name, COALESCE(track, ''), ?2 - seen_at
+       FROM listeners WHERE tab = ?3 AND playing = 1 AND seen_at > ?2 - ?4 AND profile_id IS NOT NULL
+       ON CONFLICT (profile_id, day, mode, playlist, track) DO UPDATE SET ms = ms + excluded.ms,
+         mode_name = excluded.mode_name, playlist_name = excluded.playlist_name`,
+    ).bind(day, now, body.tab, CREDIT_MS),
     env.DB.prepare(
       `INSERT INTO listeners (tab, mode, mode_name, playlist, playlist_name, track, playing, seen_at,
-         browser, os, device, country)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         browser, os, device, country, profile_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (tab) DO UPDATE SET mode = excluded.mode, mode_name = excluded.mode_name,
          playlist = excluded.playlist, playlist_name = excluded.playlist_name, track = excluded.track,
          playing = excluded.playing, seen_at = excluded.seen_at, browser = excluded.browser,
-         os = excluded.os, device = excluded.device, country = excluded.country`,
+         os = excluded.os, device = excluded.device, country = excluded.country,
+         profile_id = excluded.profile_id`,
     ).bind(
       body.tab,
       body.mode,
@@ -71,6 +86,7 @@ export const onRequestPost: Handler = async ({ env, request }) => {
       client.os,
       client.device,
       countryOf(request),
+      who?.profileId ?? null,
     ),
   ];
   if (Math.random() < SWEEP_ODDS) {

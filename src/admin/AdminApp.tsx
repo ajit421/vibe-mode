@@ -112,6 +112,9 @@ interface Visitor {
   passkeys: number;
   uploads: number;
   seen_at: number | null;
+  /** Linked activity (functions/api/session.ts, listen.ts): the last visit, and all listening. */
+  last_visit: number | null;
+  listened_ms: number;
 }
 
 /** What a tab with "Let AI control this tab" on reports (RemoteControl.tsx). */
@@ -187,6 +190,14 @@ interface Detail {
   data: unknown;
   login: { username: string; created_at: number } | null;
   google: { email: string | null; created_at: number } | null;
+  /** Present while the person leaves "Link my activity" on (migrations/0009_account_activity.sql). */
+  activity: {
+    visits: (SessionRow & { events: { name: string; detail: string; n: number }[] })[];
+    songs: { name: string; mode: string | null; ms: number }[];
+    modes: { mode: string; name: string | null; ms: number }[];
+    playlists: { name: string | null; mode: string | null; ms: number }[];
+    perDay: { day: string; ms: number }[];
+  };
   devices: number[];
   passkeys: { credential_id: string; transports: unknown; created_at: number }[];
   uploads: { mode_id: string; still: string }[];
@@ -789,7 +800,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
           }
         >
           <Table
-            head={['Visitor', 'Joined', 'Last change', 'Devices', 'Passkeys', 'Modes', 'Playlists', 'Pictures', 'Size']}
+            head={['Visitor', 'Joined', 'Last visit', 'Listened', 'Last change', 'Devices', 'Passkeys', 'Modes', 'Playlists', 'Pictures', 'Size']}
             empty={data.visitors.length === 0 ? (searched ? `No visitor matches “${searched}”.` : 'No visitors yet.') : undefined}
           >
             {data.visitors.map((visitor) => (
@@ -805,6 +816,10 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
                 <td className={TD}>
                   <Time ms={visitor.created_at} now={now} />
                 </td>
+                <td className={TD}>
+                  <Time ms={visitor.last_visit} now={now} />
+                </td>
+                <td className={TD}>{visitor.listened_ms ? duration(visitor.listened_ms) : '—'}</td>
                 <td className={TD}>
                   <Time ms={visitor.version} now={now} />
                 </td>
@@ -867,6 +882,102 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
         </details>
       )}
     </>
+  );
+}
+
+/** What one account listened to: songs, modes, playlists and days, by time played. */
+function ActivityListening({ activity }: { activity: Detail['activity'] }) {
+  const total = activity.perDay.reduce((sum, day) => sum + day.ms, 0);
+  if (!total) return null;
+  return (
+    <Section title="Listening">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Breakdown
+          title="Songs"
+          rows={activity.songs.map((row) => ({ name: row.name, n: row.ms }))}
+          total={total}
+          format={duration}
+        />
+        <Breakdown
+          title="Modes"
+          rows={activity.modes.map((row) => ({ name: row.name ?? row.mode, n: row.ms }))}
+          total={total}
+          format={duration}
+        />
+        <Breakdown
+          title="Playlists"
+          rows={activity.playlists.map((row) => ({ name: `${row.name ?? '—'} · ${row.mode ?? '—'}`, n: row.ms }))}
+          total={total}
+          format={duration}
+        />
+      </div>
+      <Breakdown
+        title="Per day (UTC)"
+        rows={activity.perDay.map((row) => ({ name: row.day, n: row.ms }))}
+        total={Math.max(...activity.perDay.map((row) => row.ms))}
+        shares={false}
+        format={duration}
+        label={dayLabel}
+      />
+    </Section>
+  );
+}
+
+/**
+ * Everything that happened on one account, newest first: the account's own
+ * milestones (joined, devices, passkeys, password, Google) and each linked
+ * visit with the features used in it.
+ */
+function History({ detail, now }: { detail: Detail; now: number }) {
+  const uses = (events: { name: string; detail: string; n: number }[]) =>
+    events.map((use) => `${USES[use.name] ?? use.name}${use.detail ? ` (${use.detail})` : ''}${use.n > 1 ? ` ×${use.n}` : ''}`).join(' · ');
+
+  const entries: { at: number; what: string; detail: string; extra?: string }[] = [
+    { at: detail.created_at, what: 'Joined', detail: 'First cloud save' },
+    { at: detail.version, what: 'Last change', detail: 'Their modes, playlists or settings were saved' },
+    ...detail.devices.map((at) => ({ at, what: 'Device signed in', detail: 'A browser, sync link, sign-in or AI link' })),
+    ...detail.passkeys.map((passkey) => ({ at: passkey.created_at, what: 'Passkey added', detail: '' })),
+    ...(detail.login ? [{ at: detail.login.created_at, what: 'Password set', detail: detail.login.username }] : []),
+    ...(detail.google ? [{ at: detail.google.created_at, what: 'Google connected', detail: detail.google.email ?? '' }] : []),
+    ...detail.activity.visits.map((visit) => ({
+      at: visit.started_at,
+      what: 'Visit',
+      detail: [
+        `${duration(visit.visible_ms)} on screen`,
+        visit.listened_ms ? `${duration(visit.listened_ms)} listening` : 'no music',
+        visit.first_mode ? `landed on ${visit.first_mode}` : null,
+        visit.browser ? `${visit.browser} · ${visit.os} · ${capital(visit.device ?? '')}` : null,
+        countryName(visit.country),
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      extra: visit.events.length ? uses(visit.events) : undefined,
+    })),
+  ].sort((a, b) => b.at - a.at);
+
+  return (
+    <Section title="History">
+      {detail.activity.visits.length === 0 && (
+        <p className="text-sm text-zinc-500">
+          No linked visits yet. They appear once this person visits with “Link my activity to my account” on (the
+          default) — visits from before that, or with it off, stay anonymous.
+        </p>
+      )}
+      <Table head={['When', 'What', 'Details']}>
+        {entries.map((entry, index) => (
+          <tr key={index} className="align-top">
+            <td className={TD}>
+              <Time ms={entry.at} now={now} />
+            </td>
+            <td className={TD}>{entry.what}</td>
+            <td className="px-3 py-2">
+              {entry.detail || <span className="text-zinc-500">—</span>}
+              {entry.extra && <div className="mt-1 text-xs text-zinc-400">Used: {entry.extra}</div>}
+            </td>
+          </tr>
+        ))}
+      </Table>
+    </Section>
   );
 }
 
@@ -935,7 +1046,25 @@ function VisitorDetail({
               value={detail.google ? (detail.google.email ?? 'linked') : '—'}
               hint={detail.google ? <>linked <Time ms={detail.google.created_at} now={now} /></> : 'not linked'}
             />
+            <Stat
+              label="Last visit"
+              value={<Time ms={detail.activity.visits[0]?.last_at ?? null} now={now} />}
+              hint={`${detail.activity.visits.length} linked visits`}
+            />
+            <Stat
+              label="Time on site"
+              value={duration(detail.activity.visits.reduce((sum, visit) => sum + visit.visible_ms, 0))}
+              hint="on screen, all linked visits"
+            />
+            <Stat
+              label="Listened"
+              value={duration(detail.activity.perDay.reduce((sum, day) => sum + day.ms, 0))}
+              hint={`${detail.activity.songs.length} different songs`}
+            />
           </div>
+
+          <ActivityListening activity={detail.activity} />
+          <History detail={detail} now={now} />
 
           {detail.remote && (
             <Section title="Player">

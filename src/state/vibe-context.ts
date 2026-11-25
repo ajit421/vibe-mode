@@ -17,12 +17,23 @@ export interface VibePreferences {
   quotes: boolean;
   /** The time and date pill in the top bar. */
   clock: boolean;
+  /**
+   * With a cloud copy, this browser's visits, listening and features used are
+   * saved with the account and shown on the owner's admin page
+   * (src/utils/analytics.ts). Off = it is counted anonymously, like a visitor
+   * without an account. Deliberately not one of the AI assistant's
+   * preferences (server/vibe.ts PREFERENCE_KEYS): an assistant must not turn
+   * this back on.
+   */
+  linkActivity: boolean;
 }
 
 export const DEFAULT_PREFERENCES: VibePreferences = {
   motion: true,
   ambient: true,
   clock: true,
+  // On by default, said in Settings and on /privacy, one switch away.
+  linkActivity: true,
   // Off by default. The clock strip and the stats panel are the two densest
   // blocks on the screen, and with the scene now filling the background they
   // made the first impression read as a dashboard rather than a place. They

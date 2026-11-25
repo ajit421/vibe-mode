@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { usePlayer } from '@/state/player-context';
 import { useVibe } from '@/state/vibe-context';
-import { counting, hints, noteMode, report, setPlaying, setVisible, tabId, track } from '@/utils/analytics';
+import { accountKey, counting, hints, noteMode, report, setLinking, setPlaying, setVisible, tabId, track } from '@/utils/analytics';
 
 /** One ping a minute while playing: one billed request each (functions/api/listen.ts). */
 const EVERY_MS = 60_000;
@@ -39,9 +39,12 @@ const ownOr = (id: string, prefix: string, label: string) => (id.startsWith(pref
  */
 export function Analytics() {
   const { isPlaying, track: song, status, shuffle, repeat, isMuted } = usePlayer();
-  const { theme, playlist, hasEntered } = useVibe();
+  const { theme, playlist, hasEntered, preferences } = useVibe();
   const latest = useRef({ song, theme, playlist });
   latest.current = { song, theme, playlist };
+
+  // "Link my activity to my account" (Settings): whether reports carry the device key.
+  useEffect(() => setLinking(preferences.linkActivity), [preferences.linkActivity]);
 
   useEffect(() => {
     if (!counting()) return;
@@ -105,6 +108,7 @@ export function Analytics() {
           playlistName: list?.name ?? null,
           track: current?.title ?? null,
           playing,
+          key: accountKey(),
           ...hints(),
         }),
       }).catch(() => {});
