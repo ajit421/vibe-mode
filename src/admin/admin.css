@@ -1,0 +1,16 @@
+/* The admin page's own styles. Not src/styles/index.css: that one locks the
+   page to a single non-scrolling screen and themes it per mode, and this page
+   is a long, scrolling table of every visitor. */
+@import 'tailwindcss';
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-zinc-950);
+  color: var(--color-zinc-200);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

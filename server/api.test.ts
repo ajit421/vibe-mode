@@ -15,6 +15,7 @@ import * as backgrounds from '../functions/backgrounds/[[path]]';
 import * as mcp from '../functions/mcp/[[path]]';
 import * as remote from '../functions/api/remote';
 import * as login from '../functions/api/login';
+import * as admin from '../functions/api/admin';
 
 /*
  * Every endpoint in functions/, run against Wrangler's local D1 (the same
@@ -357,6 +358,69 @@ describe('/api/login — username and password', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ challenge: true, siteKey: 'site' });
     expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM login_failures').first<number>('n')).toBe(0);
+  });
+});
+
+describe('/api/admin — the owner’s view', () => {
+  const OWNER = 'o'.repeat(40);
+  const withOwner = { env: { MCP_ADMIN_TOKEN: OWNER } };
+  const ask = (query = '', token: string | null = OWNER, extra: Record<string, unknown> = withOwner) =>
+    call(
+      admin.onRequestGet,
+      api(`/api/admin${query}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }),
+      extra,
+    );
+
+  it('lets in only the owner key, and nobody when it is unset or short', async () => {
+    expect((await ask('', null)).status).toBe(401);
+    expect((await ask('', 'x'.repeat(40))).status).toBe(401);
+    expect((await ask('', OWNER, {})).status).toBe(401); // no MCP_ADMIN_TOKEN
+    expect((await ask('', 'short', { env: { MCP_ADMIN_TOKEN: 'short' } })).status).toBe(401);
+    const ok = await ask();
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('counts visitors, lists them newest change first, and finds one by username', async () => {
+    const [a, b] = [newKey(), newKey()];
+    await save(a, {
+      customization: { edits: { metro: { name: 'Mine' } }, added: [{ id: 'my-1', baseId: 'metro' }], order: [] },
+      customPlaylists: { metro: [{ id: 'p1' }, { id: 'p2' }], office: 'not a list' }, // odd shapes must not break it
+    });
+    await save(b, { note: 'b' });
+    await call(login.onRequestPut, api('/api/login', { method: 'PUT', key: a, body: JSON.stringify({ username: 'asha', proof: newKey() }) }));
+
+    const body = await (await ask()).json<{
+      totals: { visitors: number; logins: number; devices: number };
+      visitors: { username: string | null; added_modes: number; edited_modes: number; playlists: number; devices: number }[];
+      more: boolean;
+    }>();
+    expect(body.totals).toMatchObject({ visitors: 2, logins: 1, devices: 2 });
+    expect(body.more).toBe(false);
+    const asha = body.visitors.find((visitor) => visitor.username === 'asha')!;
+    expect(asha).toMatchObject({ added_modes: 1, edited_modes: 1, playlists: 2, devices: 1 });
+
+    const found = await (await ask('?q=ASH')).json<{ visitors: { username: string }[] }>();
+    expect(found.visitors.map((visitor) => visitor.username)).toEqual(['asha']);
+  });
+
+  it('shows everything stored for one visitor', async () => {
+    const key = newKey();
+    await save(key, { note: 'hello' });
+    await call(uploads.onRequestPut, api('/api/uploads/metro', { method: 'PUT', key, body: still() }), { params: { mode: 'metro' } });
+    const { visitors } = await (await ask()).json<{ visitors: { id: string }[] }>();
+    const detail = await (await ask(`?user=${visitors[0].id}`)).json<{
+      data: unknown;
+      devices: number[];
+      uploads: { mode_id: string }[];
+      login: unknown;
+    }>();
+    expect(detail.data).toEqual({ note: 'hello' });
+    expect(detail.devices).toHaveLength(1);
+    expect(detail.uploads.map((upload) => upload.mode_id)).toEqual(['metro']);
+    expect(detail.login).toBeNull();
+    expect(JSON.stringify(detail)).not.toContain(key); // device keys never leave the database
+    expect((await ask('?user=nobody')).status).toBe(404);
   });
 });
 

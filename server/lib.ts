@@ -99,6 +99,18 @@ export async function hashPassword(password: string, salt: string, iterations: n
   );
 }
 
+/**
+ * True when `secret` is the owner's key (MCP_ADMIN_TOKEN, 32+ characters),
+ * compared as digests in constant time. Unset or short = nobody is the owner.
+ * The MCP owner link and the admin panel (functions/api/admin.ts) share it.
+ */
+export async function isOwner(env: Env, secret: string | null | undefined): Promise<boolean> {
+  const owner = env.MCP_ADMIN_TOKEN;
+  if (!owner || owner.length < 32 || !secret) return false;
+  const [a, b] = await Promise.all([hashKey(secret), hashKey(owner)]);
+  return sameDigest(a, b);
+}
+
 /** Compares two digests without an early exit, so timing says nothing about where they differ. */
 export function sameDigest(a: string, b: string): boolean {
   let diff = a.length ^ b.length;
