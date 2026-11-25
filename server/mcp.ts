@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { normaliseSource } from '../src/music/resolve';
 import { safeImageUrl } from '../src/themes/backgrounds';
-import { DATA_LIMIT, hashKey, profileForKey, type Env } from './lib';
+import { DATA_LIMIT, hashKey, profileForKey, sameDigest, type Env } from './lib';
 import {
   BUILT_IN_MODES,
   COLOR_KEYS,
@@ -37,11 +37,8 @@ export type Access = { kind: 'visitor'; profileId: string } | { kind: 'owner' };
 export async function accessFor(env: Env, secret: string): Promise<Access | null> {
   const owner = env.MCP_ADMIN_TOKEN;
   if (owner && owner.length >= 32) {
-    // Equal-length digests compared without an early exit, so timing says nothing.
     const [a, b] = await Promise.all([hashKey(secret), hashKey(owner)]);
-    let diff = 0;
-    for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-    if (diff === 0) return { kind: 'owner' };
+    if (sameDigest(a, b)) return { kind: 'owner' };
   }
   const who = await profileForKey(env, secret);
   return who ? { kind: 'visitor', profileId: who.profileId } : null;

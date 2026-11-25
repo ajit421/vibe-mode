@@ -6,9 +6,11 @@ import { MAX_IMAGE_LENGTH, UPLOAD_BUDGET } from '../src/themes/limits';
  *
  * Who is calling: the browser holds a random key (43 base64url chars, 256
  * bits) and sends it as `Authorization: Bearer <key>`. The database stores
- * only its SHA-256 (`device_keys.key_hash`), which maps to a profile. No
- * account, no password: the key *is* the credential, like a long unguessable
- * link. See migrations/0002_profiles.sql.
+ * only its SHA-256 (`device_keys.key_hash`), which maps to a profile. The key
+ * *is* the credential, like a long unguessable link; see
+ * migrations/0002_profiles.sql. Sync links, passkeys and the optional
+ * username + password (functions/api/login.ts) are only ways to get a new
+ * key for a profile — nothing else ever checks a password.
  */
 
 export interface Env {
@@ -63,9 +65,43 @@ export function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
 /** A fresh device key: 32 random bytes. */
 export const newKey = (): string => bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 
+const hex = (buffer: ArrayBuffer): string =>
+  [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+
 export async function hashKey(key: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)));
+}
+
+/**
+ * PBKDF2 rounds for a new password. 100k is the most Workers' WebCrypto
+ * accepts (it throws above), and bcrypt/argon2 would mean a WASM bundle and
+ * far more CPU per request. Stored per login, so it can change later.
+ */
+export const PASSWORD_ITERATIONS = 100_000;
+
+/** PBKDF2-SHA256 of a password, as hex. `salt` is base64url. */
+export async function hashPassword(password: string, salt: string, iterations: number): Promise<string> {
+  const material = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  return hex(
+    await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt: base64UrlToBytes(salt), iterations },
+      material,
+      256,
+    ),
+  );
+}
+
+/** Compares two digests without an early exit, so timing says nothing about where they differ. */
+export function sameDigest(a: string, b: string): boolean {
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.min(a.length, b.length); i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 /** The well-formed key the caller sent, or null. Says nothing about whether it is known. */
