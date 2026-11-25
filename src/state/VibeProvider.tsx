@@ -542,6 +542,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
     },
     [
       allThemes,
+      customization.added.length,
       customization.edits,
       uploads,
       customPlaylistsByTheme,
@@ -695,6 +696,7 @@ export function VibeProvider({ children }: { children: ReactNode }) {
       return { kind: 'backup' };
     },
     [
+      customization.added.length,
       uploads,
       setCustomization,
       setUploads,

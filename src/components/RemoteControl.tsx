@@ -65,7 +65,18 @@ export function RemoteControl() {
         const result = await pollRemote(key, snapshot === reported ? undefined : state);
         if (result.ok) {
           reported = snapshot;
-          result.body.commands.forEach(run);
+          for (const command of result.body.commands) {
+            run(command);
+            // A mode switch lands only after its transition (with motion on), and
+            // a playlist picked straight after it is checked against — and saved
+            // to — whichever mode is showing. Wait for the new one first.
+            const target = command.value;
+            if (command.action === 'switch_mode' && target && latest.current.allThemes.some((mode) => mode.id === target)) {
+              for (let waited = 0; waited < 2_000 && latest.current.theme.id !== target; waited += 50) {
+                await new Promise((resolve) => window.setTimeout(resolve, 50));
+              }
+            }
+          }
           const version = result.body.version;
           if (version !== null && version !== readRecord().version) latest.current.refresh();
         }

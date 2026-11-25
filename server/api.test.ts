@@ -798,6 +798,70 @@ describe('linked activity — per-account history for the admin page', () => {
   });
 });
 
+describe('audit fixes — saving, orphans, and races', () => {
+  const put = (key: string, body: object) =>
+    call(profile.onRequestPut, api('/api/profile', { method: 'PUT', key, body: JSON.stringify(body) }));
+
+  it('a key that has saved before, unknown now (signed out elsewhere), gets 401 — not a new, separate profile', async () => {
+    expect((await put(newKey(), { data: {}, create: false })).status).toBe(401);
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profiles').first<number>('n')).toBe(0);
+    expect((await put(newKey(), { data: {}, create: true })).status).toBe(201);
+    expect((await put(newKey(), { data: {} })).status).toBe(201); // an older tab, no flag: still allowed
+  });
+
+  it('measures saved data in bytes, so text that is small in characters but big in UTF-8 is refused cleanly', async () => {
+    const emoji = '\u{1F600}'.repeat(300_000); // 600k UTF-16 units, 1.2 MB of UTF-8
+    expect((await put(newKey(), { data: { note: emoji } })).status).toBe(413);
+  });
+
+  it('deletes the profile a browser leaves when signing in elsewhere, unless something else still reaches it', async () => {
+    const proof = newKey();
+    const target = newKey();
+    await save(target);
+    await call(login.onRequestPut, api('/api/login', { method: 'PUT', key: target, body: JSON.stringify({ username: 'asha', proof }) }));
+
+    const lonely = newKey(); // a profile with nothing but this browser's key
+    await save(lonely, { note: 'nobody can reach me after this' });
+    await call(login.onRequestPost, api('/api/login', { method: 'POST', key: lonely, body: JSON.stringify({ username: 'asha', proof }) }));
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profiles').first<number>('n')).toBe(1);
+
+    const kept = newKey(); // this one has its own password, so it stays
+    await save(kept);
+    await call(login.onRequestPut, api('/api/login', { method: 'PUT', key: kept, body: JSON.stringify({ username: 'ravi', proof: newKey() }) }));
+    await call(login.onRequestPost, api('/api/login', { method: 'POST', key: kept, body: JSON.stringify({ username: 'asha', proof }) }));
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM profiles').first<number>('n')).toBe(2);
+  });
+
+  it('a listening ping still works after its account was deleted mid-play', async () => {
+    const tab = newKey();
+    await env.DB.prepare(
+      `INSERT INTO listeners (tab, mode, playing, seen_at, profile_id) VALUES (?, 'metro', 1, ?, 'deleted-profile')`,
+    )
+      .bind(tab, Date.now() - 60_000)
+      .run();
+    const ping = await call(
+      listen.onRequestPost,
+      api('/api/listen', {
+        method: 'POST',
+        body: JSON.stringify({ tab, mode: 'metro', playing: true }),
+        headers: { 'User-Agent': CHROME_ANDROID },
+      }),
+    );
+    expect(ping.status).toBe(204);
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM listen_daily').first<number>('n')).toBe(1); // anonymous minutes still count
+  });
+
+  it('a Google account linked without a verified email still shows as linked', async () => {
+    const key = newKey();
+    await save(key);
+    vi.mocked(verifyGoogle).mockResolvedValue({ sub: 'no-email', email: null });
+    const extra = { env: { GOOGLE_CLIENT_ID: 'client-1.apps.googleusercontent.com' } };
+    await call(google.onRequestPost, api('/api/google', { method: 'POST', key, body: '{"credential":"t"}' }), extra);
+    const status = await (await call(google.onRequestGet, api('/api/google', { key }), extra)).json();
+    expect(status).toMatchObject({ linked: true, email: null });
+  });
+});
+
 describe('/backgrounds/*.mp4 — byte ranges for Safari', () => {
   const bytes = new Uint8Array(100).map((_, i) => i);
   const get = (range?: string) =>

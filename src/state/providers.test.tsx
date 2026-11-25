@@ -53,7 +53,8 @@ function fakeApi() {
         return found ? Response.json(found) : Response.json({ error: 'Unknown key.' }, { status: 401 });
       }
       if (url.pathname === '/api/profile' && method === 'PUT') {
-        const { data } = JSON.parse(String(init.body));
+        const { data, create } = JSON.parse(String(init.body));
+        if (!found && create === false) return Response.json({ error: 'Unknown key.' }, { status: 401 });
         const version = (found?.version ?? 0) + 1;
         server.profiles.set(key, { data, uploads: found?.uploads ?? {}, version });
         return Response.json({ version }, { status: found ? 200 : 201 });
@@ -284,6 +285,38 @@ describe('cloud save', () => {
   });
 });
 
+describe('audit fixes — cloud save', () => {
+  it('a browser signed out from another device is told so, instead of quietly starting a second copy', async () => {
+    ({ unmount } = mountProviders());
+    await settle();
+    // This browser has saved before (it has a version) but the server no longer knows its key.
+    localStorage.setItem(
+      SYNC_STORAGE_KEY,
+      JSON.stringify({ key: KEY, data: 'stale', uploads: {}, version: 5, off: false }),
+    );
+    act(() => ctx.vibe!.editMode('metro', { name: 'Edited after sign-out' }));
+    await settle(2500);
+    expect(server.profiles.size).toBe(0); // nothing new was created
+    expect(record().key).toBeNull();
+    expect(ctx.sync!.message).toMatch(/signed out/);
+  });
+
+  it('"Reset everything" leaves the cloud copy alone for the other devices', async () => {
+    ({ unmount } = mountProviders());
+    await settle();
+    act(() => ctx.vibe!.editMode('metro', { name: 'Keep me' }));
+    await settle(2500);
+    const [key, before] = [...server.profiles.entries()][0];
+    act(() => {
+      ctx.sync!.leaveCloud();
+      ctx.vibe!.resetEverything();
+    });
+    await settle(2500);
+    expect(server.profiles.get(key)).toEqual(before); // not overwritten with the emptied browser
+    expect(record().key).toBeNull();
+  });
+});
+
 describe('an AI assistant driving the player', () => {
   it('a tab that allows it reports what is playing and runs queued commands', async () => {
     ({ unmount } = mount(
@@ -312,7 +345,11 @@ describe('an AI assistant driving the player', () => {
     expect(server.reported[server.reported.length - 1]).toMatchObject({ mode: 'metro', modeName: 'M' });
 
     server.queued.push({ action: 'switch_mode', value: 'office' }, { action: 'set_volume', value: '30' });
-    await settle(5000); // the next poll (4s) plus the mode-change wipe (380ms)
+    // The next poll (4s), then the volume only once the mode switch has landed.
+    // RemoteControl waits for that (up to 2s); in a browser it lands in ~0.4s,
+    // but Preact's test `act` holds re-renders until it ends, so here the wait
+    // runs to its cap.
+    await settle(7000);
     expect(ctx.vibe!.theme.id).toBe('office');
     expect(ctx.player!.volume).toBe(30);
 

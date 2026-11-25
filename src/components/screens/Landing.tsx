@@ -38,7 +38,15 @@ export function Landing() {
         belongs there.
       </m.p>
 
-      <m.div {...rise(0.2)} className="mt-5 min-h-0 shrink sm:mt-7">
+      {/* From `sm` the cards are a grid, and a grid of 8 (or 58, with the
+          listener's own modes) can be taller than a short screen — a phone
+          held sideways showed one row and clipped the rest out of reach. So
+          the grid scrolls inside its own box, as the tracklist does; the page
+          itself still never scrolls. The padding keeps focus rings unclipped. */}
+      <m.div
+        {...rise(0.2)}
+        className="mt-5 min-h-0 shrink sm:-mx-1 sm:mt-7 sm:overflow-y-auto sm:overscroll-contain sm:px-1 sm:pt-1 sm:pb-1"
+      >
         <ModePicker onSelect={enter} layout="rail" />
       </m.div>
 

@@ -164,7 +164,11 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               className="overflow-hidden border-b border-line/60"
             >
-              <div className="flex flex-col gap-4 px-4 py-4 sm:px-6">
+              {/* Capped to the screen: on a phone held sideways the drawer was
+                  taller than the space above the controls, so the fixed footer
+                  grew past the top of the screen and its own buttons were out
+                  of reach. It scrolls inside itself instead, like the tracklist. */}
+              <div className="flex max-h-[calc(100dvh-var(--safe-top)-9rem)] flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="vm-label text-muted">Now playing in</p>

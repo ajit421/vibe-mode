@@ -54,7 +54,11 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: Top
         {/* The mode's name is the page title, so it is the `h1` and it is set
             at title size. The old lockup sat here saying the product's name
             instead, which told a visitor already inside a mode nothing. */}
+        {/* The heading holds the button, not the other way round: a button's
+            content is presentational, so an h1 inside one is invalid and
+            screen readers found no heading in a mode at all. */}
         {hasEntered && (
+          <h1 className="min-w-0">
           <button
             type="button"
             onClick={leaveToLanding}
@@ -70,10 +74,11 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize }: Top
             <span className="vm-label block truncate text-[0.6875rem] text-primary/85">
               {theme.hero.kicker}
             </span>
-            <h1 className="vm-glow-text line-clamp-2 text-balance font-display text-[clamp(1.375rem,4.6vw,3.5rem)] leading-none font-bold tracking-tight text-ink uppercase">
+            <span className="vm-glow-text line-clamp-2 block text-balance font-display text-[clamp(1.375rem,4.6vw,3.5rem)] leading-none font-bold tracking-tight text-ink uppercase">
               {theme.name}
-            </h1>
+            </span>
           </button>
+          </h1>
         )}
 
         <div className="ml-auto flex shrink-0 items-center gap-2">

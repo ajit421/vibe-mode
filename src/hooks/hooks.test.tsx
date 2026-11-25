@@ -43,6 +43,24 @@ describe('useLocalStorage', () => {
     expect(synced.result.current[0]).toBe(5);
     expect(local.result.current[0]).toBe(1);
   });
+
+  it('does not write a value from another tab back, even reshaped by the check', () => {
+    // The check rebuilds the object with its keys in another order — as the
+    // customisation sanitiser does. Writing that back fired a storage event in
+    // the tab it came from, one write behind, and undid that tab's typing.
+    const reorder = (value: { a: number; b: number }) => ({ b: value.b, a: value.a });
+    const synced = renderHook(() => useLocalStorage('k2', { a: 0, b: 0 }, reorder, true));
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    localStorage.setItem('k2', JSON.stringify({ a: 1, b: 2 }));
+    write.mockClear();
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'k2', storageArea: localStorage }));
+    });
+    expect(synced.result.current[0]).toEqual({ a: 1, b: 2 });
+    expect(write).not.toHaveBeenCalled();
+    expect(localStorage.getItem('k2')).toBe('{"a":1,"b":2}');
+    write.mockRestore();
+  });
 });
 
 describe('useMediaQuery', () => {
