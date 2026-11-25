@@ -8,8 +8,10 @@ import {
   isKey,
   json,
   passesTurnstile,
+  overLimit,
   readText,
   retireCallerKey,
+  slowDown,
   sameDigest,
   type Handler,
 } from '../../server/lib';
@@ -104,6 +106,8 @@ export const onRequestPut: Handler = async ({ env, request }) => {
 };
 
 export const onRequestPost: Handler = async ({ env, request }) => {
+  // On top of the per-username lockout: one address trying many usernames.
+  if (overLimit(request, 'login', 30, 10 * 60_000)) return slowDown();
   const given = await credentials(request);
   if (!given) return fail(400, 'Bad request.');
   // Before any hashing: the bot check is what stops a script making us burn CPU.

@@ -2,7 +2,7 @@ import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
 } from '@simplewebauthn/server';
-import { caller, fail, json, type Handler } from '../../../server/lib';
+import { caller, fail, json, overLimit, passesTurnstile, slowDown, type Handler } from '../../../server/lib';
 
 // Step one of a passkey ceremony: a fresh challenge for the browser to sign.
 //   { purpose: 'register' } — needs the caller's key; adds a passkey to their profile.
@@ -17,6 +17,15 @@ export const onRequestPost: Handler = async ({ env, request }) => {
   const body = await request.json<{ purpose?: unknown }>().catch(() => null);
   const purpose = body?.purpose;
   if (purpose !== 'register' && purpose !== 'login') return fail(400, 'Unknown purpose.');
+  // A sign-in challenge needs no key, so it is the one a script can ask for
+  // endlessly — and enough of them filled the cap below and blocked every
+  // visitor's passkey sign-in. Limited per address, and behind the bot check.
+  if (purpose === 'login') {
+    if (overLimit(request, 'passkey', 30, 10 * 60_000)) return slowDown();
+    if (!(await passesTurnstile(env, request))) {
+      return json({ error: 'Check needed.', challenge: true, siteKey: env.TURNSTILE_SITE_KEY ?? null }, 403);
+    }
+  }
 
   const now = Date.now();
   await env.DB.prepare('DELETE FROM challenges WHERE expires_at < ?').bind(now).run();

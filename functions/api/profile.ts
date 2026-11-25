@@ -7,7 +7,9 @@ import {
   fail,
   hashKey,
   json,
+  overLimit,
   passesTurnstile,
+  slowDown,
   readText,
   type Handler,
 } from '../../server/lib';
@@ -78,7 +80,9 @@ export const onRequestPut: Handler = async ({ env, request }) => {
   if (body.create === false) return fail(401, 'Unknown key.');
 
   // Creating a profile is the only write open to anyone, so it is the one
-  // behind the bot check.
+  // behind the bot check — and a few per address, so one script can't fill
+  // the database even before Turnstile is set up.
+  if (overLimit(request, 'create', 10, 10 * 60_000)) return slowDown();
   if (!(await passesTurnstile(env, request))) {
     return json({ error: 'Check needed.', challenge: true, siteKey: env.TURNSTILE_SITE_KEY ?? null }, 403);
   }

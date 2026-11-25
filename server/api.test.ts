@@ -798,6 +798,35 @@ describe('linked activity — per-account history for the admin page', () => {
   });
 });
 
+describe('per-address limits and the bot check on sign-in', () => {
+  it('one address can create only a few profiles in a row', async () => {
+    const create = () =>
+      call(
+        profile.onRequestPut,
+        api('/api/profile', {
+          method: 'PUT',
+          key: newKey(),
+          body: JSON.stringify({ data: {}, create: true }),
+          headers: { 'CF-Connecting-IP': '198.51.100.7' },
+        }),
+      );
+    for (let i = 0; i < 10; i += 1) expect((await create()).status).toBe(201);
+    expect((await create()).status).toBe(429);
+  });
+
+  it('asks for the bot check before handing out a passkey sign-in challenge, once Turnstile is set', async () => {
+    const turnstile = { env: { TURNSTILE_SECRET: 'secret', TURNSTILE_SITE_KEY: 'site-key' } };
+    const login = await call(
+      options.onRequestPost,
+      api('/api/passkeys/options', { method: 'POST', body: JSON.stringify({ purpose: 'login' }) }),
+      turnstile,
+    );
+    expect(login.status).toBe(403);
+    expect(await login.json()).toMatchObject({ challenge: true, siteKey: 'site-key' });
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM challenges').first<number>('n')).toBe(0); // nothing stored
+  });
+});
+
 describe('audit fixes — saving, orphans, and races', () => {
   const put = (key: string, body: object) =>
     call(profile.onRequestPut, api('/api/profile', { method: 'PUT', key, body: JSON.stringify(body) }));

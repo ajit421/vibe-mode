@@ -205,6 +205,43 @@ export async function deleteProfile(env: Env, id: string): Promise<void> {
   ]);
 }
 
+/*
+ * shortcut: a rate limit kept in this isolate's memory, by the caller's IP.
+ * The IP is never written anywhere — it is a map key for a few minutes, then
+ * swept. Approximate: Cloudflare runs many isolates, each with its own counts,
+ * so a script spread across them gets further than the limit says. It exists
+ * because nothing better is available here: Pages has no rate-limit binding
+ * (Wrangler rejects `ratelimits` for Pages), and a *.pages.dev site can't have
+ * WAF rate-limiting rules (they belong to a zone you own). Move to a WAF rule
+ * once the site has its own domain. Turnstile stays the real gate on creation.
+ */
+const counts = new Map<string, { start: number; n: number }>();
+const SWEEP_AT = 5_000;
+
+/**
+ * True when this IP has used up `max` calls to `bucket` in the last `windowMs`.
+ * Requests with no IP (local tests, internal calls) are never limited.
+ */
+export function overLimit(request: Request, bucket: string, max: number, windowMs: number, now = Date.now()): boolean {
+  const ip = request.headers.get('CF-Connecting-IP');
+  if (!ip) return false;
+  const key = `${bucket}|${ip}`;
+  const entry = counts.get(key);
+  if (!entry || now - entry.start >= windowMs) {
+    if (counts.size >= SWEEP_AT) {
+      for (const [old, value] of counts) if (now - value.start >= 15 * 60_000) counts.delete(old);
+      if (counts.size >= SWEEP_AT) counts.clear(); // under a flood: start over rather than grow
+    }
+    counts.set(key, { start: now, n: 1 });
+    return false;
+  }
+  entry.n += 1;
+  return entry.n > max;
+}
+
+/** The answer when `overLimit` says so — worded for a person, as every failure here is. */
+export const slowDown = (): Response => fail(429, 'Too many requests from here. Wait a few minutes and try again.');
+
 /**
  * Turnstile check for creating a profile — the one write anybody can make
  * without already holding a key. Passes when Turnstile isn't configured, so

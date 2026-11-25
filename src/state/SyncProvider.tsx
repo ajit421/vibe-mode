@@ -518,7 +518,17 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   }, [save, unsaved, report, toast]);
 
   const signInWithPasskey = useCallback(async () => {
-    const options = await passkeyOptions('login', null);
+    // Sign-in challenges are open to anyone, so the server may ask for the bot check first.
+    let options = await passkeyOptions('login', null);
+    if (!options.ok && options.status === 403 && options.body?.challenge) {
+      const siteKey = options.body.siteKey;
+      const token = typeof siteKey === 'string' ? await turnstileToken(siteKey) : null;
+      if (!token) {
+        setMessage('Couldn’t confirm you’re not a robot. Try again.');
+        return false;
+      }
+      options = await passkeyOptions('login', null, token);
+    }
     if (!options.ok) {
       report(options);
       return false;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { base64UrlToBytes, bearer, bytesToBase64Url, hashKey, isStill, newKey } from './lib';
+import { base64UrlToBytes, bearer, bytesToBase64Url, hashKey, isStill, newKey, overLimit } from './lib';
 
 describe('device keys', () => {
   it('accepts only a well-formed Bearer key', () => {
@@ -32,5 +32,22 @@ describe('uploaded pictures', () => {
     expect(isStill('data:image/svg+xml;base64,AAAA')).toBe(false);
     expect(isStill('https://example.com/a.png')).toBe(false);
     expect(isStill(`data:image/png;base64,${'A'.repeat(1_600_000)}`)).toBe(false);
+  });
+});
+
+describe('overLimit', () => {
+  const from = (ip?: string) => new Request('https://x.test/', ip ? { headers: { 'CF-Connecting-IP': ip } } : {});
+
+  it('allows `max` calls per address in the window, then refuses until it passes', () => {
+    const t = 1_000_000;
+    for (let i = 0; i < 3; i += 1) expect(overLimit(from('203.0.113.1'), 'a', 3, 60_000, t + i)).toBe(false);
+    expect(overLimit(from('203.0.113.1'), 'a', 3, 60_000, t + 10)).toBe(true);
+    expect(overLimit(from('203.0.113.2'), 'a', 3, 60_000, t + 10)).toBe(false); // another address
+    expect(overLimit(from('203.0.113.1'), 'b', 3, 60_000, t + 10)).toBe(false); // another bucket
+    expect(overLimit(from('203.0.113.1'), 'a', 3, 60_000, t + 60_000)).toBe(false); // a new window
+  });
+
+  it('never limits a request with no address (tests, internal calls)', () => {
+    for (let i = 0; i < 10; i += 1) expect(overLimit(from(), 'c', 1, 60_000)).toBe(false);
   });
 });

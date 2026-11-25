@@ -1,4 +1,4 @@
-import { addKey, caller, fail, json, readText, retireCallerKey, type Handler } from '../../server/lib';
+import { addKey, caller, fail, json, overLimit, readText, retireCallerKey, slowDown, type Handler } from '../../server/lib';
 import { verifyGoogle } from '../../server/google';
 
 // "Continue with Google" (migrations/0008_google.sql). Optional, never a wall.
@@ -34,6 +34,7 @@ export const onRequestGet: Handler = async ({ env, request }) => {
 
 export const onRequestPost: Handler = async ({ env, request }) => {
   if (!env.GOOGLE_CLIENT_ID) return fail(503, NOT_SET_UP);
+  if (overLimit(request, 'google', 30, 10 * 60_000)) return slowDown();
   let body: { credential?: unknown; replace?: unknown };
   try {
     body = JSON.parse((await readText(request, 8_000)) ?? '');

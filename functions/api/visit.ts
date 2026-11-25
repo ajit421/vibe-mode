@@ -1,4 +1,4 @@
-import { readText, type Handler } from '../../server/lib';
+import { overLimit, readText, type Handler } from '../../server/lib';
 import { classify, countryOf, type Hints } from '../../server/ua';
 
 // Counts a tab opening the site, by day, browser, system, device and country
@@ -10,6 +10,7 @@ import { classify, countryOf, type Hints } from '../../server/ua';
 // post here, so a script could inflate the counts — they are a guide, not a ledger.
 
 export const onRequestPost: Handler = async ({ env, request }) => {
+  if (overLimit(request, 'visit', 30, 10 * 60_000)) return new Response(null, { status: 204 }); // dropped quietly
   let hints: Hints = {};
   try {
     const body = JSON.parse((await readText(request, 200)) ?? '{}');

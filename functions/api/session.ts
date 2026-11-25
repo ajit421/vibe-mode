@@ -1,4 +1,4 @@
-import { isKey, profileForKey, readText, type Handler } from '../../server/lib';
+import { isKey, overLimit, profileForKey, readText, type Handler } from '../../server/lib';
 import { classify, countryOf } from '../../server/ua';
 
 // One tab's visit, reported by src/components/Analytics.tsx with
@@ -38,6 +38,7 @@ const ms = (value: unknown): number =>
 const dayOf = (time: number) => new Date(time).toISOString().slice(0, 10);
 
 export const onRequestPost: Handler = async ({ env, request }) => {
+  if (overLimit(request, 'session', 150, 10 * 60_000)) return new Response(null, { status: 204 }); // dropped quietly
   let body: Record<string, unknown>;
   try {
     body = JSON.parse((await readText(request, 8_000)) ?? '');

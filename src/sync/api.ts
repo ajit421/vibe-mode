@@ -98,8 +98,14 @@ export const pollRemote = (key: string, state?: Record<string, unknown>) =>
     state === undefined ? {} : { state },
   );
 
-export const passkeyOptions = (purpose: 'register' | 'login', key: string | null) =>
-  call<{ challengeId: string; options: unknown }>('POST', '/api/passkeys/options', key, { purpose });
+export const passkeyOptions = (purpose: 'register' | 'login', key: string | null, turnstileToken?: string) =>
+  call<{ challengeId: string; options: unknown }>(
+    'POST',
+    '/api/passkeys/options',
+    key,
+    { purpose },
+    turnstileToken ? { 'X-Turnstile-Token': turnstileToken } : {},
+  );
 
 export const passkeyVerify = (challengeId: string, response: unknown, key: string | null) =>
   call<{ ok?: true; key?: string }>('POST', '/api/passkeys/verify', key, { challengeId, response });

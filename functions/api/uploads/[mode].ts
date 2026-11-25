@@ -6,7 +6,9 @@ import {
   fail,
   isStill,
   json,
+  overLimit,
   readText,
+  slowDown,
   type Handler,
 } from '../../../server/lib';
 
@@ -17,6 +19,8 @@ import {
 export const onRequestPut: Handler = async ({ env, request, params }) => {
   const mode = String(params.mode);
   if (!SAFE_ID.test(mode)) return fail(400, 'Unknown mode.');
+  // Pictures are the biggest thing in the database: a steady trickle, not a flood.
+  if (overLimit(request, 'upload', 60, 10 * 60_000)) return slowDown();
   const who = await caller(env, request);
   if (!who) return fail(401, 'Unknown key.');
 

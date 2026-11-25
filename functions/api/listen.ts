@@ -1,4 +1,4 @@
-import { SAFE_ID, fail, isKey, profileForKey, readText, type Handler } from '../../server/lib';
+import { fail, isKey, overLimit, profileForKey, readText, SAFE_ID, type Handler } from '../../server/lib';
 import { classify, countryOf } from '../../server/ua';
 
 // Anonymous "now playing", and the listening time behind the admin page's
@@ -22,6 +22,7 @@ const text = (value: unknown, max: number): string | null =>
   typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null;
 
 export const onRequestPost: Handler = async ({ env, request }) => {
+  if (overLimit(request, 'listen', 150, 10 * 60_000)) return new Response(null, { status: 204 }); // dropped quietly
   const raw = await readText(request, 2_000);
   let body: Record<string, unknown> | null = null;
   try {
