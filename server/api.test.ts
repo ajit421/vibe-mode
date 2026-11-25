@@ -31,7 +31,10 @@ let dir: string;
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'vibe-d1-'));
   proxy = await getPlatformProxy<Env>({ persist: { path: dir } });
-  env = proxy.env;
+  // The proxy also loads the developer's `.dev.vars`; the tests must not see
+  // those secrets (a local TURNSTILE_SECRET would fail every first save, a
+  // local owner key would make "no key set" look set). Each test adds its own.
+  env = { DB: proxy.env.DB };
   for (const file of readdirSync('migrations').sort()) {
     const sql = readFileSync(join('migrations', file), 'utf8').replace(/--.*$/gm, '');
     for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) {
@@ -374,8 +377,9 @@ describe('/api/admin — the owner’s view', () => {
   it('lets in only the owner key, and nobody when it is unset or short', async () => {
     expect((await ask('', null)).status).toBe(401);
     expect((await ask('', 'x'.repeat(40))).status).toBe(401);
-    expect((await ask('', OWNER, {})).status).toBe(401); // no MCP_ADMIN_TOKEN
-    expect((await ask('', 'short', { env: { MCP_ADMIN_TOKEN: 'short' } })).status).toBe(401);
+    // No usable owner key on the site: said as such, not as a wrong key.
+    expect((await ask('', OWNER, {})).status).toBe(503);
+    expect((await ask('', 'short', { env: { MCP_ADMIN_TOKEN: 'short' } })).status).toBe(503);
     const ok = await ask();
     expect(ok.status).toBe(200);
     expect(ok.headers.get('Cache-Control')).toBe('no-store');
@@ -406,16 +410,18 @@ describe('/api/admin — the owner’s view', () => {
 
   it('shows everything stored for one visitor', async () => {
     const key = newKey();
-    await save(key, { note: 'hello' });
+    await save(key, { note: 'héllo' });
     await call(uploads.onRequestPut, api('/api/uploads/metro', { method: 'PUT', key, body: still() }), { params: { mode: 'metro' } });
-    const { visitors } = await (await ask()).json<{ visitors: { id: string }[] }>();
+    const { visitors } = await (await ask()).json<{ visitors: { id: string; data_bytes: number }[] }>();
+    // Bytes, not characters: 'é' is two bytes.
+    expect(visitors[0].data_bytes).toBe(new TextEncoder().encode(JSON.stringify({ note: 'héllo' })).length);
     const detail = await (await ask(`?user=${visitors[0].id}`)).json<{
       data: unknown;
       devices: number[];
       uploads: { mode_id: string }[];
       login: unknown;
     }>();
-    expect(detail.data).toEqual({ note: 'hello' });
+    expect(detail.data).toEqual({ note: 'héllo' });
     expect(detail.devices).toHaveLength(1);
     expect(detail.uploads.map((upload) => upload.mode_id)).toEqual(['metro']);
     expect(detail.login).toBeNull();

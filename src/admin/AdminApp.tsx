@@ -30,6 +30,9 @@ function writeToken(token: string | null) {
 
 type Result<T> = { ok: true; body: T } | { ok: false; status: number; error: string };
 
+/** Wrong key (401), or no owner key set up on the site (503): back to the key form, with the reason. */
+const keyProblem = (status: number) => status === 401 || status === 503;
+
 async function get<T>(token: string, query: string): Promise<Result<T>> {
   try {
     const response = await fetch(`/api/admin${query}`, {
@@ -159,9 +162,9 @@ const shortId = (id: string) => id.slice(0, 8);
 /* ── Pieces ─────────────────────────────────────────────────────────────── */
 
 const BUTTON =
-  'rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:border-zinc-500 disabled:opacity-40';
+  'rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:border-zinc-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500 disabled:opacity-40';
 const INPUT =
-  'w-full min-w-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:border-zinc-400 focus-visible:outline-none';
+  'w-full min-w-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500';
 
 function Section({ title, children, extra }: { title: string; children: ReactNode; extra?: ReactNode }) {
   return (
@@ -301,15 +304,19 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
       const result = await get<Overview>(token, `?q=${encodeURIComponent(q)}&offset=${offset}`);
       setLoading(false);
       if (!result.ok) {
-        if (result.status === 401) onSignOut(result.error);
+        if (keyProblem(result.status)) onSignOut(result.error);
         else setError(result.error);
         return;
       }
       setError(null);
       setSearched(q);
-      setData((previous) =>
-        offset && previous ? { ...result.body, visitors: [...previous.visitors, ...result.body.visitors] } : result.body,
-      );
+      setData((previous) => {
+        if (!offset || !previous) return result.body;
+        // The list is ordered by last change, so a visitor who saved since the
+        // first page moves up and can turn up again further down: skip repeats.
+        const shown = new Set(previous.visitors.map((visitor) => visitor.id));
+        return { ...result.body, visitors: [...previous.visitors, ...result.body.visitors.filter((v) => !shown.has(v.id))] };
+      });
     },
     [token, onSignOut],
   );
@@ -514,7 +521,7 @@ function VisitorDetail({
     void get<Detail>(token, `?user=${encodeURIComponent(id)}`).then((result) => {
       if (!live) return;
       if (result.ok) setDetail(result.body);
-      else if (result.status === 401) onSignOut(result.error);
+      else if (keyProblem(result.status)) onSignOut(result.error);
       else setError(result.error);
     });
     return () => {
@@ -622,7 +629,7 @@ function VisitorDetail({
             <summary className="cursor-pointer text-sm font-semibold tracking-wide text-zinc-400 uppercase">
               Saved settings
             </summary>
-            <pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-300">
+            <pre className="mt-3 max-h-128 overflow-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-300">
               {JSON.stringify(detail.data, null, 2)}
             </pre>
           </details>

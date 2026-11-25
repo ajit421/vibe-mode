@@ -36,6 +36,11 @@ interface AdminVisitor {
 }
 
 export const onRequestGet: Handler = async ({ env, request }) => {
+  // Said plainly, or the owner would keep retyping a "wrong" key on a site
+  // where no key can be right. Tells a stranger only that it isn't set up.
+  if ((env.MCP_ADMIN_TOKEN?.length ?? 0) < 32) {
+    return fail(503, 'No owner key is set up. Add MCP_ADMIN_TOKEN (32+ characters) as a secret in the Pages project.');
+  }
   const token = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/)?.[1];
   if (!(await isOwner(env, token))) return fail(401, 'That isn’t the owner key.');
   const url = new URL(request.url);
@@ -60,8 +65,8 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COUNT(*) FROM passkeys) AS passkeys,
          (SELECT COUNT(*) FROM logins) AS logins,
          (SELECT COUNT(*) FROM uploads) AS uploads,
-         (SELECT COALESCE(SUM(LENGTH(still)), 0) FROM uploads) AS upload_bytes,
-         (SELECT COALESCE(SUM(LENGTH(data)), 0) FROM profiles) AS data_bytes,
+         (SELECT COALESCE(SUM(octet_length(still)), 0) FROM uploads) AS upload_bytes,
+         (SELECT COALESCE(SUM(octet_length(data)), 0) FROM profiles) AS data_bytes,
          (SELECT COUNT(*) FROM remote_state WHERE seen_at > ?3) AS listening,
          (SELECT COUNT(*) FROM remote_commands) AS queued_commands`,
     ).bind(now - DAY_MS, now - 7 * DAY_MS, now - LISTENING_MS),
@@ -69,7 +74,7 @@ async function overview(env: Env, url: URL): Promise<Response> {
     // back in), so the counts guard every shape: one odd profile must not
     // break the whole list. PAGE + 1 rows says whether there is a next page.
     env.DB.prepare(
-      `SELECT p.id, l.username, p.created_at, p.version, LENGTH(p.data) AS data_bytes,
+      `SELECT p.id, l.username, p.created_at, p.version, octet_length(p.data) AS data_bytes,
          COALESCE(json_array_length(p.data, '$.customization.added'), 0) AS added_modes,
          (SELECT COUNT(*) FROM json_each(p.data, '$.customization.edits')) AS edited_modes,
          (SELECT COALESCE(SUM(CASE WHEN type = 'array' THEN json_array_length(value) ELSE 0 END), 0)
