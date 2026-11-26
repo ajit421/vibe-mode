@@ -26,8 +26,10 @@ import {
  * every request (stateless Streamable HTTP, see functions/mcp/[[path]].ts).
  *
  * Who is calling decides the tools:
- *  - a device key (the visitor's MCP link) → their own modes, playlists,
- *    preferences, and the player in a tab they've let the AI control;
+ *  - a device key of a profile signed in with Google — the token an app got
+ *    through OAuth at /mcp, or an older /mcp/<key> link → that visitor's own
+ *    modes, playlists, preferences, and the player in a tab they let the AI
+ *    control (`memberForKey`: a key without a Google account gets nothing);
  *  - the owner key (MCP_ADMIN_TOKEN) → the site's defaults for everyone.
  */
 
