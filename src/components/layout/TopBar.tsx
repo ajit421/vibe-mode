@@ -85,6 +85,17 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize, onOpe
           </h1>
         )}
 
+        {/* On the landing screen the top-left is otherwise empty: the
+            product's name lives there until you are inside a mode, when the
+            mode's own name takes its place. A <p>, not a heading — the
+            landing's question is its h1. */}
+        {!hasEntered && (
+          <p className="flex items-center gap-2 pt-2 font-display text-sm font-bold tracking-[0.18em] text-ink uppercase">
+            <span className="size-2 rounded-full bg-primary shadow-[0_0_10px_var(--c-glow)]" aria-hidden="true" />
+            Vibe Mode
+          </p>
+        )}
+
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {/* Date and time, always on — not behind the status-readout toggle.
               The strip that toggle controls is a decorative block down in the
@@ -116,7 +127,7 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize, onOpe
               className="vm-panel vm-tap group flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-3 transition-colors hover:border-primary/50"
             >
               <Icon className="size-3.5 text-primary" />
-              <span className="hidden text-xs font-medium text-ink sm:inline">
+              <span className="hidden text-xs font-medium text-primary sm:inline">
                 {theme.shortName}
               </span>
               <span className="vm-label hidden text-[0.6rem] text-muted md:inline">
@@ -127,13 +138,15 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize, onOpe
           )}
 
           {/* Shortcuts need a keyboard: off on phones, where the bar is tightest. */}
-          <IconButton label="Keyboard shortcuts" size="sm" onClick={onOpenShortcuts} className="max-sm:hidden">
+          {/* Frosted like the pills beside them, so they read over a bright
+              frame instead of floating as bare glyphs. */}
+          <IconButton label="Keyboard shortcuts" size="sm" onClick={onOpenShortcuts} className="vm-panel max-sm:hidden">
             <CircleHelp />
           </IconButton>
-          <IconButton label="Customize modes" size="sm" onClick={onOpenCustomize}>
+          <IconButton label="Customize modes" size="sm" onClick={onOpenCustomize} className="vm-panel">
             <Palette />
           </IconButton>
-          <IconButton label="Settings" size="sm" onClick={onOpenSettings}>
+          <IconButton label="Settings" size="sm" onClick={onOpenSettings} className="vm-panel">
             <Settings2 />
           </IconButton>
 

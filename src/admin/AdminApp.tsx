@@ -375,7 +375,7 @@ function Section({ title, children, extra }: { title: string; children: ReactNod
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold tracking-wide text-zinc-400 uppercase">{title}</h2>
+        <h2 className="font-mono text-xs font-semibold tracking-[0.14em] text-zinc-300 uppercase">{title}</h2>
         {extra}
       </div>
       {children}
@@ -386,9 +386,9 @@ function Section({ title, children, extra }: { title: string; children: ReactNod
 function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
-      <div className="text-xs text-zinc-400">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-zinc-50 tabular-nums">{value}</div>
-      {hint && <div className="mt-1 text-xs text-zinc-500">{hint}</div>}
+      <div className="font-mono text-[0.7rem] tracking-wider text-zinc-400 uppercase">{label}</div>
+      <div className="mt-2 text-3xl font-semibold tracking-tight text-zinc-50 tabular-nums">{value}</div>
+      {hint && <div className="mt-1 font-mono text-[0.7rem] text-zinc-500">{hint}</div>}
     </div>
   );
 }
@@ -398,10 +398,10 @@ function Table({ head, children, empty }: { head: string[]; children: ReactNode;
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-800">
       <table className="w-full text-left text-sm">
-        <thead className="bg-zinc-900 text-xs text-zinc-400">
+        <thead className="bg-zinc-900 font-mono text-[0.7rem] tracking-wider text-zinc-400 uppercase">
           <tr>
             {head.map((label) => (
-              <th key={label} scope="col" className="px-3 py-2 font-medium whitespace-nowrap">
+              <th key={label} scope="col" className="px-3 py-2.5 font-semibold whitespace-nowrap">
                 {label}
               </th>
             ))}
@@ -472,7 +472,10 @@ function SignIn({ notice, onToken }: { notice: string | null; onToken: (token: s
         if (value.trim()) onToken(value.trim());
       }}
     >
-      <h1 className="text-xl font-semibold text-zinc-50">Vibe Mode admin</h1>
+      <h1 className="flex items-center gap-2 text-xl font-semibold text-zinc-50">
+        <span className="size-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+        Vibe Mode admin
+      </h1>
       {clientId && (
         <>
           <p className="text-sm text-zinc-400">Sign in with a Google account that is an admin of this site.</p>
@@ -555,7 +558,10 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
     <>
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-50">Vibe Mode admin</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-zinc-50">
+        <span className="size-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+        Vibe Mode admin
+      </h1>
           <p className="text-sm text-zinc-400" role="status">
             {loading ? 'Loading…' : data ? <>Updated <Time ms={data.now} now={Date.now()} /></> : ' '}
           </p>

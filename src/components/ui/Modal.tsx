@@ -91,7 +91,9 @@ function ModalDialog({ onClose, title, description, children, size = 'md' }: Mod
         onClick={() => onCloseRef.current()}
       />
       <m.div
-        className={`vm-panel relative w-full ${
+        // More opaque than the other frosted surfaces: a panel is for reading
+        // and typing, so the busy picture behind should only just show through.
+        className={`vm-panel relative w-full bg-surface/95 ${
           size === 'lg' ? 'sm:max-w-4xl' : 'sm:max-w-lg'
         } max-h-[88dvh] overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-3xl shadow-2xl shadow-black/60`}
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -102,7 +104,7 @@ function ModalDialog({ onClose, title, description, children, size = 'md' }: Mod
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-line/70 bg-surface/85 px-5 py-4 backdrop-blur-md sm:px-6">
           <div>
             {/* h1: the page behind is inert, so this is the first heading in scope. */}
-            <h1 id={titleId} className="text-lg font-semibold text-ink">
+            <h1 id={titleId} className="font-display text-xl font-semibold tracking-tight text-ink">
               {title}
             </h1>
             {description && (
@@ -115,7 +117,7 @@ function ModalDialog({ onClose, title, description, children, size = 'md' }: Mod
               {latest?.message ?? ''}
             </p>
           </div>
-          <IconButton label="Close" size="sm" onClick={() => onCloseRef.current()}>
+          <IconButton label="Close" size="sm" onClick={() => onCloseRef.current()} className="bg-ink/8">
             <X />
           </IconButton>
         </div>

@@ -48,7 +48,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
     <Modal open={open} onClose={onClose} title="Settings" description="Small knobs, big difference.">
       <div className="flex flex-col gap-6">
         <section className="flex flex-col gap-4">
-          <h3 className="vm-label text-muted">Motion &amp; atmosphere</h3>
+          <h3 className="vm-label text-primary">Motion &amp; atmosphere</h3>
 
           <Switch
             label="Animations"
@@ -101,7 +101,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
         </section>
 
         <section className="flex flex-col gap-3 border-t border-line/60 pt-5">
-          <h3 className="vm-label text-muted">Sound</h3>
+          <h3 className="vm-label text-primary">Sound</h3>
           <div className="flex items-center gap-3">
             <Slider
               label="Volume"
@@ -158,7 +158,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
         </section>
 
         <section className="flex flex-col gap-3 border-t border-line/60 pt-5">
-          <h3 className="vm-label text-muted">Playlist for {theme.name}</h3>
+          <h3 className="vm-label text-primary">Playlist for {theme.name}</h3>
           <PlaylistChips variant="hero" />
           {/* Adding, renaming, relinking and removing playlists all live in
               Customize now. This panel used to have its own add form and a
@@ -178,7 +178,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
             nothing in Firefox or Safari would be worse than no button. */}
         {canInstall && (
           <section className="flex flex-col gap-2 border-t border-line/60 pt-5">
-            <h3 className="vm-label text-muted">App</h3>
+            <h3 className="vm-label text-primary">App</h3>
             <button
               type="button"
               onClick={() => void install()}
@@ -195,7 +195,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
 
         {/* What src/utils/analytics.ts sends — said where a visitor looks for settings. */}
         <section className="flex flex-col gap-1.5 border-t border-line/60 pt-5">
-          <h3 className="vm-label text-muted">Usage counts</h3>
+          <h3 className="vm-label text-primary">Usage counts</h3>
           <p className="text-xs text-muted">
             So the site’s owner can see how it’s used, each tab is counted — by browser, system, device
             type and country — with how long it stays open, on screen and playing music, which mode,

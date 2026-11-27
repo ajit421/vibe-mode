@@ -252,13 +252,22 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
         {/* ── Main row ───────────────────────────────────────────────────── */}
         {/* The extra bottom padding clears the home indicator on notched
             phones — without it the transport buttons sit underneath it. */}
+        {/* From `lg` the full bar is three columns — track on the left,
+            transport dead centre, the rest on the right — so the play button
+            sits in the same place whatever the track is called. The left and
+            right groups are wrappers in every state, never added or removed,
+            so the cover art (and the embed inside it) keeps one place in the
+            tree. */}
         <div
           className={cn(
             'flex items-center',
-            minimised ? 'gap-2 p-2' : 'gap-3 px-3 pb-3 sm:gap-4 sm:px-6',
+            minimised
+              ? 'gap-2 p-2'
+              : 'gap-3 px-3 pb-3 sm:gap-4 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]',
           )}
           style={minimised ? undefined : { paddingBottom: 'calc(0.75rem + var(--safe-bottom))' }}
         >
+          <div className={cn('flex min-w-0 items-center', minimised ? 'gap-2' : 'flex-1 gap-3 sm:gap-4')}>
           {/* Cover art, turning like a record. Square and circular in every
               state — a rotating rectangle just reads as broken.
 
@@ -337,9 +346,10 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
               </p>
             )}
           </div>
+          </div>
 
           {/* Transport */}
-          <div className="flex items-center gap-0.5 sm:gap-1">
+          <div className="flex items-center gap-0.5 sm:gap-1 lg:gap-2">
             {/* Wrapped rather than given `hidden sm:inline-flex` directly:
                 `cn` is plain clsx, so a `hidden` passed in loses to the
                 `inline-flex` baked into IconButton's own base classes and the
@@ -382,7 +392,9 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
                 onClick={player.togglePlay}
                 className={cn(
                   needsInteraction && motionEnabled && 'animate-pulse',
-                  'shadow-glow/30',
+                  // A soft halo in the mode's glow colour: the one control
+                  // that should find the eye first.
+                  'shadow-[0_0_26px_-6px_var(--c-glow)] hover:scale-105',
                 )}
               >
                 {isPlaying ? <Pause /> : <Play className="translate-x-px" />}
@@ -394,6 +406,7 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
             </IconButton>
           </div>
 
+          <div className="flex items-center justify-end gap-1">
           {/* Secondary controls — desktop only, everything here is also in
               Settings or the expanded drawer for small screens. */}
           <div className={cn('hidden items-center gap-1', !minimised && 'lg:flex')}>
@@ -453,6 +466,7 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
           >
             {minimised ? <Maximize2 /> : <Minimize2 />}
           </IconButton>
+          </div>
         </div>
       </div>
     </m.footer>

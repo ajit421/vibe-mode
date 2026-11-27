@@ -96,7 +96,10 @@ export function AuthorizeApp() {
         <div className="mb-6 flex items-center gap-3">
           <img src="/favicon.svg" alt="" className="size-10" />
           <div>
-            <p className="text-xs tracking-widest text-zinc-500 uppercase">Vibe Mode</p>
+            <p className="flex items-center gap-1.5 font-mono text-xs tracking-widest text-zinc-400 uppercase">
+              <span className="size-1.5 rounded-full bg-amber-400" aria-hidden="true" />
+              Vibe Mode
+            </p>
             <h1 className="text-lg font-semibold text-zinc-50">Connect an AI assistant</h1>
           </div>
         </div>

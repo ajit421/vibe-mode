@@ -71,6 +71,12 @@ export function ThemeCard({
           }}
           aria-hidden="true"
         />
+        {/* The number key, as a frosted badge on the picture. */}
+        {shortcut && (
+          <kbd className="absolute top-2.5 left-2.5 rounded-md bg-black/45 px-1.5 py-0.5 font-mono text-[0.65rem] text-white/85 ring-1 ring-white/15 backdrop-blur-sm">
+            {shortcut}
+          </kbd>
+        )}
         {selected && (
           <span
             className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-full"
@@ -82,8 +88,14 @@ export function ThemeCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-2 px-4 pt-1 pb-4">
-        <div className="flex items-center gap-2">
-          <Icon className="size-4 shrink-0" style={{ color: theme.colors.primary }} />
+        <div className="flex items-center gap-2.5">
+          {/* The icon in a small chip tinted with the mode's own colour. */}
+          <span
+            className="grid size-7 shrink-0 place-items-center rounded-lg border"
+            style={{ backgroundColor: `${theme.colors.primary}1f`, borderColor: `${theme.colors.primary}40` }}
+          >
+            <Icon className="size-3.5" style={{ color: theme.colors.primary }} />
+          </span>
           {/* Spans, not headings — a <button> may only contain phrasing content. */}
           <span
             className="font-display text-base font-semibold"
@@ -93,7 +105,8 @@ export function ThemeCard({
           </span>
         </div>
 
-        <span className="text-[0.82rem] leading-relaxed" style={{ color: theme.colors.muted }}>
+        {/* Two lines at most, so a row of cards keeps one height. */}
+        <span className="line-clamp-2 text-[0.82rem] leading-relaxed" style={{ color: theme.colors.muted }}>
           {theme.description}
         </span>
 
@@ -105,14 +118,6 @@ export function ThemeCard({
           <span>
             {theme.playlists.length} playlist{theme.playlists.length === 1 ? '' : 's'}
           </span>
-          {shortcut && (
-            <kbd
-              className="ml-auto rounded border px-1.5 py-0.5 text-[0.6rem]"
-              style={{ borderColor: theme.colors.border, color: theme.colors.muted }}
-            >
-              {shortcut}
-            </kbd>
-          )}
         </div>
       </div>
 

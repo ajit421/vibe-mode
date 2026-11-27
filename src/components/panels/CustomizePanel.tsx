@@ -109,7 +109,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3 border-t border-line/60 pt-4">
-      <h3 className="vm-label text-muted">{title}</h3>
+      <h3 className="vm-label text-primary">{title}</h3>
       {children}
     </section>
   );
@@ -678,7 +678,7 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
 
       {/* ── Backup ─────────────────────────────────────────────────────── */}
       <section className="mt-6 flex flex-col gap-2 border-t border-line/60 pt-4">
-        <h3 className="vm-label text-muted">Backup</h3>
+        <h3 className="vm-label text-primary">Backup</h3>
         <p className="text-xs text-muted">
           Everything you changed — modes, pictures, settings, your playlists — in one file. Use it
           to move to another browser or device, or to undo an experiment. “Restore from file” also
