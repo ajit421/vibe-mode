@@ -11,6 +11,31 @@ import { usePlayer } from '@/state/player-context';
 import { useToast } from '@/state/toast-context';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { cn } from '@/utils/cn';
+import { notCountedBecause, reportsBlocked } from '@/utils/analytics';
+
+/**
+ * Whether *this* browser is counted, and if not, why — so "/admin shows
+ * nobody, but I'm listening" has an answer on the device itself.
+ */
+function CountingStatus() {
+  const reason = notCountedBecause();
+  const [text, tone] =
+    reason === 'privacy-signal'
+      ? [
+          'This browser isn’t counted: it asks sites not to share or sell data (Global Privacy Control). Firefox does that in private tabs, or with “Tell websites not to share or sell my data” on; Brave does by default.',
+          'muted',
+        ]
+      : reason === 'development'
+        ? ['Not counted while developing.', 'muted']
+        : reportsBlocked()
+          ? ['This browser is counted, but its reports aren’t getting through — usually an ad or tracker blocker.', 'warn']
+          : ['This browser is counted.', 'muted'];
+  return (
+    <p role="status" className={cn('text-xs', tone === 'warn' ? 'text-primary' : 'text-muted')}>
+      {text}
+    </p>
+  );
+}
 
 interface SettingsPanelProps {
   open: boolean;
@@ -205,6 +230,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
               Privacy
             </a>
           </p>
+          <CountingStatus />
           <Switch
             label="Link my activity to my account"
             description="Only when you’re signed in: your visits, listening and features used are saved with your account, and the site’s owner can see them. Off, you’re counted anonymously, like someone not signed in."

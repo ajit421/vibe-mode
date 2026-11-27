@@ -3,7 +3,7 @@ import { THEMES } from '@/themes';
 import { PLAYLISTS } from '@/music/playlists';
 import { usePlayer } from '@/state/player-context';
 import { useVibe } from '@/state/vibe-context';
-import { accountKey, counting, hints, noteMode, report, setLinking, setPlaying, setVisible, tabId, track } from '@/utils/analytics';
+import { accountKey, counting, hints, noteFailedReport, noteMode, report, setLinking, setPlaying, setVisible, tabId, track } from '@/utils/analytics';
 
 /** One ping a minute while playing: one billed request each (functions/api/listen.ts). */
 const EVERY_MS = 60_000;
@@ -77,7 +77,7 @@ export function Analytics() {
         // ahead of its migration) is tried again on the next load, not lost.
         if (response.ok) sessionStorage.setItem(VISITED_KEY, '1');
       })
-      .catch(() => {});
+      .catch(noteFailedReport);
   }, []);
 
   // The visit report: sent whenever the tab is hidden (switching tabs or apps,
@@ -128,7 +128,7 @@ export function Analytics() {
           key: accountKey(),
           ...hints(),
         }),
-      }).catch(() => {});
+      }).catch(noteFailedReport);
     };
 
     send(true);

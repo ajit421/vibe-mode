@@ -23,8 +23,27 @@ import { newSyncKey, readRecord } from '@/sync/sync';
  * every function here does nothing.
  */
 
-export const counting = (): boolean =>
-  import.meta.env.PROD && !(navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl;
+export const counting = (): boolean => notCountedBecause() === null;
+
+/**
+ * Why this browser sends nothing, or null when it is counted — shown in
+ * Settings, so a visitor (or the owner testing on a phone) can see it instead
+ * of wondering why /admin shows nobody. Firefox sends Global Privacy Control
+ * in private tabs, and in normal ones with "Tell websites not to share or sell
+ * my data" on; Brave and DuckDuckGo send it by default.
+ */
+export function notCountedBecause(): 'development' | 'privacy-signal' | null {
+  if (!import.meta.env.PROD) return 'development';
+  if ((navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl) return 'privacy-signal';
+  return null;
+}
+
+/** Set when a report never reached the site while online — almost always an ad or tracker blocker. */
+let blocked = false;
+export const noteFailedReport = (): void => {
+  if (navigator.onLine) blocked = true;
+};
+export const reportsBlocked = (): boolean => blocked;
 
 /**
  * What only the page knows (server/ua.ts reads the rest from the request):
