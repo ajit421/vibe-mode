@@ -243,7 +243,10 @@ function registerVisitorTools(server: McpServer, env: Env, profileId: string) {
     const row = await env.DB.prepare('SELECT state, seen_at FROM remote_state WHERE profile_id = ?')
       .bind(profileId)
       .first<{ state: string; seen_at: number }>();
-    return row && Date.now() - row.seen_at < LISTENING_MS ? (JSON.parse(row.state) as Record<string, unknown>) : null;
+    if (!row || Date.now() - row.seen_at >= LISTENING_MS) return null;
+    // An object or nothing: rows from before /api/remote checked the shape may hold null.
+    const state: unknown = JSON.parse(row.state);
+    return state && typeof state === 'object' && !Array.isArray(state) ? (state as Record<string, unknown>) : null;
   };
   const NOT_LISTENING =
     'No Vibe Mode tab is listening. Ask the person to open vibe-mode.pages.dev and switch on "Let AI control this tab" in Customize → Cloud save.';

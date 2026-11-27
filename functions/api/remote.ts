@@ -24,6 +24,10 @@ export const onRequestPost: Handler = async ({ env, request }) => {
   } catch {
     return fail(400, 'Not JSON.');
   }
+  // Only an object is a "now playing" report; anything else (null, a string)
+  // counts as a plain check-in. A stored `null` made /admin and the
+  // assistant's player_status read fields off nothing.
+  if (state !== undefined && (typeof state !== 'object' || state === null || Array.isArray(state))) state = undefined;
 
   const now = Date.now();
   const id = who.profileId;

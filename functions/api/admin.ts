@@ -247,7 +247,7 @@ async function overview(env: Env, url: URL): Promise<Response> {
     visitors: rows.slice(0, PAGE),
     more: rows.length > PAGE,
     listening: (listening.results as { profile_id: string; username: string | null; state: string; seen_at: number }[]).map(
-      (row) => ({ ...row, state: parse(row.state) }),
+      (row) => ({ ...row, state: stateOf(row.state) }),
     ),
     defaults: defaults.results,
     playing: playing.results,
@@ -327,12 +327,18 @@ async function visitor(env: Env, id: string): Promise<Response> {
       (passkey) => ({ ...passkey, transports: parse(passkey.transports ?? '[]') }),
     ),
     uploads: uploads.results,
-    remote: live ? { state: parse(live.state), seen_at: live.seen_at } : null,
+    remote: live ? { state: stateOf(live.state), seen_at: live.seen_at } : null,
     commands: commands.results,
   });
 }
 
 /** Stored JSON, or the raw text if it somehow isn't — never a thrown error. */
+/** A "now playing" report as an object, whatever an older row holds — the page reads fields off it. */
+function stateOf(text: string): Record<string, unknown> {
+  const value = parse(text);
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
 function parse(text: string): unknown {
   try {
     return JSON.parse(text);

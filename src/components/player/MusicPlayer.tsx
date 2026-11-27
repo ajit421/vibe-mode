@@ -168,7 +168,10 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
                   taller than the space above the controls, so the fixed footer
                   grew past the top of the screen and its own buttons were out
                   of reach. It scrolls inside itself instead, like the tracklist. */}
-              <div className="flex max-h-[calc(100dvh-var(--safe-top)-9rem)] flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+              {/* 10rem + the bottom inset: 9rem only just covered the bar
+                  below with a mouse; a touch screen's taller slider and the
+                  home-indicator inset pushed the drawer's top off-screen. */}
+              <div className="flex max-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom)-10rem)] flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="vm-label text-muted">Now playing in</p>
@@ -294,7 +297,14 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
               className="pointer-events-none absolute inset-0 [&_iframe]:h-full [&_iframe]:w-full"
             />
 
-            {thumbnailUrl && !artworkFailed ? (
+            {/* Always painted, under the cover: a new thumbnail is transparent
+                until it loads (every playlist switch mounts one), and with the
+                fallback only drawn *instead* of the image, the playing video
+                showed through the disc in that gap. */}
+            <div className="absolute inset-0 grid place-items-center bg-canvas-2">
+              <ThemeIcon className="size-5 text-muted" strokeWidth={1.25} aria-hidden="true" />
+            </div>
+            {thumbnailUrl && !artworkFailed && (
               <img
                 src={thumbnailUrl}
                 alt=""
@@ -306,10 +316,6 @@ export function MusicPlayer({ onOpenSettings, onOpenCustomize }: MusicPlayerProp
                 data-spinning={isPlaying ? 'true' : 'false'}
                 className="vm-record absolute inset-0 h-full w-full rounded-full object-cover"
               />
-            ) : (
-              <div className="absolute inset-0 grid place-items-center bg-canvas-2">
-                <ThemeIcon className="size-5 text-muted" strokeWidth={1.25} aria-hidden="true" />
-              </div>
             )}
 
             {/* The spindle. Sells the record read at a glance, and gives the

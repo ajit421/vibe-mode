@@ -86,7 +86,8 @@ export interface SharedMode {
 
 /** What a restored file turned out to be, or null when it wasn't a Vibe Mode file. */
 export type ImportResult =
-  | { kind: 'backup' }
+  /** `picturesDropped`: how many of the file's pictures didn't fit the picture budget. */
+  | { kind: 'backup'; picturesDropped: number }
   /** `pictureDropped`: the file had a picture, but there was no room left to save it. */
   | { kind: 'mode'; id: string; pictureDropped: boolean }
   | null;

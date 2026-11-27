@@ -163,13 +163,16 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
   const uploadRef = useRef<HTMLInputElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
+  // Keyed on this mode's saved picture only: on all of `edits`, any other
+  // change (a colour, a layer, a sync from another tab) wiped a pasted link
+  // the visitor hadn't pressed "Use" on yet.
+  const savedImage = customization.edits[mode.id]?.image;
   useEffect(() => {
-    const current = customization.edits[mode.id]?.image;
     // Only a link the visitor typed goes back in the field, never an upload.
-    const typed = typeof current === 'string' && current !== UPLOADED && !current.startsWith('data:');
-    setImageDraft(typed ? current : '');
+    const typed = typeof savedImage === 'string' && savedImage !== UPLOADED && !savedImage.startsWith('data:');
+    setImageDraft(typed ? savedImage : '');
     setImageError(null);
-  }, [mode.id, customization.edits]);
+  }, [mode.id, savedImage]);
 
   const preview = backgroundStillFor(mode);
   const imageState =
@@ -231,7 +234,12 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
         return;
       }
       if (result?.kind === 'backup') {
-        push('Settings restored from your file.', 'IMPORT');
+        push(
+          result.picturesDropped
+            ? `Settings restored from your file — ${result.picturesDropped === 1 ? 'one picture' : `${result.picturesDropped} pictures`} left out, no room left.`
+            : 'Settings restored from your file.',
+          'IMPORT',
+        );
         return;
       }
     } catch {
@@ -867,6 +875,9 @@ function PlaylistRow({ modeId, playlist }: { modeId: string; playlist: VibePlayl
     // An emptied name goes back to the original (built-in) or stays as it was (yours).
     if (!name.trim() && own) return setName(playlist.name);
     updatePlaylist(modeId, playlist.id, { name: name.trim() });
+    // A built-in one that was never renamed keeps its name, so `playlist.name`
+    // doesn't change and the effect above never refills the emptied field.
+    if (!name.trim()) setName(playlist.name);
   };
 
   const saveLink = () => {

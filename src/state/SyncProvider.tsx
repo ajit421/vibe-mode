@@ -501,7 +501,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
       track('sign_in', 'google');
     },
-    [choice, adoptLink, save, store, toast],
+    [adoptLink, save, store, toast],
   );
 
   /* ── Actions for the Account panel ─────────────────────────────────────── */

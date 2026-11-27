@@ -121,7 +121,9 @@ function ModalDialog({ onClose, title, description, children, size = 'md' }: Mod
             <X />
           </IconButton>
         </div>
-        <div className="px-5 py-5 sm:px-6">{children}</div>
+        {/* On a phone the panel is a bottom sheet: its last controls must
+            clear the home indicator, where a swipe belongs to the system. */}
+        <div className="px-5 pt-5 pb-[calc(1.25rem+var(--safe-bottom))] sm:px-6 sm:pb-5">{children}</div>
       </m.div>
     </m.dialog>
   );

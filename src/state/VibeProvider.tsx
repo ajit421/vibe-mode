@@ -688,12 +688,18 @@ export function VibeProvider({ children }: { children: ReactNode }) {
         return { kind: 'mode', id, pictureDropped: Boolean(offered) && !upload };
       }
 
+      // Pictures go through the same budget as an upload: past it, the
+      // localStorage write failed silently (the pictures showed now and were
+      // gone after a reload) and every cloud save stopped at a 413.
+      const offered = sanitizeUploads(raw.uploads);
+      const kept: Uploads = {};
+      for (const [id, still] of Object.entries(offered)) if (fitsUploadBudget(kept, id, still)) kept[id] = still;
       setCustomization(sanitize(raw.customization));
-      setUploads(sanitizeUploads(raw.uploads));
+      setUploads(kept);
       setPreferences(sanitizePreferences(raw.preferences));
       setCustomPlaylistsByTheme(sanitizeCustomPlaylists(raw.customPlaylists));
       setPlaylistOverrides(sanitizeOverrides(raw.playlistOverrides));
-      return { kind: 'backup' };
+      return { kind: 'backup', picturesDropped: Object.keys(offered).length - Object.keys(kept).length };
     },
     [
       customization.added.length,

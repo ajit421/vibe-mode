@@ -11,7 +11,10 @@ export function ToastViewport() {
   return (
     <div
       className="pointer-events-none fixed inset-x-0 z-70 flex flex-col items-center gap-2 px-4"
-      style={{ bottom: 'calc(var(--player-height) + 16px)' }}
+      // Capped: with the player's drawer open on a short screen the bar is
+      // nearly full height, and "above the player" put toasts off the top —
+      // including the copy-link fallback, which shows the link itself.
+      style={{ bottom: 'min(calc(var(--player-height) + 16px), calc(100dvh - var(--safe-top) - 5rem))' }}
       aria-live="polite"
       aria-atomic="false"
     >
