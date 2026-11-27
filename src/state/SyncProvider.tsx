@@ -238,20 +238,26 @@ export function SyncProvider({ children }: { children: ReactNode }) {
             else report(result);
             return false;
           }
-          rec = { ...readRecord(), uploads: { ...readRecord().uploads, [id]: fingerprint(uploads[id]) } };
+          // The server bumps the version on a picture change (so other devices
+          // notice it); keep ours in step, or our own next pull re-loads it.
+          const version = typeof result.body.version === 'number' ? result.body.version : readRecord().version;
+          rec = { ...readRecord(), version, uploads: { ...readRecord().uploads, [id]: fingerprint(uploads[id]) } };
           store(rec);
         }
         for (const id of remove) {
           const result = await deleteUpload(key, id);
           if (superseded()) return false;
           if (needsGoogle(result)) return false;
-          if (!result.ok && result.status !== 401) {
-            report(result);
+          if (!result.ok) {
+            // As for the uploads above: a revoked key is signed out, not "saved".
+            if (result.status === 401) forget();
+            else report(result);
             return false;
           }
           const rest = { ...readRecord().uploads };
           delete rest[id];
-          rec = { ...readRecord(), uploads: rest };
+          const version = typeof result.body?.version === 'number' ? result.body.version : readRecord().version;
+          rec = { ...readRecord(), version, uploads: rest };
           store(rec);
         }
 
@@ -409,12 +415,22 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   /* ── Signing in with Google ────────────────────────────────────────────── */
 
   const googleClientId = useCallback(() => {
-    clientIdOnce ??= googleStatus(null).then((result) => (result.ok ? result.body.clientId : null));
+    clientIdOnce ??= googleStatus(null).then((result) => {
+      // A failed lookup (offline, a 5xx) isn't kept: cached, it said "isn't
+      // set up" for the rest of the page's life, even once back online.
+      if (!result.ok) clientIdOnce = null;
+      return result.ok ? result.body.clientId : null;
+    });
     return clientIdOnce;
   }, []);
 
   /** The account already has modes and so does this browser: which to keep (a dialog). */
   const [choice, setChoice] = useState<{ key: string; account: Account | null } | null>(null);
+  // Read through a ref so an answer counts once: during the dialog's exit
+  // animation a backdrop click or Escape still reached the old closure, and a
+  // late "load the account's" undid the "keep this browser's" just chosen.
+  const choiceRef = useRef(choice);
+  choiceRef.current = choice;
 
   const continueWithGoogle = useCallback(
     async (credential: string): Promise<boolean> => {
@@ -464,13 +480,19 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   /** The dialog's answer. Load = the account's modes replace this browser's; keep = the reverse. */
   const settleChoice = useCallback(
     async (keepThisBrowser: boolean) => {
-      const pending = choice;
+      const pending = choiceRef.current;
+      choiceRef.current = null;
       setChoice(null);
       if (!pending) return;
       const who = pending.account?.email ?? 'your Google account';
       if (keepThisBrowser) {
-        // This browser's modes win: saved over the account's cloud copy.
-        store({ key: pending.key, account: pending.account, data: null, uploads: {}, version: null, off: false });
+        // This browser's modes win: saved over the account's cloud copy. The
+        // account's own pictures are listed as saved-but-stale ('' never
+        // matches a fingerprint), so the save deletes the ones this browser
+        // doesn't have — left alone, they held the picture budget for good.
+        const cloud = await loadProfile(pending.key);
+        const stale = cloud.ok ? Object.fromEntries(Object.keys(cloud.body.uploads ?? {}).map((id) => [id, ''])) : {};
+        store({ key: pending.key, account: pending.account, data: null, uploads: stale, version: null, off: false });
         ready.current = true;
         await save(true);
         toast(`Signed in as ${who}. This browser’s modes are now your account’s.`, 'SYNC');

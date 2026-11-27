@@ -9,6 +9,7 @@ import {
   overLimit,
   readText,
   slowDown,
+  type Env,
   type Handler,
 } from '../../../server/lib';
 
@@ -41,8 +42,21 @@ export const onRequestPut: Handler = async ({ env, request, params }) => {
   )
     .bind(who.profileId, mode, still)
     .run();
-  return json({ ok: true });
+  return json({ ok: true, version: await touch(env, who.profileId) });
 };
+
+/**
+ * A picture change is a change: other devices (and an AI-controlled tab) only
+ * re-load the cloud copy when `profiles.version` moves, and replacing one
+ * upload with another leaves the profile's data identical — so without this
+ * the new picture never reached them.
+ */
+async function touch(env: Env, profileId: string): Promise<number> {
+  const version = await env.DB.prepare('UPDATE profiles SET version = MAX(version, ?) WHERE id = ? RETURNING version')
+    .bind(Date.now(), profileId)
+    .first<number>('version');
+  return version ?? Date.now();
+}
 
 export const onRequestDelete: Handler = async ({ env, request, params }) => {
   const mode = String(params.mode);
@@ -52,5 +66,5 @@ export const onRequestDelete: Handler = async ({ env, request, params }) => {
   await env.DB.prepare('DELETE FROM uploads WHERE profile_id = ? AND mode_id = ?')
     .bind(who.profileId, mode)
     .run();
-  return new Response(null, { status: 204 });
+  return json({ version: await touch(env, who.profileId) });
 };

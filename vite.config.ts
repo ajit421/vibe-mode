@@ -43,7 +43,9 @@ export default defineConfig({
         // Keep the animation library out of the entry chunk so the shell paints fast.
         manualChunks: {
           motion: ['motion/react'],
-          preact: ['preact', 'preact/compat', 'preact/hooks'],
+          // jsx-runtime too: left out, Rollup put the JSX factory in the motion
+          // chunk, so /admin and /authorize downloaded all of motion for it.
+          preact: ['preact', 'preact/compat', 'preact/hooks', 'preact/jsx-runtime'],
         },
       },
     },

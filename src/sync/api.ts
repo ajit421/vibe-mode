@@ -64,10 +64,11 @@ export const saveProfile = (key: string, data: SyncData) => call<{ version: numb
 export const deleteProfile = (key: string) => call<null>('DELETE', '/api/profile', key);
 
 export const saveUpload = (key: string, modeId: string, still: string) =>
-  call<{ ok: true }>('PUT', `/api/uploads/${encodeURIComponent(modeId)}`, key, still);
+  call<{ ok: true; version?: number }>('PUT', `/api/uploads/${encodeURIComponent(modeId)}`, key, still);
 
+/** The body is `null` from an older deploy (204); newer ones send the profile's new version. */
 export const deleteUpload = (key: string, modeId: string) =>
-  call<null>('DELETE', `/api/uploads/${encodeURIComponent(modeId)}`, key);
+  call<{ version?: number } | null>('DELETE', `/api/uploads/${encodeURIComponent(modeId)}`, key);
 
 export const mintKey = (key: string) => call<{ key: string }>('POST', '/api/keys', key);
 

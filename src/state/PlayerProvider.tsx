@@ -231,7 +231,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setTrackIds([]);
       setProgress(0);
       setDuration(0);
-      playerRef.current?.pauseVideo?.();
+      // Torn down, not just paused: a paused player stayed in `playerRef`, so
+      // Space, "next" or an assistant's play command restarted the *previous*
+      // playlist under this one's name, and an armed watchdog could skip it
+      // into playing on its own. The next real source builds a fresh one.
+      clearWatchdog();
+      clearRefreshTimers();
+      playerRef.current?.destroy?.();
+      playerRef.current = null;
+      host.replaceChildren();
       return;
     }
 

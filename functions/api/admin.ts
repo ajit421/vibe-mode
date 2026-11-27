@@ -148,8 +148,21 @@ async function overview(env: Env, url: URL): Promise<Response> {
     // `data` is stored as the browser sent it (it is sanitised on the way
     // back in), so the counts guard every shape: one odd profile must not
     // break the whole list. PAGE + 1 rows says whether there is a next page.
+    // The page is picked first, from cheap columns, and only its rows have
+    // their `data` (up to 1 MB each) parsed: sorting after the JSON counts
+    // made every load parse every profile, heading for D1's time limit.
     env.DB.prepare(
-      `SELECT p.id, l.username, g.email AS google, p.created_at, p.version, octet_length(p.data) AS data_bytes,
+      `WITH page AS (
+         SELECT p.id, l.username, g.email AS google,
+           (SELECT MAX(last_at) FROM sessions s WHERE s.profile_id = p.id) AS last_visit
+         FROM profiles p
+           LEFT JOIN logins l ON l.profile_id = p.id
+           LEFT JOIN google_accounts g ON g.profile_id = p.id
+         WHERE ?1 = '' OR instr(p.id, ?1) = 1 OR instr(l.username, ?1) > 0 OR instr(lower(g.email), ?1) > 0
+         ORDER BY MAX(p.version, COALESCE(last_visit, 0)) DESC
+         LIMIT ?2 OFFSET ?3
+       )
+       SELECT p.id, page.username, page.google, p.created_at, p.version, octet_length(p.data) AS data_bytes,
          COALESCE(json_array_length(p.data, '$.customization.added'), 0) AS added_modes,
          (SELECT COUNT(*) FROM json_each(p.data, '$.customization.edits')) AS edited_modes,
          (SELECT COALESCE(SUM(CASE WHEN type = 'array' THEN json_array_length(value) ELSE 0 END), 0)
@@ -157,14 +170,10 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COUNT(*) FROM device_keys k WHERE k.profile_id = p.id) AS devices,
          (SELECT COUNT(*) FROM uploads u WHERE u.profile_id = p.id) AS uploads,
          (SELECT seen_at FROM remote_state r WHERE r.profile_id = p.id) AS seen_at,
-         (SELECT MAX(last_at) FROM sessions s WHERE s.profile_id = p.id) AS last_visit,
+         page.last_visit,
          (SELECT COALESCE(SUM(ms), 0) FROM profile_listens pl WHERE pl.profile_id = p.id) AS listened_ms
-       FROM profiles p
-         LEFT JOIN logins l ON l.profile_id = p.id
-         LEFT JOIN google_accounts g ON g.profile_id = p.id
-       WHERE ?1 = '' OR instr(p.id, ?1) = 1 OR instr(l.username, ?1) > 0 OR instr(lower(g.email), ?1) > 0
-       ORDER BY MAX(p.version, COALESCE(last_visit, 0)) DESC
-       LIMIT ?2 OFFSET ?3`,
+       FROM page JOIN profiles p ON p.id = page.id
+       ORDER BY MAX(p.version, COALESCE(page.last_visit, 0)) DESC`,
     ).bind(q, PAGE + 1, offset),
     env.DB.prepare(
       `SELECT r.profile_id, l.username, r.state, r.seen_at

@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { THEMES } from '@/themes';
+import { PLAYLISTS } from '@/music/playlists';
 import { usePlayer } from '@/state/player-context';
 import { useVibe } from '@/state/vibe-context';
 import { accountKey, counting, hints, noteMode, report, setLinking, setPlaying, setVisible, tabId, track } from '@/utils/analytics';
@@ -23,6 +25,18 @@ function useChange<T>(value: T, effect: (value: T) => void) {
 
 /** A listener's own mode or playlist is counted as such: its id is random and its name is theirs. */
 const ownOr = (id: string, prefix: string, label: string) => (id.startsWith(prefix) ? label : id);
+
+/** A built-in mode's name from its theme file — not as the visitor renamed it — or a kind. */
+const shippedModeName = (id: string) => THEMES.find((theme) => theme.id === id)?.name ?? 'own mode';
+
+/** A built-in playlist's catalogue name, or a kind for the visitor's own. */
+function shippedPlaylistName(id: string): string {
+  for (const lists of Object.values(PLAYLISTS)) {
+    const hit = lists.find((list) => list.id === id);
+    if (hit) return hit.name;
+  }
+  return 'own playlist';
+}
 
 /**
  * Anonymous counts for the owner's admin page (see src/utils/analytics.ts for
@@ -103,9 +117,12 @@ export function Analytics() {
         body: JSON.stringify({
           tab: tabId(),
           mode: mode.id,
-          modeName: mode.name,
+          // The names the site ships, never the visitor's own wording: a
+          // renamed or own mode / playlist is the visitor's text, which the
+          // anonymous counts must not carry (/privacy, CLAUDE.md).
+          modeName: shippedModeName(mode.id),
           playlist: list?.id ?? null,
-          playlistName: list?.name ?? null,
+          playlistName: list ? shippedPlaylistName(list.id) : null,
           track: current?.title ?? null,
           playing,
           key: accountKey(),
