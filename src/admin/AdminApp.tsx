@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { GoogleButton } from '@/components/account/GoogleButton';
 
 /*
  * The owner's view of every visitor, over functions/api/admin.ts (read-only).
  *
- * The owner key (MCP_ADMIN_TOKEN) is typed in once and kept in sessionStorage,
- * so it is gone when the tab closes and never sits in localStorage. Nothing
+ * Two ways in: "Continue with Google" with an account listed in ADMIN_EMAILS
+ * (its ID token is the credential, and lapses after an hour), or the owner key
+ * (MCP_ADMIN_TOKEN) typed in. Either is kept in sessionStorage, so it is gone
+ * when the tab closes and never sits in localStorage. Nothing
  * refreshes on a timer: every call is a billed request, so "Refresh" is a button.
  * Everything shown is visitor-written text, rendered as text — never as HTML.
  */
@@ -453,6 +456,14 @@ export function AdminApp() {
 
 function SignIn({ notice, onToken }: { notice: string | null; onToken: (token: string) => void }) {
   const [value, setValue] = useState('');
+  const [clientId, setClientId] = useState<string | null>(null);
+  useEffect(() => {
+    // No Google button when sign-in isn't set up, or the API can't be reached: the key form still works.
+    fetch('/api/google', { cache: 'no-store' })
+      .then((response) => response.json())
+      .then((body: { clientId?: unknown }) => setClientId(typeof body.clientId === 'string' ? body.clientId : null))
+      .catch(() => setClientId(null));
+  }, []);
   return (
     <form
       className="mx-auto mt-16 flex w-full max-w-sm flex-col gap-3"
@@ -462,6 +473,13 @@ function SignIn({ notice, onToken }: { notice: string | null; onToken: (token: s
       }}
     >
       <h1 className="text-xl font-semibold text-zinc-50">Vibe Mode admin</h1>
+      {clientId && (
+        <>
+          <p className="text-sm text-zinc-400">Sign in with a Google account that is an admin of this site.</p>
+          <GoogleButton clientId={clientId} onCredential={onToken} className="flex min-h-10 justify-start" />
+          <p className="text-xs text-zinc-500">Or use the owner key.</p>
+        </>
+      )}
       <p className="text-sm text-zinc-400">
         Enter the owner key — the <code className="text-zinc-300">MCP_ADMIN_TOKEN</code> secret of the Pages
         project. It stays in this tab only.

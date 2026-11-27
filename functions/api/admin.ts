@@ -1,8 +1,14 @@
-import { fail, isOwner, json, type Env, type Handler } from '../../server/lib';
+import { fail, isOwner, json, overLimit, slowDown, type Env, type Handler } from '../../server/lib';
+import { verifyGoogle } from '../../server/google';
 
 // The owner's view of every visitor, for the admin page (admin.html → /admin).
-// Read-only: nothing here changes a row. The caller must send
-// `Authorization: Bearer <MCP_ADMIN_TOKEN>`; with that secret unset, nobody gets in.
+// Read-only: nothing here changes a row. The caller sends one of:
+//   `Authorization: Bearer <MCP_ADMIN_TOKEN>` — the owner key; or
+//   `Authorization: Bearer <Google ID token>` — from "Continue with Google" on
+//   the page, for an account whose verified email is in ADMIN_EMAILS. The token
+//   itself is checked on every call (server/google.ts) and lapses after an hour,
+//   so nothing long-lived sits in the tab.
+// With neither set up, nobody gets in.
 //
 //   GET /api/admin                      totals, who is listening now, lockouts,
 //                                       site defaults, and a page of visitors
@@ -49,14 +55,42 @@ interface AdminVisitor {
   listened_ms: number;
 }
 
+/** The emails in ADMIN_EMAILS, lower-cased. Empty when Google sign-in isn't set up. */
+const adminEmails = (env: Env): string[] =>
+  env.GOOGLE_CLIENT_ID
+    ? (env.ADMIN_EMAILS ?? '')
+        .split(',')
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+
+/** Google ID tokens are JWTs (three dot-separated parts); owner keys never contain a dot. */
+const looksLikeJwt = (token: string) => token.split('.').length === 3;
+
 export const onRequestGet: Handler = async ({ env, request }) => {
-  // Said plainly, or the owner would keep retyping a "wrong" key on a site
-  // where no key can be right. Tells a stranger only that it isn't set up.
-  if ((env.MCP_ADMIN_TOKEN?.length ?? 0) < 32) {
-    return fail(503, 'No owner key is set up. Add MCP_ADMIN_TOKEN (32+ characters) as a secret in the Pages project.');
+  const emails = adminEmails(env);
+  // Said plainly, or the owner would keep retrying on a site where no way in
+  // can work. Tells a stranger only that it isn't set up.
+  if ((env.MCP_ADMIN_TOKEN?.length ?? 0) < 32 && !emails.length) {
+    return fail(
+      503,
+      'No admin sign-in is set up. Add ADMIN_EMAILS (your Google email) as a variable, or MCP_ADMIN_TOKEN (32+ characters) as a secret, in the Pages project.',
+    );
   }
   const token = request.headers.get('Authorization')?.match(/^Bearer (\S+)$/)?.[1];
-  if (!(await isOwner(env, token))) return fail(401, 'That isn’t the owner key.');
+  if (token && looksLikeJwt(token)) {
+    if (!emails.length) return fail(401, 'Google sign-in for admins isn’t set up. Add ADMIN_EMAILS in the Pages project.');
+    // Each call checks the token against Google's keys: keep strangers from making it a crypto treadmill.
+    if (overLimit(request, 'admin-google', 120, 10 * 60_000)) return slowDown();
+    const google = await verifyGoogle(token, env.GOOGLE_CLIENT_ID!);
+    if (!google) return fail(401, 'Your Google sign-in has run out. Sign in again.');
+    // Only a verified email counts (verifyGoogle drops an unverified one).
+    if (!google.email || !emails.includes(google.email.toLowerCase())) {
+      return fail(401, 'That Google account isn’t an admin of this site.');
+    }
+  } else if (!(await isOwner(env, token))) {
+    return fail(401, 'That isn’t the owner key.');
+  }
   const url = new URL(request.url);
   const id = url.searchParams.get('user');
   return id === null ? overview(env, url) : visitor(env, id);

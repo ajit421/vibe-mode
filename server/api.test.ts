@@ -255,6 +255,27 @@ describe('/api/admin — the owner’s view', () => {
     expect(ok.headers.get('Cache-Control')).toBe('no-store');
   });
 
+  it('lets in a Google account listed in ADMIN_EMAILS, and no other', async () => {
+    const google = { env: { GOOGLE_CLIENT_ID: 'client-1', ADMIN_EMAILS: ' Owner@Gmail.com , other@x.com' } };
+    const jwt = 'a.b.c';
+    const as = (email: string | null) =>
+      vi.mocked(verifyGoogle).mockResolvedValue({ sub: 's', email, name: null, picture: null });
+    as('owner@gmail.com');
+    // Google alone is a way in: no owner key needed.
+    expect((await ask('', jwt, google)).status).toBe(200);
+    expect(vi.mocked(verifyGoogle)).toHaveBeenLastCalledWith(jwt, 'client-1');
+    as('stranger@gmail.com');
+    expect((await ask('', jwt, google)).status).toBe(401);
+    as(null); // an unverified email comes back as null
+    expect((await ask('', jwt, google)).status).toBe(401);
+    vi.mocked(verifyGoogle).mockResolvedValue(null); // expired or forged
+    expect((await ask('', jwt, google)).status).toBe(401);
+    // Without a client id the list means nothing; with no list, a Google token is refused even beside an owner key.
+    expect((await ask('', jwt, { env: { ADMIN_EMAILS: 'owner@gmail.com' } })).status).toBe(503);
+    as('owner@gmail.com');
+    expect((await ask('', jwt, { env: { GOOGLE_CLIENT_ID: 'client-1', MCP_ADMIN_TOKEN: OWNER } })).status).toBe(401);
+  });
+
   it('counts visitors, lists them newest change first, and finds one by Google email', async () => {
     const [a, b] = [newKey(), newKey()];
     await member(a, 'asha');

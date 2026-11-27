@@ -205,6 +205,11 @@ commands every 4 seconds — one request each, against Cloudflare's free
 `list_site_defaults`, `set_site_default` and `delete_site_default` — the same
 rows as the D1 `defaults` table. Without the variable, there is no owner link.
 
+**Admin page (`/admin`).** Sign in with Google: add a variable `ADMIN_EMAILS`
+(your Google email; several separated by commas) on the Pages project, next to
+`GOOGLE_CLIENT_ID`, and redeploy. Only a verified email on that list gets in.
+The owner key (`MCP_ADMIN_TOKEN`) still works there too.
+
 ---
 
 ## Tech stack

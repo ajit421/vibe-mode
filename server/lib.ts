@@ -27,6 +27,11 @@ export interface Env {
   MCP_ADMIN_TOKEN?: string;
   /** "Continue with Google" (functions/api/google.ts). Public, not secret. Unset = no Google button. */
   GOOGLE_CLIENT_ID?: string;
+  /**
+   * Google accounts (verified emails, comma-separated) that may open /admin by
+   * signing in with Google. A Pages variable; unset = only the owner key works.
+   */
+  ADMIN_EMAILS?: string;
 }
 
 export type Handler = PagesFunction<Env>;
