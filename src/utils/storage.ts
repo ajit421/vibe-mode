@@ -16,6 +16,10 @@ export const STORAGE_KEYS = {
   hasEntered: `${PREFIX}.hasEntered`,
   /** The site's defaults as last served by `/api/config` — so first paint needn't wait for it. */
   defaults: `${PREFIX}.defaults`,
+  /** 'yes' / 'no' to "Allow anonymous stats?" (src/utils/analytics.ts); absent = not asked yet. */
+  statsChoice: `${PREFIX}.statsChoice`,
+  /** The random returning-visitor id — made only after a 'yes' above, removed on a 'no'. */
+  visitor: `${PREFIX}.visitor`,
 } as const;
 
 const kindOf = (value: unknown): string => (Array.isArray(value) ? 'array' : typeof value);

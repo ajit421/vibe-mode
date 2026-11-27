@@ -116,6 +116,8 @@ async function overview(env: Env, url: URL): Promise<Response> {
     events,
     sessions,
     lengths,
+    speed,
+    returning,
     ...buckets
   ] = await env.DB.batch([
     env.DB.prepare(
@@ -233,6 +235,21 @@ async function overview(env: Env, url: URL): Promise<Response> {
          COUNT(*) AS n
        FROM sessions WHERE day >= ? GROUP BY name ORDER BY MIN(visible_ms)`,
     ).bind(week),
+    // How fast the page loaded, by kind of device (migrations/0012_insights.sql).
+    env.DB.prepare(
+      `SELECT device AS name, COUNT(load_ms) AS n, CAST(AVG(load_ms) AS INTEGER) AS load_ms,
+         CAST(AVG(lcp_ms) AS INTEGER) AS lcp_ms
+       FROM sessions WHERE day >= ? AND load_ms IS NOT NULL GROUP BY device ORDER BY n DESC`,
+    ).bind(week),
+    // Returning visitors: only browsers whose visitor allowed anonymous stats.
+    env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM visitors WHERE last_day >= ?1) AS seen_week,
+         (SELECT COUNT(*) FROM visitors WHERE last_day >= ?1 AND days > 1) AS returning_week,
+         (SELECT COUNT(*) FROM visitors WHERE first_day >= ?1 AND days = 1) AS new_week,
+         (SELECT COUNT(*) FROM visitors) AS remembered,
+         (SELECT COALESCE(AVG(days), 0) FROM visitors WHERE last_day >= ?2) AS avg_days_month`,
+    ).bind(week, since),
     ...BUCKETS.map((bucket) =>
       env.DB.prepare(
         `SELECT ${bucket} AS name, SUM(count) AS n FROM visits WHERE day >= ? GROUP BY ${bucket} ORDER BY n DESC LIMIT 25`,
@@ -265,6 +282,10 @@ async function overview(env: Env, url: URL): Promise<Response> {
       events: events.results,
       sessions: sessions.results,
       lengths: lengths.results,
+    },
+    insights: {
+      speed: speed.results,
+      returning: returning.results[0],
     },
   });
 }

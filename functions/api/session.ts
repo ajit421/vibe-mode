@@ -9,6 +9,9 @@ import { classify, countryOf } from '../../server/ua';
 // with a cloud copy who leaves "Link my activity" on. Then the visit is noted
 // against their profile, with the features used in it, for the admin page's
 // per-account history (migrations/0009_account_activity.sql). Never an IP.
+// Also (migrations/0012_insights.sql): how fast the page loaded, and — only
+// when the visitor allowed anonymous stats — a random browser id, kept apart
+// from the session with nothing but the days it was seen (returning visitors).
 //
 // Times are totals for the visit so far and only ever grow, so a repeated
 // report changes nothing and a lost one is made good by the next. Feature
@@ -57,6 +60,14 @@ export const onRequestPost: Handler = async ({ env, request }) => {
   const listened = Math.min(ms(body.listenedMs), open);
   const started = now - open;
   const firstMode = typeof body.firstMode === 'string' ? body.firstMode.slice(0, 60) : null;
+  // Page speed (migrations/0012_insights.sql): a load past two minutes is a
+  // measuring glitch, not a slow page.
+  const speed = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 && value < 120_000 ? Math.round(value) : null;
+  const loadMs = speed(body.loadMs);
+  const lcpMs = speed(body.lcpMs);
+  // Only present after the visitor said yes to anonymous stats; same shape as a tab id.
+  const visitorId = isKey(body.visitor as string) ? (body.visitor as string) : null;
 
   const uses: Use[] = [];
   for (const event of (Array.isArray(body.events) ? body.events.slice(0, MAX_EVENTS) : []) as Record<string, unknown>[]) {
@@ -87,14 +98,16 @@ export const onRequestPost: Handler = async ({ env, request }) => {
   const writes = [
     env.DB.prepare(
       `INSERT INTO sessions (tab, day, started_at, last_at, open_ms, visible_ms, listened_ms, first_mode,
-         browser, os, device, country, profile_id, events)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         browser, os, device, country, profile_id, events, load_ms, lcp_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (tab) DO UPDATE SET last_at = excluded.last_at,
          open_ms = MAX(open_ms, excluded.open_ms),
          visible_ms = MAX(visible_ms, excluded.visible_ms),
          listened_ms = MAX(listened_ms, excluded.listened_ms),
          profile_id = excluded.profile_id,
-         events = excluded.events`,
+         events = excluded.events,
+         load_ms = COALESCE(load_ms, excluded.load_ms),
+         lcp_ms = COALESCE(lcp_ms, excluded.lcp_ms)`,
     ).bind(
       body.tab,
       dayOf(started),
@@ -110,10 +123,21 @@ export const onRequestPost: Handler = async ({ env, request }) => {
       countryOf(request),
       who?.profileId ?? null,
       visitUses,
+      loadMs,
+      lcpMs,
     ),
   ];
 
   const today = dayOf(now);
+  if (visitorId) {
+    // A day counts once however many reports arrive in it; a later day adds one.
+    writes.push(
+      env.DB.prepare(
+        `INSERT INTO visitors (id, first_day, last_day, days) VALUES (?1, ?2, ?2, 1)
+         ON CONFLICT (id) DO UPDATE SET days = days + (last_day <> ?2), last_day = MAX(last_day, ?2)`,
+      ).bind(visitorId, today),
+    );
+  }
   for (const use of uses) {
     writes.push(
       env.DB.prepare(
@@ -125,6 +149,8 @@ export const onRequestPost: Handler = async ({ env, request }) => {
 
   if (Math.random() < SWEEP_ODDS) {
     writes.push(env.DB.prepare('DELETE FROM sessions WHERE day < ?').bind(dayOf(now - KEEP_DAYS * DAY_MS)));
+    // A browser not seen for over a year is forgotten.
+    writes.push(env.DB.prepare('DELETE FROM visitors WHERE last_day < ?').bind(dayOf(now - 400 * DAY_MS)));
   }
   await env.DB.batch(writes);
   return new Response(null, { status: 204 });

@@ -11,7 +11,23 @@ import { usePlayer } from '@/state/player-context';
 import { useToast } from '@/state/toast-context';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { cn } from '@/utils/cn';
-import { notCountedBecause, reportsBlocked } from '@/utils/analytics';
+import { notCountedBecause, reportsBlocked, setStatsChoice } from '@/utils/analytics';
+import { useStatsChoice } from '@/hooks/useStatsChoice';
+
+/** The same choice as the "Allow anonymous stats?" card, changeable here any time. */
+function StatsSwitch() {
+  const choice = useStatsChoice();
+  // Nothing is sent from this browser anyway: no point offering a switch that does nothing.
+  if (notCountedBecause() !== null) return null;
+  return (
+    <Switch
+      label="Remember this browser (anonymous)"
+      description="A random id, with no name and no IP, so the owner can see how many people come back. Off, it is forgotten here."
+      checked={choice === 'yes'}
+      onChange={(value) => setStatsChoice(value ? 'yes' : 'no')}
+    />
+  );
+}
 
 /**
  * Whether *this* browser is counted, and if not, why — so "/admin shows
@@ -224,13 +240,15 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
           <p className="text-xs text-muted">
             So the site’s owner can see how it’s used, each tab is counted — by browser, system, device
             type and country — with how long it stays open, on screen and playing music, which mode,
-            playlist and song play, and which features are used (panels, shortcuts, skips…). No IP is
-            kept. Browsers with Global Privacy Control turned on send nothing.{' '}
+            playlist and song play, which features are used (panels, shortcuts, skips…), how fast the
+            page loaded, and what went wrong (the kind of error, never its text). No IP is kept.
+            Browsers with Global Privacy Control turned on send nothing.{' '}
             <a className="underline hover:text-ink" href="/privacy" target="_blank" rel="noopener">
               Privacy
             </a>
           </p>
           <CountingStatus />
+          <StatsSwitch />
           <Switch
             label="Link my activity to my account"
             description="Only when you’re signed in: your visits, listening and features used are saved with your account, and the site’s owner can see them. Off, you’re counted anonymously, like someone not signed in."

@@ -61,7 +61,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  for (const table of ['oauth_codes', 'oauth_clients', 'profile_listens', 'google_accounts', 'sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
+  for (const table of ['visitors', 'oauth_codes', 'oauth_clients', 'profile_listens', 'google_accounts', 'sessions', 'listen_daily', 'events_daily', 'visits', 'listeners', 'login_failures', 'logins', 'remote_commands', 'remote_state', 'uploads', 'passkeys', 'device_keys', 'profiles', 'challenges', 'defaults']) {
     await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 });
@@ -447,6 +447,25 @@ describe('/api/listen + /api/session — minutes, visit length, features used', 
         })
       ).json<{ engagement: Record<string, unknown> & { sessions: object[]; events: object[]; modes: object[] } }>()
     ).engagement;
+
+  it('keeps page speed once per visit, and counts a remembered browser once per day', async () => {
+    const tab = newKey();
+    const visitor = newKey();
+    await beacon({ tab, openMs: 5_000, loadMs: 1840, lcpMs: 2210, visitor });
+    await beacon({ tab, openMs: 9_000, loadMs: 9999, lcpMs: 9999, visitor }); // later reports don't rewrite the speed
+    await beacon({ tab, openMs: 9_000, loadMs: 999_999 }); // a glitch, not a slow page
+    const row = await env.DB.prepare('SELECT load_ms, lcp_ms FROM sessions WHERE tab = ?').bind(tab).first();
+    expect(row).toEqual({ load_ms: 1840, lcp_ms: 2210 });
+    // Same day, many reports: one day seen.
+    expect(await env.DB.prepare('SELECT days FROM visitors WHERE id = ?').bind(visitor).first<number>('days')).toBe(1);
+    // A report without the id (no consent) adds no visitor; a bad id is ignored.
+    await beacon({ tab: newKey(), openMs: 1_000, visitor: 'not-an-id' });
+    expect(await env.DB.prepare('SELECT COUNT(*) AS n FROM visitors').first<number>('n')).toBe(1);
+    // Seen again on a later day: a returning visitor.
+    await env.DB.prepare("UPDATE visitors SET first_day = '2000-01-01', last_day = '2000-01-01'").run();
+    await beacon({ tab: newKey(), openMs: 1_000, visitor });
+    expect(await env.DB.prepare('SELECT days FROM visitors WHERE id = ?').bind(visitor).first<number>('days')).toBe(2);
+  });
 
   it('credits the time between pings to what was playing, and nothing for a long silence', async () => {
     const tab = newKey();

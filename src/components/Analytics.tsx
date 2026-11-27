@@ -152,5 +152,34 @@ export function Analytics() {
   useChange(repeat, (on) => track('repeat', on ? 'on' : 'off'));
   useChange(isMuted, (muted) => track('mute', muted ? 'on' : 'off'));
 
+  // Script errors the error boundary never sees (event handlers, timers,
+  // promises), for the admin page's "Problems". Only the kind of error and the
+  // file it came from — never the message, which can quote the visitor's own
+  // text. Cross-origin noise ("Script error.", e.g. from the YouTube iframe's
+  // API) carries neither and is skipped.
+  useEffect(() => {
+    if (!counting()) return;
+    const onError = (event: ErrorEvent) => {
+      if (!(event.error instanceof Error)) return;
+      track('js_error', errorDetail(event.error, event.filename));
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason instanceof Error) track('js_error', errorDetail(event.reason, ''));
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
+
   return null;
+}
+
+/** "TypeError @ main": the error's kind and the bundle it was thrown in, hash dropped. */
+function errorDetail(error: Error, filename: string): string {
+  const source = filename || error.stack || '';
+  const file = source.match(/\/assets\/([A-Za-z]+)[-.]/)?.[1] ?? 'page';
+  return `${error.name || 'Error'} @ ${file}`;
 }

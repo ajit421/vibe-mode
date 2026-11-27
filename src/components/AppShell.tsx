@@ -14,6 +14,7 @@ import { SettingsPanel } from '@/components/panels/SettingsPanel';
 import { ShortcutsPanel } from '@/components/panels/ShortcutsPanel';
 import { AccountPanel } from '@/components/panels/AccountPanel';
 import { ToastViewport } from '@/components/ui/ToastViewport';
+import { StatsConsent } from '@/components/StatsConsent';
 import { Landing } from '@/components/screens/Landing';
 import { World } from '@/components/screens/World';
 import { RemoteControl } from '@/components/RemoteControl';
@@ -166,6 +167,7 @@ export function AppShell() {
         />
 
         <ToastViewport />
+        <StatsConsent />
         <TransitionOverlay />
         <ModeSelectorOverlay />
         <SettingsPanel

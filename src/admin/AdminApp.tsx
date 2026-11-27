@@ -145,7 +145,15 @@ interface Overview {
     country: Count[];
   };
   engagement: Engagement;
+  /** Page speed and returning visitors (migrations/0012_insights.sql). Absent from an older API. */
+  insights?: {
+    speed: { name: string; n: number; load_ms: number | null; lcp_ms: number | null }[];
+    returning: { seen_week: number; returning_week: number; new_week: number; remembered: number; avg_days_month: number };
+  };
 }
+
+/** Counts that are things going wrong, shown under "Problems" rather than "What people use". */
+const PROBLEMS = new Set(['crash', 'js_error', 'player_error', 'save_failed']);
 
 /** One tab's visit (functions/api/session.ts): no id, nothing that links it to another. */
 interface SessionRow {
@@ -286,7 +294,12 @@ const USES: Record<string, string> = {
   cloud_deleted: 'Deleted the cloud copy',
   install: 'Install as an app',
   crash: 'The app crashed',
+  js_error: 'Script error (kind @ file)',
+  save_failed: 'Cloud save failed (HTTP status)',
 };
+
+/** 1840 → "1.8 s". */
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 
 const regions = new Intl.DisplayNames(undefined, { type: 'region' });
 /** 'IN' → 'India'. Cloudflare also sends 'XX' (unknown) and 'T1' (Tor), which aren't regions. */
@@ -737,15 +750,69 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
       )}
 
       {data && (
-        <Section title={`What people use · last ${data.visits.days} days`}>
-          <Table head={['Use', 'Detail', 'Times']} empty={data.engagement.events.length === 0 ? 'Nothing counted yet.' : undefined}>
-            {data.engagement.events.map((row) => (
-              <tr key={`${row.name}:${row.detail}`}>
-                <td className={TD}>{USES[row.name] ?? row.name}</td>
-                <td className="px-3 py-2">{row.detail || <span className="text-zinc-500">—</span>}</td>
+        <Section title={`Problems · last ${data.visits.days} days`}>
+          <Table
+            head={['What went wrong', 'Detail', 'Times']}
+            empty={data.engagement.events.some((row) => PROBLEMS.has(row.name)) ? undefined : 'Nothing has gone wrong.'}
+          >
+            {data.engagement.events
+              .filter((row) => PROBLEMS.has(row.name))
+              .map((row) => (
+                <tr key={`${row.name}:${row.detail}`}>
+                  <td className={TD}>{USES[row.name] ?? row.name}</td>
+                  <td className="px-3 py-2">{row.detail || <span className="text-zinc-500">—</span>}</td>
+                  <td className={TD}>{row.n}</td>
+                </tr>
+              ))}
+          </Table>
+        </Section>
+      )}
+
+      {data?.insights && (
+        <Section title="Speed · last 7 days">
+          <Table
+            head={['Device', 'Visits measured', 'Page loaded', 'Largest paint']}
+            empty={data.insights.speed.length === 0 ? 'No visits measured yet.' : undefined}
+          >
+            {data.insights.speed.map((row) => (
+              <tr key={row.name}>
+                <td className={TD}>{capital(row.name ?? '—')}</td>
                 <td className={TD}>{row.n}</td>
+                <td className={TD}>{row.load_ms === null ? '—' : seconds(row.load_ms)}</td>
+                <td className={TD}>{row.lcp_ms === null ? '—' : seconds(row.lcp_ms)}</td>
               </tr>
             ))}
+          </Table>
+        </Section>
+      )}
+
+      {data?.insights && (
+        <Section title="Returning visitors · only browsers that allowed it">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Seen, 7 days" value={data.insights.returning.seen_week} />
+            <Stat label="Came back" value={data.insights.returning.returning_week} hint="seen on 2+ days" />
+            <Stat label="New this week" value={data.insights.returning.new_week} />
+            <Stat
+              label="Days per visitor"
+              value={data.insights.returning.avg_days_month.toFixed(1)}
+              hint={`last 30 days · ${data.insights.returning.remembered} remembered in all`}
+            />
+          </div>
+        </Section>
+      )}
+
+      {data && (
+        <Section title={`What people use · last ${data.visits.days} days`}>
+          <Table head={['Use', 'Detail', 'Times']} empty={data.engagement.events.length === 0 ? 'Nothing counted yet.' : undefined}>
+            {data.engagement.events
+              .filter((row) => !PROBLEMS.has(row.name))
+              .map((row) => (
+                <tr key={`${row.name}:${row.detail}`}>
+                  <td className={TD}>{USES[row.name] ?? row.name}</td>
+                  <td className="px-3 py-2">{row.detail || <span className="text-zinc-500">—</span>}</td>
+                  <td className={TD}>{row.n}</td>
+                </tr>
+              ))}
           </Table>
         </Section>
       )}

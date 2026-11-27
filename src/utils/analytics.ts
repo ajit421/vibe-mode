@@ -1,4 +1,5 @@
-import { newSyncKey, readRecord } from '@/sync/sync';
+import { isSyncKey, newSyncKey, readRecord } from '@/sync/sync';
+import { readStorage, STORAGE_KEYS, writeStorage } from '@/utils/storage';
 
 /*
  * Anonymous usage counts for the owner's admin page — the client half of
@@ -36,6 +37,69 @@ export function notCountedBecause(): 'development' | 'privacy-signal' | null {
   if (!import.meta.env.PROD) return 'development';
   if ((navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl) return 'privacy-signal';
   return null;
+}
+
+/* ── Returning visitors: only with the visitor's yes ─────────────────────── */
+
+export type StatsChoice = 'yes' | 'no' | null;
+const choiceListeners = new Set<() => void>();
+
+/** The visitor's answer to "Allow anonymous stats?" in this browser; null = not asked yet. */
+export function statsChoice(): StatsChoice {
+  const value = readStorage<string>(STORAGE_KEYS.statsChoice, '');
+  return value === 'yes' || value === 'no' ? value : null;
+}
+
+/** Records the answer. A 'no' also forgets the id, so this browser is a stranger again. */
+export function setStatsChoice(choice: 'yes' | 'no'): void {
+  writeStorage(STORAGE_KEYS.statsChoice, choice);
+  if (choice === 'no') {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.visitor);
+    } catch {
+      /* storage blocked: there was no id to forget */
+    }
+  }
+  for (const listener of choiceListeners) listener();
+}
+
+/** For the consent card and the Settings switch, so answering in one updates the other. */
+export function onStatsChoice(listener: () => void): () => void {
+  choiceListeners.add(listener);
+  return () => choiceListeners.delete(listener);
+}
+
+/** The random id that tells a returning browser from a new one — made only after a yes. */
+function visitorId(): string | null {
+  if (statsChoice() !== 'yes') return null;
+  let id = readStorage<string>(STORAGE_KEYS.visitor, '');
+  if (!isSyncKey(id)) {
+    id = newSyncKey();
+    writeStorage(STORAGE_KEYS.visitor, id);
+  }
+  return id;
+}
+
+/* ── Page speed ─────────────────────────────────────────────────────────── */
+
+/** Largest Contentful Paint, as the browser reports it (the last candidate wins). */
+let lcpMs: number | null = null;
+try {
+  if (typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('largest-contentful-paint')) {
+    new PerformanceObserver((list) => {
+      const entries = list.getEntries();
+      const last = entries[entries.length - 1];
+      if (last) lcpMs = Math.round(last.startTime);
+    }).observe({ type: 'largest-contentful-paint', buffered: true });
+  }
+} catch {
+  /* no LCP in this browser (Safari before 18): load time alone is sent */
+}
+
+/** How long the page took to load, from the browser's own navigation timing; null until it has loaded. */
+function loadMs(): number | null {
+  const nav = typeof performance !== 'undefined' ? (performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined) : undefined;
+  return nav && nav.loadEventEnd > 0 ? Math.round(nav.loadEventEnd) : null;
 }
 
 /** Set when a report never reached the site while online — almost always an ad or tracker blocker. */
@@ -145,6 +209,9 @@ export function snapshot(now = Date.now()) {
     listenedMs: session.listenedMs + (session.playingSince === null ? 0 : now - session.playingSince),
     firstMode: session.firstMode,
     events,
+    loadMs: loadMs(),
+    lcpMs,
+    visitor: visitorId(),
     key: accountKey(),
     ...hints(),
   };

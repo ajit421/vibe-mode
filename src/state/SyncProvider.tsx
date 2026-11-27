@@ -129,6 +129,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   const report = useCallback((result: ApiResult<unknown>) => {
     if (result.ok) return;
+    // For the admin page's "Problems": the HTTP status only. Offline isn't a failure.
+    if (result.status !== 0) track('save_failed', String(result.status));
     setStatus(result.status === 0 ? 'offline' : 'error');
     setMessage(result.status === 0 ? 'Offline — your changes are kept here and saved when you’re back.' : result.error);
   }, []);
