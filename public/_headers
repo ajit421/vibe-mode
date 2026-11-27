@@ -15,10 +15,14 @@
 # The owner's page holds the owner key in its tab: only its own scripts and
 # styles, requests only to its own API, pictures only as data URLs or from
 # here, no form may post anywhere, and no other site may frame it. The one
-# exception is Google's sign-in script, button frame and styles (/gsi/ only,
-# as Google's CSP guide lists them) for "Continue with Google".
+# exception is Google's sign-in script, button frame and styles (/gsi/ only)
+# for "Continue with Google". Its script injects the button's CSS as an inline
+# <style> (and sets style attributes), so styles need 'unsafe-inline' — with
+# only the /gsi/style URL the button rendered as a giant unstyled G. A hash
+# would break silently whenever Google changes that CSS. Scripts stay locked:
+# inline styles can't run code, and the page renders visitor text as text.
 /admin
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; img-src 'self' data:; connect-src 'self' https://accounts.google.com/gsi/; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com/gsi/; img-src 'self' data:; connect-src 'self' https://accounts.google.com/gsi/; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Robots-Tag: noindex
 
 # OAuth discovery (public/_redirects): readable by browser-based MCP clients.
