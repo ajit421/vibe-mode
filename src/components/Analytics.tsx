@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { THEMES } from '@/themes';
+import { useStatsChoice } from '@/hooks/useStatsChoice';
 import { PLAYLISTS } from '@/music/playlists';
 import { usePlayer } from '@/state/player-context';
 import { useVibe } from '@/state/vibe-context';
@@ -54,6 +55,10 @@ function shippedPlaylistName(id: string): string {
 export function Analytics() {
   const { isPlaying, track: song, status, shuffle, repeat, isMuted } = usePlayer();
   const { theme, playlist, hasEntered, preferences } = useVibe();
+  // A browser sending Global Privacy Control is counted only after its visitor
+  // says yes ("Help improve Vibe Mode?") — re-run the effects below when they do,
+  // so counting starts now rather than on the next load.
+  const choice = useStatsChoice();
   const latest = useRef({ song, theme, playlist });
   latest.current = { song, theme, playlist };
 
@@ -78,7 +83,7 @@ export function Analytics() {
         if (response.ok) sessionStorage.setItem(VISITED_KEY, '1');
       })
       .catch(noteFailedReport);
-  }, []);
+  }, [choice]);
 
   // The visit report: sent whenever the tab is hidden (switching tabs or apps,
   // locking the phone) and when it closes. Hidden comes first on a close in
@@ -101,7 +106,7 @@ export function Analytics() {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', onPageHide);
     };
-  }, []);
+  }, [choice]);
 
   useEffect(() => {
     setPlaying(isPlaying);
@@ -137,7 +142,7 @@ export function Analytics() {
       window.clearInterval(timer);
       send(false);
     };
-  }, [isPlaying]);
+  }, [isPlaying, choice]);
 
   // Uses seen from here. The first mode counts too: it is where the visit landed.
   useEffect(() => {
@@ -172,7 +177,7 @@ export function Analytics() {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onRejection);
     };
-  }, []);
+  }, [choice]);
 
   return null;
 }

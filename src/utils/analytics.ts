@@ -35,9 +35,16 @@ export const counting = (): boolean => notCountedBecause() === null;
  */
 export function notCountedBecause(): 'development' | 'privacy-signal' | null {
   if (!import.meta.env.PROD) return 'development';
-  if ((navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl) return 'privacy-signal';
+  // The signal is a "no" by default, but the visitor can still say yes for
+  // this site: the "Help improve Vibe Mode?" card and the Settings switch ask
+  // them too, and only that explicit yes turns counting on here.
+  if (sendsPrivacySignal() && statsChoice() !== 'yes') return 'privacy-signal';
   return null;
 }
+
+/** Global Privacy Control: Firefox private tabs (or with the setting on), Brave and DuckDuckGo by default. */
+export const sendsPrivacySignal = (): boolean =>
+  Boolean((navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl);
 
 /* ── Returning visitors: only with the visitor's yes ─────────────────────── */
 

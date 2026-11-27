@@ -11,18 +11,22 @@ import { usePlayer } from '@/state/player-context';
 import { useToast } from '@/state/toast-context';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { cn } from '@/utils/cn';
-import { notCountedBecause, reportsBlocked, setStatsChoice } from '@/utils/analytics';
+import { notCountedBecause, reportsBlocked, sendsPrivacySignal, setStatsChoice } from '@/utils/analytics';
 import { useStatsChoice } from '@/hooks/useStatsChoice';
 
 /** The same choice as the "Allow anonymous stats?" card, changeable here any time. */
 function StatsSwitch() {
   const choice = useStatsChoice();
-  // Nothing is sent from this browser anyway: no point offering a switch that does nothing.
-  if (notCountedBecause() !== null) return null;
+  // Nothing is ever sent while developing: no point offering a switch that does nothing.
+  if (notCountedBecause() === 'development') return null;
   return (
     <Switch
-      label="Remember this browser (anonymous)"
-      description="A random id, with no name and no IP, so the owner can see how many people come back. Off, it is forgotten here."
+      label={sendsPrivacySignal() ? 'Allow anonymous stats for this site' : 'Remember this browser (anonymous)'}
+      description={
+        sendsPrivacySignal()
+          ? 'Your browser asks sites not to collect data, so nothing is counted unless this is on. On: the usage counts above, plus a random id to see if you come back. No name, no IP.'
+          : 'A random id, with no name and no IP, so the owner can see how many people come back. Off, it is forgotten here.'
+      }
       checked={choice === 'yes'}
       onChange={(value) => setStatsChoice(value ? 'yes' : 'no')}
     />
@@ -34,11 +38,12 @@ function StatsSwitch() {
  * nobody, but I'm listening" has an answer on the device itself.
  */
 function CountingStatus() {
+  useStatsChoice(); // re-render when the answer changes: it decides whether a signalling browser is counted
   const reason = notCountedBecause();
   const [text, tone] =
     reason === 'privacy-signal'
       ? [
-          'This browser isn’t counted: it asks sites not to share or sell data (Global Privacy Control). Firefox does that in private tabs, or with “Tell websites not to share or sell my data” on; Brave does by default.',
+          'This browser isn’t counted: it asks sites not to share or sell data (Global Privacy Control). Switch on “Allow anonymous stats” below to be counted here anyway.',
           'muted',
         ]
       : reason === 'development'
@@ -242,7 +247,7 @@ export function SettingsPanel({ open, onClose, onOpenCustomize }: SettingsPanelP
             type and country — with how long it stays open, on screen and playing music, which mode,
             playlist and song play, which features are used (panels, shortcuts, skips…), how fast the
             page loaded, and what went wrong (the kind of error, never its text). No IP is kept.
-            Browsers with Global Privacy Control turned on send nothing.{' '}
+            Browsers with Global Privacy Control turned on send nothing unless you allow it below.{' '}
             <a className="underline hover:text-ink" href="/privacy" target="_blank" rel="noopener">
               Privacy
             </a>
