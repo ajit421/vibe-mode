@@ -1,7 +1,7 @@
 import { PLAYLISTS } from '../src/music/playlists';
 import { normaliseSource } from '../src/music/resolve';
 import { safeImageUrl } from '../src/themes/backgrounds';
-import { LINE_LIMITS, TEXT_LIMITS } from '../src/themes/limits';
+import { LINE_LIMITS, MAX_ADDED_MODES, TEXT_LIMITS } from '../src/themes/limits';
 
 /*
  * A visitor's saved data (`profiles.data`, the backup shape minus pictures),
@@ -193,6 +193,12 @@ export function updateMode(data: VibeData, id: string, patch: ModePatch): { drop
 /** A new mode copied from an existing one; returns its id. */
 export function addMode(data: VibeData, copyOf: string, name?: string): string {
   requireMode(data, copyOf);
+  // The same cap as the Customize panel: the browser keeps only the first
+  // MAX_ADDED_MODES when it reads the data back, so a mode past it would be
+  // reported as added, never appear, and vanish on the browser's next save.
+  if (data.customization.added.length >= MAX_ADDED_MODES) {
+    throw new ToolError(`There are already ${MAX_ADDED_MODES} own modes — remove one first.`);
+  }
   const id = `my-${randomId(8)}`;
   const source = data.customization.edits[copyOf] ?? {};
   // Like "Make a copy" in the panel, minus an uploaded picture: that lives in

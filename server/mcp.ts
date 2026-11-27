@@ -39,7 +39,7 @@ export type Access = { kind: 'visitor'; profileId: string } | { kind: 'owner' };
 export async function accessFor(env: Env, secret: string): Promise<Access | null> {
   if (await isOwner(env, secret)) return { kind: 'owner' };
   // Visitors' tools are a signed-in (Google) feature, like the rest of the cloud.
-  const who = await memberForKey(env, secret);
+  const who = await memberForKey(env, secret, { assistant: true });
   return who ? { kind: 'visitor', profileId: who.profileId } : null;
 }
 
@@ -95,7 +95,10 @@ function registerVisitorTools(server: McpServer, env: Env, profileId: string) {
     const data = await load();
     const result = edit(data);
     const json = JSON.stringify(data);
-    if (json.length > DATA_LIMIT) throw new ToolError('That would make the saved data too large.');
+    // Bytes, as DATA_LIMIT is and as /api/profile measures: `.length` counts
+    // UTF-16 units, so Hindi or emoji text could pass here and then make every
+    // later browser save of the same data fail with 413.
+    if (new TextEncoder().encode(json).length > DATA_LIMIT) throw new ToolError('That would make the saved data too large.');
     await env.DB.prepare('UPDATE profiles SET data = ?, version = ? WHERE id = ?').bind(json, Date.now(), profileId).run();
     return result;
   };

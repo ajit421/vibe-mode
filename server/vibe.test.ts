@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sanitizeCustomization } from '../src/themes/customize';
+import { MAX_ADDED_MODES } from '../src/themes/limits';
 import {
   BUILT_IN_MODES,
   ToolError,
@@ -64,6 +65,13 @@ describe('what an assistant can change, checked like the Customize panel', () =>
     // A copy of a copy still points at the built-in mode.
     const second = addMode(data, id);
     expect(data.customization.added.at(-1)).toEqual({ id: second, baseId: 'metro' });
+  });
+
+  it('stops at the same cap on own modes as the Customize panel', () => {
+    const data = fresh();
+    while (data.customization.added.length < MAX_ADDED_MODES) addMode(data, 'metro');
+    expect(() => addMode(data, 'metro')).toThrow(/remove one first/);
+    expect(data.customization.added).toHaveLength(MAX_ADDED_MODES);
   });
 
   it('bins built-in modes, deletes added ones, and never empties the picker', () => {

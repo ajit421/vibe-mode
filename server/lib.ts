@@ -139,37 +139,52 @@ export async function signedIn(
   return { ...who, account };
 }
 
-/** Like `profileForKey`, but only for a profile signed in with Google (the MCP server's visitors). */
+/**
+ * Like `profileForKey`, but only for a profile signed in with Google. The MCP
+ * server passes `assistant: true` (an assistant's scoped token is meant for
+ * it); the analytics pings don't — only a browser's own key links activity.
+ */
 export async function memberForKey(
   env: Env,
   key: string | null | undefined,
+  { assistant = false }: { assistant?: boolean } = {},
 ): Promise<{ profileId: string; keyHash: string } | null> {
-  const who = await profileForKey(env, key);
+  const who = await profileForKey(env, key, { assistant });
   return who && (await accountOf(env, who.profileId)) ? who : null;
 }
 
-/** The profile a device key belongs to — from a header, or from an MCP link's path. */
+/**
+ * The profile a device key belongs to — from a header, or from an MCP link's
+ * path. An AI assistant's token (scope 'mcp', migrations/0011_key_scope.sql)
+ * counts only where `assistant` is set, i.e. at /mcp: everywhere else — every
+ * /api cloud endpoint goes through `caller` — it is an unknown key.
+ */
 export async function profileForKey(
   env: Env,
   key: string | null | undefined,
+  { assistant = false }: { assistant?: boolean } = {},
 ): Promise<{ profileId: string; keyHash: string } | null> {
   if (!isKey(key)) return null;
   const keyHash = await hashKey(key);
-  const row = await env.DB.prepare('SELECT profile_id FROM device_keys WHERE key_hash = ?')
+  const row = await env.DB.prepare('SELECT profile_id, scope FROM device_keys WHERE key_hash = ?')
     .bind(keyHash)
-    .first<{ profile_id: string }>();
-  return row ? { profileId: row.profile_id, keyHash } : null;
+    .first<{ profile_id: string; scope: string | null }>();
+  if (!row || (row.scope === 'mcp' && !assistant)) return null;
+  return { profileId: row.profile_id, keyHash };
 }
 
-/** Mints another key for a profile (a sync link, a Google sign-in, an AI assistant). Null at the cap. */
-export async function addKey(env: Env, profileId: string): Promise<string | null> {
+/**
+ * Mints another key for a profile (a sync link, a Google sign-in, an AI
+ * assistant — the last with scope 'mcp'). Null at the cap.
+ */
+export async function addKey(env: Env, profileId: string, scope: 'mcp' | null = null): Promise<string | null> {
   const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM device_keys WHERE profile_id = ?')
     .bind(profileId)
     .first<number>('n');
   if ((count ?? 0) >= MAX_KEYS) return null;
   const key = newKey();
-  await env.DB.prepare('INSERT INTO device_keys (key_hash, profile_id, created_at) VALUES (?, ?, ?)')
-    .bind(await hashKey(key), profileId, Date.now())
+  await env.DB.prepare('INSERT INTO device_keys (key_hash, profile_id, created_at, scope) VALUES (?, ?, ?, ?)')
+    .bind(await hashKey(key), profileId, Date.now(), scope)
     .run();
   return key;
 }

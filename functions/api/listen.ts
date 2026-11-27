@@ -1,4 +1,4 @@
-import { fail, isKey, overLimit, profileForKey, readText, SAFE_ID, type Handler } from '../../server/lib';
+import { fail, isKey, overLimit, memberForKey, readText, SAFE_ID, type Handler } from '../../server/lib';
 import { classify, countryOf } from '../../server/ua';
 
 // Anonymous "now playing", and the listening time behind the admin page's
@@ -40,8 +40,9 @@ export const onRequestPost: Handler = async ({ env, request }) => {
 
   // A linked account (migrations/0009_account_activity.sql): the tab sends
   // its device key when the visitor has a cloud copy and leaves "Link my
-  // activity" on. No key, or an unknown one: anonymous, as before.
-  const who = typeof body.key === 'string' ? await profileForKey(env, body.key) : null;
+  // activity" on. No key, an unknown one, or a cloud copy from before Google
+  // sign-in (not signed in, so /privacy promises anonymous): anonymous.
+  const who = typeof body.key === 'string' ? await memberForKey(env, body.key) : null;
 
   const now = Date.now();
   const day = new Date(now).toISOString().slice(0, 10);

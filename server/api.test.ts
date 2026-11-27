@@ -838,6 +838,13 @@ describe('OAuth for the personal MCP server (/mcp)', () => {
       { params: {} },
     );
     expect(init.status).toBe(200);
+
+    // …and nowhere else: the assistant's token is scoped to /mcp, so it can't
+    // read the profile, delete it, or sign the visitor's own devices out.
+    const asAssistant = { key: access_token };
+    expect((await call(profile.onRequestGet, api('/api/profile', asAssistant))).status).toBe(401);
+    expect((await call(profile.onRequestDelete, api('/api/profile', { method: 'DELETE', ...asAssistant }))).status).toBe(401);
+    expect((await call(keys.onRequestDelete, api('/api/keys', { method: 'DELETE', ...asAssistant }))).status).toBe(401);
   });
 
   it('without a token, /mcp says where to sign in', async () => {

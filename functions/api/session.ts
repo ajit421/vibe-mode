@@ -1,4 +1,4 @@
-import { isKey, overLimit, profileForKey, readText, type Handler } from '../../server/lib';
+import { isKey, overLimit, memberForKey, readText, type Handler } from '../../server/lib';
 import { classify, countryOf } from '../../server/ua';
 
 // One tab's visit, reported by src/components/Analytics.tsx with
@@ -68,7 +68,7 @@ export const onRequestPost: Handler = async ({ env, request }) => {
   // A linked visit keeps its own list of features used: this report's added to
   // what earlier reports from the same tab said. An unlinked one keeps none —
   // switching "Link my activity" off mid-visit unlinks the visit, too.
-  const who = typeof body.key === 'string' ? await profileForKey(env, body.key) : null;
+  const who = typeof body.key === 'string' ? await memberForKey(env, body.key) : null;
   let visitUses: string | null = null;
   if (who) {
     const before = await env.DB.prepare('SELECT events FROM sessions WHERE tab = ? AND profile_id = ?')

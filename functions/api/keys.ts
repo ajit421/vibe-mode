@@ -25,8 +25,11 @@ export const onRequestDelete: Handler = async ({ env, request }) => {
   }
   const who = await signedIn(env, request);
   if (who instanceof Response) return who;
-  const result = await env.DB.prepare('DELETE FROM device_keys WHERE profile_id = ? AND key_hash <> ?')
-    .bind(who.profileId, who.keyHash)
-    .run();
+  // Unused assistant sign-in codes go too: one issued in the last five minutes
+  // could otherwise still be traded at /api/oauth/token for a fresh key.
+  const [result] = await env.DB.batch([
+    env.DB.prepare('DELETE FROM device_keys WHERE profile_id = ? AND key_hash <> ?').bind(who.profileId, who.keyHash),
+    env.DB.prepare('DELETE FROM oauth_codes WHERE profile_id = ?').bind(who.profileId),
+  ]);
   return json({ removed: result.meta.changes });
 };

@@ -5,7 +5,7 @@ import { CORS_HEADERS, PKCE, challengeOf, oauthError, withCors } from '../../../
 // for an access token. The code is deleted as it is read, so it works once;
 // it must come from the same app, for the same redirect, with the verifier
 // whose S256 hash was the challenge. The token is a fresh device key of the
-// visitor's profile: no expiry, revoked by "Sign out other devices" in the
+// visitor's profile, scoped to /mcp: no expiry, revoked by "Sign out other devices" in the
 // Account panel or by deleting the cloud copy. No refresh tokens — none needed.
 
 export const onRequestOptions: Handler = async () => new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -46,7 +46,8 @@ export const onRequestPost: Handler = async ({ env, request }) => {
     return oauthError(400, 'invalid_grant', 'That sign-in code is invalid, used or expired. Connect again.');
   }
 
-  const key = await addKey(env, row.profile_id);
+  // Scoped: good at /mcp only, never at the /api cloud endpoints (server/lib.ts profileForKey).
+  const key = await addKey(env, row.profile_id, 'mcp');
   if (!key) return oauthError(400, 'invalid_grant', 'Too many devices. Sign out other devices in Vibe Mode first.');
   return withCors(json({ access_token: key, token_type: 'Bearer', scope: 'vibe' }));
 };

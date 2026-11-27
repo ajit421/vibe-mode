@@ -37,6 +37,15 @@ const request = {
   code_challenge_method: params.get('code_challenge_method'),
 };
 
+/** Host of the return address — checked against the app's registration before anything is shown. */
+const redirectHost = (() => {
+  try {
+    return new URL(request.redirect_uri ?? '').host;
+  } catch {
+    return 'an unknown address';
+  }
+})();
+
 async function getJson<T>(url: string): Promise<{ ok: boolean; body: T & { error?: string } }> {
   try {
     const response = await fetch(url, { cache: 'no-store' });
@@ -132,6 +141,12 @@ export function AuthorizeApp() {
               <span className="min-w-0">
                 <strong className="block truncate text-zinc-50">{phase.kind === 'ready' ? phase.app : 'The app'}</strong>
                 <span className="text-xs text-zinc-400">wants to use your Vibe Mode</span>
+                {/* The name is whatever the app registered itself as — anyone
+                    can register "Claude" — so show where it sends you back:
+                    claude.ai or chatgpt.com, not a stranger's address. */}
+                <span className="block truncate font-mono text-xs text-zinc-300">
+                  returns you to {redirectHost}
+                </span>
               </span>
             </div>
             <p className="mt-5 font-mono text-[0.7rem] tracking-wider text-zinc-400 uppercase">It will be able to</p>
