@@ -416,7 +416,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // `armWatchdog` and `clearWatchdog` are stable, so listing them cannot
     // rebuild the iframe — which must only happen when the source really
     // changes, or playback restarts from zero mid-track.
-  }, [host, key, readTrack, settleTrackInfo, clearWatchdog, armWatchdog, retryToken]);
+  }, [host, key, readTrack, settleTrackInfo, clearWatchdog, clearRefreshTimers, armWatchdog, retryToken]);
 
   /* ── Tear the player down exactly once, on unmount ────────────────────── */
   useEffect(

@@ -201,14 +201,20 @@ describe('/api/uploads/:mode — pictures', () => {
     const key = newKey();
     await save(key);
     await put(key, 'metro', still());
+    const before = await (await call(profile.onRequestGet, api('/api/profile', { key }))).json<{ version: number }>();
+    await new Promise((resolve) => setTimeout(resolve, 5));
     const removed = await call(
       uploads.onRequestDelete,
       api('/api/uploads/metro', { method: 'DELETE', key }),
       { params: { mode: 'metro' } },
     );
-    expect(removed.status).toBe(204);
-    const body = await (await call(profile.onRequestGet, api('/api/profile', { key }))).json<{ uploads: object }>();
+    expect(removed.status).toBe(200);
+    // A picture change moves the version, so other devices pick it up.
+    const { version } = await removed.json<{ version: number }>();
+    expect(version).toBeGreaterThan(before.version);
+    const body = await (await call(profile.onRequestGet, api('/api/profile', { key }))).json<{ uploads: object; version: number }>();
     expect(body.uploads).toEqual({});
+    expect(body.version).toBe(version);
   });
 });
 
