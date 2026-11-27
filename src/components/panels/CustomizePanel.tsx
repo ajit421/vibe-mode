@@ -108,7 +108,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-3 border-t border-line/60 pt-4">
+    // Each group of settings is its own card, so a long editor breaks into
+    // pieces you can find by eye instead of one column split by hairlines.
+    <section className="flex flex-col gap-3 rounded-2xl border border-line/60 bg-ink/[0.025] p-4">
       <h3 className="vm-label text-primary">{title}</h3>
       {children}
     </section>
@@ -253,7 +255,7 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
     >
       <div className="grid gap-5 sm:grid-cols-[12.5rem_1fr]">
         {/* ── Every mode, hidden ones included ─────────────────────────── */}
-        <nav aria-label="Modes" className="flex min-w-0 flex-col gap-2">
+        <nav aria-label="Modes" className="flex min-w-0 flex-col gap-2 self-start rounded-2xl bg-ink/[0.025] p-2 sm:sticky sm:top-24">
           <button
             type="button"
             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-canvas transition-[filter] hover:brightness-110"
@@ -326,7 +328,12 @@ export function CustomizePanel({ open, onClose }: CustomizePanelProps) {
         {/* ── Editor for the selected mode ─────────────────────────────── */}
         <div className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Icon className="size-5 shrink-0" style={{ color: mode.colors.primary }} />
+            <span
+              className="grid size-9 shrink-0 place-items-center rounded-xl border"
+              style={{ backgroundColor: `${mode.colors.primary}1f`, borderColor: `${mode.colors.primary}40` }}
+            >
+              <Icon className="size-4.5" style={{ color: mode.colors.primary }} />
+            </span>
             <h3 className="min-w-0 flex-1 truncate font-display text-lg font-semibold text-ink">
               {mode.name}
             </h3>

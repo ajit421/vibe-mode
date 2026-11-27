@@ -7,6 +7,28 @@
   color-scheme: dark;
 }
 
+/* The breakdown bars are native <meter>s (the page's CSP forbids inline
+   styles): thin rounded bars, a zinc track and an emerald fill. */
+meter {
+  appearance: none;
+  border-radius: 999px;
+  background: var(--color-zinc-800, #27272a);
+  overflow: hidden;
+}
+meter::-webkit-meter-bar {
+  background: var(--color-zinc-800, #27272a);
+  border: 0;
+  border-radius: 999px;
+}
+meter::-webkit-meter-optimum-value {
+  background: var(--color-emerald-400, #34d399);
+  border-radius: 999px;
+}
+meter::-moz-meter-bar {
+  background: var(--color-emerald-400, #34d399);
+  border-radius: 999px;
+}
+
 body {
   margin: 0;
   background: var(--color-zinc-950);

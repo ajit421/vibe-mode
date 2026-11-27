@@ -65,8 +65,6 @@ interface Totals {
   active_day: number;
   active_week: number;
   devices: number;
-  passkeys: number;
-  logins: number;
   /** Profiles linked to a Google account (functions/api/google.ts). */
   google: number;
   uploads: number;
@@ -112,7 +110,6 @@ interface Visitor {
   edited_modes: number;
   playlists: number;
   devices: number;
-  passkeys: number;
   uploads: number;
   seen_at: number | null;
   /** Linked activity (functions/api/session.ts, listen.ts): the last visit, and all listening. */
@@ -137,7 +134,6 @@ interface Overview {
   visitors: Visitor[];
   more: boolean;
   listening: { profile_id: string; username: string | null; state: NowPlaying; seen_at: number }[];
-  lockouts: { username: string; count: number; since: number }[];
   defaults: { kind: string; id: string; value: string }[];
   playing: Playing[];
   visits: {
@@ -327,8 +323,8 @@ function Breakdown({
   empty?: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 p-4">
-      <h3 className="text-sm font-medium text-zinc-300">{title}</h3>
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <h3 className="font-mono text-xs font-semibold tracking-[0.14em] text-zinc-300 uppercase">{title}</h3>
       {rows.length === 0 ? (
         <p className="mt-2 text-sm text-zinc-500">{empty}</p>
       ) : (
@@ -366,6 +362,21 @@ function byMode(rows: Playing[]): [string, number][] {
 
 /* ── Pieces ─────────────────────────────────────────────────────────────── */
 
+/**
+ * "Owner key", or the Google email inside an ID token. Display only: the
+ * token is read, never trusted, here — functions/api/admin.ts verifies it.
+ */
+function signedInAs(token: string): string {
+  const payload = token.split('.')[1];
+  if (!payload) return 'Owner key';
+  try {
+    const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { email?: unknown };
+    return typeof claims.email === 'string' ? `${claims.email} · Google` : 'Google';
+  } catch {
+    return 'Google';
+  }
+}
+
 const BUTTON =
   'rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:border-zinc-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500 disabled:opacity-40';
 const INPUT =
@@ -387,7 +398,13 @@ function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
       <div className="font-mono text-[0.7rem] tracking-wider text-zinc-400 uppercase">{label}</div>
-      <div className="mt-2 text-3xl font-semibold tracking-tight text-zinc-50 tabular-nums">{value}</div>
+      {/* Truncated: some values are emails, and at this size one ran out of the tile. */}
+      <div
+        className="mt-2 truncate text-3xl font-semibold tracking-tight text-zinc-50 tabular-nums"
+        title={typeof value === 'string' ? value : undefined}
+      >
+        {value}
+      </div>
       {hint && <div className="mt-1 font-mono text-[0.7rem] text-zinc-500">{hint}</div>}
     </div>
   );
@@ -559,14 +576,19 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-zinc-50">
-        <span className="size-2.5 rounded-full bg-amber-400" aria-hidden="true" />
-        Vibe Mode admin
-      </h1>
-          <p className="text-sm text-zinc-400" role="status">
+            <span className="size-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+            Vibe Mode admin
+          </h1>
+          <p className="font-mono text-xs text-zinc-400" role="status">
             {loading ? 'Loading…' : data ? <>Updated <Time ms={data.now} now={Date.now()} /></> : ' '}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Who this tab is signed in as — read from the token for display only;
+              the server checks it on every call. */}
+          <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 font-mono text-xs text-zinc-300">
+            {signedInAs(token)}
+          </span>
           <button type="button" className={BUTTON} disabled={loading} onClick={() => void load(searched)}>
             Refresh
           </button>
@@ -823,7 +845,7 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
           }
         >
           <Table
-            head={['Visitor', 'Joined', 'Last visit', 'Listened', 'Last change', 'Devices', 'Passkeys', 'Modes', 'Playlists', 'Pictures', 'Size']}
+            head={['Visitor', 'Joined', 'Last visit', 'Listened', 'Last change', 'Devices', 'Modes', 'Playlists', 'Pictures', 'Size']}
             empty={data.visitors.length === 0 ? (searched ? `No visitor matches “${searched}”.` : 'No visitors yet.') : undefined}
           >
             {data.visitors.map((visitor) => (
@@ -847,7 +869,6 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
                   <Time ms={visitor.version} now={now} />
                 </td>
                 <td className={TD}>{visitor.devices}</td>
-                <td className={TD}>{visitor.passkeys}</td>
                 <td className={TD} title="added · edited">
                   {visitor.added_modes} · {visitor.edited_modes}
                 </td>
@@ -864,25 +885,6 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
               </button>
             </div>
           )}
-        </Section>
-      )}
-
-      {data && (
-        <Section title="Password sign-in, last 15 minutes">
-          <Table head={['Username', 'Tries', 'Since']} empty={data.lockouts.length === 0 ? 'No sign-in tries.' : undefined}>
-            {data.lockouts.map((row) => (
-              <tr key={row.username}>
-                <td className={TD}>{row.username}</td>
-                <td className={TD}>
-                  {row.count}
-                  {row.count >= 10 && <span className="ml-2 text-xs text-amber-400">locked</span>}
-                </td>
-                <td className={TD}>
-                  <Time ms={row.since} now={now} />
-                </td>
-              </tr>
-            ))}
-          </Table>
         </Section>
       )}
 
@@ -1103,26 +1105,13 @@ function VisitorDetail({
             </Section>
           )}
 
-          <Section title="Devices and passkeys">
-            <Table head={['What', 'Added']} empty={detail.devices.length + detail.passkeys.length === 0 ? 'None.' : undefined}>
+          <Section title="Devices">
+            <Table head={['What', 'Added']} empty={detail.devices.length === 0 ? 'None.' : undefined}>
               {detail.devices.map((at, index) => (
                 <tr key={`d${index}`}>
                   <td className={TD}>Device key {index + 1}</td>
                   <td className={TD}>
                     <Time ms={at} now={now} />
-                  </td>
-                </tr>
-              ))}
-              {detail.passkeys.map((passkey) => (
-                <tr key={passkey.credential_id}>
-                  <td className={TD}>
-                    Passkey <span className="font-mono text-xs text-zinc-500">{passkey.credential_id.slice(0, 10)}…</span>
-                    {Array.isArray(passkey.transports) && passkey.transports.length > 0 && (
-                      <span className="text-zinc-500"> · {passkey.transports.join(', ')}</span>
-                    )}
-                  </td>
-                  <td className={TD}>
-                    <Time ms={passkey.created_at} now={now} />
                   </td>
                 </tr>
               ))}

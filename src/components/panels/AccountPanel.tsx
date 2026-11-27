@@ -98,10 +98,12 @@ function SignedOut() {
         </p>
       )}
 
-      <ul className="grid gap-3 sm:grid-cols-2">
+      {/* One per row, each on a faint card like the switches in Settings —
+          a list to read down, not a grid of tiles to scan across. */}
+      <ul className="flex flex-col gap-2">
         {PERKS.map((perk) => (
-          <li key={perk.title} className="flex gap-3 rounded-xl border border-line/70 bg-canvas/40 p-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary [&_svg]:size-[18px]">
+          <li key={perk.title} className="flex items-center gap-3.5 rounded-xl bg-ink/[0.035] px-3.5 py-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/25 bg-primary/12 text-primary [&_svg]:size-[18px]">
               {perk.icon}
             </span>
             <span>
@@ -172,12 +174,16 @@ function SignedIn() {
   return (
     <div className="flex flex-col gap-6">
       {/* ── Who ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-4 rounded-2xl border border-line/70 bg-canvas/40 p-4">
-        <Avatar account={account} className="size-14 text-xl" />
+      <div className="flex items-center gap-4 rounded-2xl bg-ink/[0.035] p-4">
+        <Avatar account={account} className="size-14 text-xl ring-2 ring-primary/40" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-display text-lg font-semibold text-ink">{account.name ?? 'Signed in'}</p>
-          {account.email && <p className="truncate text-sm text-muted">{account.email}</p>}
-          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted" role="status">
+          {account.email && <p className="truncate font-mono text-xs text-muted">{account.email}</p>}
+          {/* The save state as a small chip, as in the rest of the app's readouts. */}
+          <p
+            className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full bg-ink/8 px-2.5 py-0.5 font-mono text-[0.7rem] text-muted"
+            role="status"
+          >
             <span
               className={cn(
                 'size-2 rounded-full',

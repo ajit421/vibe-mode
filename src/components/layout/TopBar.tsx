@@ -66,7 +66,11 @@ export function TopBar({ onOpenSettings, onOpenShortcuts, onOpenCustomize, onOpe
           <button
             type="button"
             onClick={leaveToLanding}
-            className="vm-tap min-w-0 rounded-lg text-left transition-opacity hover:opacity-80"
+            // `max-w-full`: a button sizes to its content, and the kicker is
+            // `nowrap`, so without a cap the button grew past the h1 and the
+            // status line ran under the clock on a phone held sideways
+            // instead of truncating.
+            className="vm-tap max-w-full min-w-0 rounded-lg text-left transition-opacity hover:opacity-80"
             aria-label={`${theme.name} — back to all modes`}
           >
             {/* The mode's status line lives up here with the name it belongs

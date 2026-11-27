@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
+import { Bot, Check, X } from 'lucide-react';
 import { GoogleButton } from '@/components/account/GoogleButton';
+
+const CAN = [
+  'See and change your modes, playlists and settings',
+  'Play, pause, skip and switch mode in tabs you let it control',
+  'See what’s playing in those tabs',
+];
+
+/** Only promises the server keeps: no password exists, and server/vibe.ts can't touch `linkActivity`. */
+const CANT = ['See your Google password', 'Turn activity linking back on'];
 
 /*
  * The OAuth "authorize" step for the personal MCP server (/mcp): an app such
@@ -114,14 +124,33 @@ export function AuthorizeApp() {
 
         {(phase.kind === 'ready' || phase.kind === 'sending') && (
           <>
-            <p className="text-base text-zinc-200">
-              <strong className="text-zinc-50">{phase.kind === 'ready' ? phase.app : 'The app'}</strong> wants to use your
-              Vibe Mode. It will be able to:
-            </p>
-            <ul className="mt-3 space-y-1.5 text-sm text-zinc-300">
-              <li>• See and change your modes, playlists and settings</li>
-              <li>• Play, pause, skip and switch mode in tabs you let it control</li>
-              <li>• See what’s playing in those tabs</li>
+            {/* The requesting app as a tile, so "who is asking" is the first thing read. */}
+            <div className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3">
+              <span className="grid size-10 place-items-center rounded-xl bg-amber-400/15 text-amber-300">
+                <Bot className="size-5" aria-hidden="true" />
+              </span>
+              <span className="min-w-0">
+                <strong className="block truncate text-zinc-50">{phase.kind === 'ready' ? phase.app : 'The app'}</strong>
+                <span className="text-xs text-zinc-400">wants to use your Vibe Mode</span>
+              </span>
+            </div>
+            <p className="mt-5 font-mono text-[0.7rem] tracking-wider text-zinc-400 uppercase">It will be able to</p>
+            <ul className="mt-2 space-y-1.5 text-sm text-zinc-300">
+              {CAN.map((line) => (
+                <li key={line} className="flex items-start gap-2">
+                  <Check className="mt-0.5 size-4 shrink-0 text-amber-300" aria-hidden="true" />
+                  {line}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-4 font-mono text-[0.7rem] tracking-wider text-zinc-400 uppercase">It won’t be able to</p>
+            <ul className="mt-2 space-y-1.5 text-sm text-zinc-400">
+              {CANT.map((line) => (
+                <li key={line} className="flex items-start gap-2">
+                  <X className="mt-0.5 size-4 shrink-0 text-zinc-500" aria-hidden="true" />
+                  {line}
+                </li>
+              ))}
             </ul>
             <p className="mt-3 text-xs text-zinc-500">
               Sign in with the Google account you use on Vibe Mode. You can disconnect it any time: Account →

@@ -10,7 +10,7 @@ import { verifyGoogle } from '../../server/google';
 //   so nothing long-lived sits in the tab.
 // With neither set up, nobody gets in.
 //
-//   GET /api/admin                      totals, who is listening now, lockouts,
+//   GET /api/admin                      totals, who is listening now,
 //                                       site defaults, and a page of visitors
 //       ?q=<username or id start>       … only visitors that match
 //       &offset=<n>                     … the next page
@@ -25,7 +25,6 @@ const DAY_MS = 86_400_000;
 const LISTENING_MS = 45_000;
 /** An anonymous listener counts if it pinged this recently (it pings every 60 s; background tabs can run late). */
 const PLAYING_MS = 150_000;
-const LOCKOUT_MS = 15 * 60_000;
 const PAGE = 50;
 /** Breakdowns of visits cover this many days, today included. */
 const VISIT_DAYS = 30;
@@ -47,7 +46,6 @@ interface AdminVisitor {
   edited_modes: number;
   playlists: number;
   devices: number;
-  passkeys: number;
   uploads: number;
   seen_at: number | null;
   /** Linked activity (migrations/0009_account_activity.sql): the last visit, and all listening. */
@@ -107,7 +105,6 @@ async function overview(env: Env, url: URL): Promise<Response> {
     totals,
     visitors,
     listening,
-    lockouts,
     defaults,
     playing,
     perDay,
@@ -129,8 +126,6 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COUNT(*) FROM profiles WHERE version > ?1) AS active_day,
          (SELECT COUNT(*) FROM profiles WHERE version > ?2) AS active_week,
          (SELECT COUNT(*) FROM device_keys) AS devices,
-         (SELECT COUNT(*) FROM passkeys) AS passkeys,
-         (SELECT COUNT(*) FROM logins) AS logins,
          (SELECT COUNT(*) FROM google_accounts) AS google,
          (SELECT COUNT(*) FROM uploads) AS uploads,
          (SELECT COALESCE(SUM(octet_length(still)), 0) FROM uploads) AS upload_bytes,
@@ -160,7 +155,6 @@ async function overview(env: Env, url: URL): Promise<Response> {
          (SELECT COALESCE(SUM(CASE WHEN type = 'array' THEN json_array_length(value) ELSE 0 END), 0)
             FROM json_each(p.data, '$.customPlaylists')) AS playlists,
          (SELECT COUNT(*) FROM device_keys k WHERE k.profile_id = p.id) AS devices,
-         (SELECT COUNT(*) FROM passkeys k WHERE k.profile_id = p.id) AS passkeys,
          (SELECT COUNT(*) FROM uploads u WHERE u.profile_id = p.id) AS uploads,
          (SELECT seen_at FROM remote_state r WHERE r.profile_id = p.id) AS seen_at,
          (SELECT MAX(last_at) FROM sessions s WHERE s.profile_id = p.id) AS last_visit,
@@ -177,9 +171,6 @@ async function overview(env: Env, url: URL): Promise<Response> {
        FROM remote_state r LEFT JOIN logins l ON l.profile_id = r.profile_id
        WHERE r.seen_at > ? ORDER BY r.seen_at DESC LIMIT 50`,
     ).bind(now - LISTENING_MS),
-    env.DB.prepare(
-      'SELECT username, count, since FROM login_failures WHERE since > ? ORDER BY count DESC LIMIT 50',
-    ).bind(now - LOCKOUT_MS),
     env.DB.prepare('SELECT kind, id, value FROM defaults ORDER BY kind, id'),
     // Never the tab id: it is meaningless to the owner, and stays in the database.
     env.DB.prepare(
@@ -249,7 +240,6 @@ async function overview(env: Env, url: URL): Promise<Response> {
     listening: (listening.results as { profile_id: string; username: string | null; state: string; seen_at: number }[]).map(
       (row) => ({ ...row, state: parse(row.state) }),
     ),
-    lockouts: lockouts.results,
     defaults: defaults.results,
     playing: playing.results,
     visits: {
