@@ -5,6 +5,9 @@
 
 :root {
   color-scheme: dark;
+  /* Room for the scrollbar always: switching between a short tab and a long
+     one otherwise shifted the whole page sideways. */
+  scrollbar-gutter: stable;
 }
 
 /* The breakdown bars are native <meter>s (the page's CSP forbids inline

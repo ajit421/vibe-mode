@@ -578,37 +578,102 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
     void load('');
   }, [load]);
 
+  const tab = useHashTab();
+  const [auto, setAuto] = useState(() => {
+    try {
+      return sessionStorage.getItem(AUTO_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(AUTO_KEY, auto ? 'on' : 'off');
+    } catch {
+      /* storage blocked: the choice lasts until reload */
+    }
+  }, [auto]);
+  // Live tab only — elsewhere a refresh would reset a search or "Show more" —
+  // and never while this tab is hidden: each refresh is a billed request.
+  useEffect(() => {
+    if (!auto || tab !== 'live' || selected) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load(searched);
+    }, AUTO_REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [auto, tab, selected, load, searched]);
+
   if (selected) {
     return <VisitorDetail token={token} id={selected} onBack={() => setSelected(null)} onSignOut={onSignOut} />;
   }
 
   const t = data?.totals;
   const now = data?.now ?? Date.now();
+  const problems = data ? data.engagement.events.filter((row) => PROBLEMS.has(row.name)) : [];
+  const problemCount = problems.reduce((sum, row) => sum + row.n, 0);
+  const badges: Partial<Record<Tab, number>> = { live: data?.playing.length ?? 0, health: problemCount };
+
   return (
     <>
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-zinc-50">
-            <span className="size-2.5 rounded-full bg-amber-400" aria-hidden="true" />
-            Vibe Mode admin
-          </h1>
-          <p className="font-mono text-xs text-zinc-400" role="status">
-            {loading ? 'Loading…' : data ? <>Updated <Time ms={data.now} now={Date.now()} /></> : ' '}
-          </p>
+      {/* Sticky, so the tabs and Refresh stay in reach on a long page. */}
+      <header className="sticky top-0 z-10 -mx-4 flex flex-col gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 pt-4 pb-0 backdrop-blur sm:-mx-6 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-zinc-50">
+              <span className="size-2.5 rounded-full bg-amber-400" aria-hidden="true" />
+              Vibe Mode admin
+            </h1>
+            <p className="font-mono text-xs text-zinc-400" role="status">
+              {loading ? 'Loading…' : data ? <>Updated <Time ms={data.now} now={Date.now()} /></> : ' '}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Who this tab is signed in as — read from the token for display only;
+                the server checks it on every call. */}
+            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 font-mono text-xs text-zinc-300">
+              {signedInAs(token)}
+            </span>
+            {/* Every refresh is a billed request: off-able, Live tab only, and
+                paused while this tab is hidden. */}
+            <label className="flex items-center gap-2 rounded-lg border border-zinc-800 px-3 py-1.5 text-sm text-zinc-300">
+              <input type="checkbox" className="accent-emerald-400" checked={auto} onChange={(event) => setAuto(event.currentTarget.checked)} />
+              Auto-refresh
+            </label>
+            <button type="button" className={BUTTON} disabled={loading} onClick={() => void load(searched)}>
+              Refresh
+            </button>
+            <button type="button" className={BUTTON} onClick={() => onSignOut()}>
+              Lock
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Who this tab is signed in as — read from the token for display only;
-              the server checks it on every call. */}
-          <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 font-mono text-xs text-zinc-300">
-            {signedInAs(token)}
-          </span>
-          <button type="button" className={BUTTON} disabled={loading} onClick={() => void load(searched)}>
-            Refresh
-          </button>
-          <button type="button" className={BUTTON} onClick={() => onSignOut()}>
-            Lock
-          </button>
-        </div>
+        <nav aria-label="Admin sections" className="-mb-px flex gap-1 overflow-x-auto">
+          {TABS.map((item) => (
+            <a
+              key={item.id}
+              href={`#${item.id}`}
+              aria-current={tab === item.id ? 'page' : undefined}
+              className={
+                tab === item.id
+                  ? 'flex shrink-0 items-center gap-2 border-b-2 border-amber-400 px-3 py-2 text-sm font-medium text-zinc-50'
+                  : 'flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200'
+              }
+            >
+              {item.label}
+              {(badges[item.id] ?? 0) > 0 && (
+                <span
+                  className={
+                    item.id === 'health'
+                      ? 'rounded-full bg-amber-500/15 px-1.5 font-mono text-xs text-amber-300 tabular-nums'
+                      : 'rounded-full bg-emerald-500/15 px-1.5 font-mono text-xs text-emerald-300 tabular-nums'
+                  }
+                >
+                  {badges[item.id]}
+                </span>
+              )}
+            </a>
+          ))}
+        </nav>
       </header>
 
       {error && (
@@ -617,363 +682,469 @@ function Dashboard({ token, onSignOut }: { token: string; onSignOut: (reason?: s
         </p>
       )}
 
-      {t && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <Stat label="Listening now" value={t.playing_now} hint="tabs playing music · anonymous, all visitors" />
-          <Stat
-            label="Visits today"
-            value={t.visits_day}
-            hint={`tabs that opened the site · ${t.visits_week} in 7 days · ${t.visits_month} in 30`}
-          />
-          {data && (
-            <>
-              <Stat
-                label="Listened today"
-                value={duration(data.engagement.listened_ms_day)}
-                hint={`all visitors · ${duration(data.engagement.listened_ms_week)} in 7 days · ${duration(data.engagement.listened_ms_month)} in 30`}
-              />
-              <Stat
-                label="Time on site, per visit"
-                value={duration(data.engagement.avg_visible_ms)}
-                hint={`average on screen, last 7 days · ${data.engagement.sessions_week} visits · ${duration(data.engagement.visible_ms_week)} in all`}
-              />
-              <Stat
-                label="Listening, per visit"
-                value={duration(data.engagement.avg_listened_ms)}
-                hint={`average, last 7 days · tab open ${duration(data.engagement.avg_open_ms)} on average`}
-              />
-            </>
-          )}
-          <Stat
-            label="Visitors with a cloud copy"
-            value={t.visitors}
-            hint={`${t.new_day} new in the last 24 h · ${t.new_week} in 7 days`}
-          />
-          <Stat
-            label="Changed something"
-            value={t.active_day}
-            hint={`in the last 24 h · ${t.active_week} in 7 days`}
-          />
-          {/* Only tabs that report: playback alone sends nothing (see RemoteControl.tsx). */}
-          <Stat
-            label="AI-controlled tabs"
-            value={t.listening}
-            hint={`only tabs with “Let AI control this tab” on · ${t.queued_commands} commands queued`}
-          />
-          <Stat label="Devices signed in" value={t.devices} hint="browsers, sync links and AI links" />
-          <Stat label="Google accounts" value={t.google} hint="profiles linked to Google sign-in" />
-          <Stat label="Uploaded pictures" value={t.uploads} hint={bytes(t.upload_bytes)} />
-          <Stat label="Saved settings" value={bytes(t.data_bytes)} hint="all visitors, text only" />
-        </div>
-      )}
+      {!data && !error && <p className="text-sm text-zinc-400">Loading…</p>}
 
-      {data && (
-        <Section title="Listening now">
-          {data.playing.length > 0 && (
-            <ul className="flex flex-wrap gap-2" aria-label="Listeners by mode">
-              {byMode(data.playing).map(([mode, count]) => (
-                <li key={mode} className="rounded-full border border-zinc-700 px-3 py-1 text-sm">
-                  {mode} <span className="text-zinc-400 tabular-nums">· {count}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Table
-            head={['Mode', 'Playlist', 'Song', 'On', 'Where', 'Heard']}
-            empty={data.playing.length === 0 ? 'Nobody is playing music right now.' : undefined}
-          >
-            {data.playing.map((row, index) => (
-              <tr key={index}>
-                <td className={TD}>{row.mode_name ?? row.mode}</td>
-                <td className={TD}>{row.playlist_name ?? '—'}</td>
-                <td className="max-w-md truncate px-3 py-2">{row.track ?? <span className="text-zinc-500">—</span>}</td>
-                <td className={TD}>
-                  {row.browser ? `${row.browser} · ${row.os} · ${capital(row.device ?? '')}` : '—'}
-                </td>
-                <td className={TD}>{countryName(row.country)}</td>
-                <td className={TD}>
-                  <Time ms={row.seen_at} now={now} />
-                </td>
-              </tr>
-            ))}
-          </Table>
-        </Section>
-      )}
-
-      {data && (
-        <Section title={`Listening · last ${data.visits.days} days`}>
-          <div className="grid gap-3 lg:grid-cols-3">
-            <Breakdown
-              title="Modes"
-              rows={data.engagement.modes.map((row) => ({ name: row.name ?? row.mode, n: row.ms }))}
-              total={data.engagement.listened_ms_month}
-              format={duration}
-              empty="Nothing played yet."
-            />
-            <Breakdown
-              title="Playlists"
-              rows={data.engagement.playlists.map((row) => ({ name: `${row.name ?? '—'} · ${row.mode ?? '—'}`, n: row.ms }))}
-              total={data.engagement.listened_ms_month}
-              format={duration}
-              empty="Nothing played yet."
-            />
-            <Breakdown
-              title="Songs"
-              rows={data.engagement.tracks.map((row) => ({ name: row.name, n: row.ms }))}
-              total={data.engagement.listened_ms_month}
-              format={duration}
-              empty="Nothing played yet."
-            />
-          </div>
-          {data.engagement.perDay.length > 0 && (
-            <Breakdown
-              title="Listening per day (UTC)"
-              rows={data.engagement.perDay.map((row) => ({ name: row.day, n: row.ms }))}
-              total={Math.max(...data.engagement.perDay.map((row) => row.ms))}
-              shares={false}
-              format={duration}
-              label={dayLabel}
-            />
-          )}
-        </Section>
-      )}
-
-      {data && (
-        <Section title="How long visits last · last 7 days">
-          <Breakdown
-            title="Time on screen per visit"
-            rows={data.engagement.lengths}
-            total={data.engagement.lengths.reduce((sum, row) => sum + row.n, 0)}
-            empty="No visits reported yet — a visit is reported when its tab is hidden or closed."
-          />
-        </Section>
-      )}
-
-      {data && (
-        <Section title={`Problems · last ${data.visits.days} days`}>
-          <Table
-            head={['What went wrong', 'Detail', 'Times']}
-            empty={data.engagement.events.some((row) => PROBLEMS.has(row.name)) ? undefined : 'Nothing has gone wrong.'}
-          >
-            {data.engagement.events
-              .filter((row) => PROBLEMS.has(row.name))
-              .map((row) => (
-                <tr key={`${row.name}:${row.detail}`}>
-                  <td className={TD}>{USES[row.name] ?? row.name}</td>
-                  <td className="px-3 py-2">{row.detail || <span className="text-zinc-500">—</span>}</td>
-                  <td className={TD}>{row.n}</td>
-                </tr>
-              ))}
-          </Table>
-        </Section>
-      )}
-
-      {data?.insights && (
-        <Section title="Speed · last 7 days">
-          <Table
-            head={['Device', 'Visits measured', 'Page loaded', 'Largest paint']}
-            empty={data.insights.speed.length === 0 ? 'No visits measured yet.' : undefined}
-          >
-            {data.insights.speed.map((row) => (
-              <tr key={row.name}>
-                <td className={TD}>{capital(row.name ?? '—')}</td>
-                <td className={TD}>{row.n}</td>
-                <td className={TD}>{row.load_ms === null ? '—' : seconds(row.load_ms)}</td>
-                <td className={TD}>{row.lcp_ms === null ? '—' : seconds(row.lcp_ms)}</td>
-              </tr>
-            ))}
-          </Table>
-        </Section>
-      )}
-
-      {data?.insights && (
-        <Section title="Returning visitors · only browsers that allowed it">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Seen, 7 days" value={data.insights.returning.seen_week} />
-            <Stat label="Came back" value={data.insights.returning.returning_week} hint="seen on 2+ days" />
-            <Stat label="New this week" value={data.insights.returning.new_week} />
+      {/* ── Live: what is happening right now ─────────────────────────────── */}
+      {tab === 'live' && data && t && (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat
-              label="Days per visitor"
-              value={data.insights.returning.avg_days_month.toFixed(1)}
-              hint={`last 30 days · ${data.insights.returning.remembered} remembered in all`}
+              label="Listening now"
+              value={
+                <span className="flex items-center gap-2">
+                  {t.playing_now > 0 && <span className="size-2.5 animate-pulse rounded-full bg-emerald-400" aria-hidden="true" />}
+                  {t.playing_now}
+                </span>
+              }
+              hint="tabs playing music · all visitors"
+            />
+            <Stat
+              label="Visits today"
+              value={t.visits_day}
+              hint={`${t.visits_week} in 7 days · ${t.visits_month} in 30`}
+            />
+            <Stat
+              label="Listened today"
+              value={duration(data.engagement.listened_ms_day)}
+              hint={`${duration(data.engagement.listened_ms_week)} in 7 days · ${duration(data.engagement.listened_ms_month)} in 30`}
+            />
+            <Stat
+              label="Time on site, per visit"
+              value={duration(data.engagement.avg_visible_ms)}
+              hint={`on screen, last 7 days · listening ${duration(data.engagement.avg_listened_ms)}`}
             />
           </div>
-        </Section>
-      )}
 
-      {data && (
-        <Section title={`What people use · last ${data.visits.days} days`}>
-          <Table head={['Use', 'Detail', 'Times']} empty={data.engagement.events.length === 0 ? 'Nothing counted yet.' : undefined}>
-            {data.engagement.events
-              .filter((row) => !PROBLEMS.has(row.name))
-              .map((row) => (
-                <tr key={`${row.name}:${row.detail}`}>
-                  <td className={TD}>{USES[row.name] ?? row.name}</td>
-                  <td className="px-3 py-2">{row.detail || <span className="text-zinc-500">—</span>}</td>
-                  <td className={TD}>{row.n}</td>
-                </tr>
-              ))}
-          </Table>
-        </Section>
-      )}
-
-      {data && (
-        <Section title="Recent visits">
-          <Table
-            head={['Started', 'On screen', 'Tab open', 'Listening', 'Landed on', 'On', 'Where']}
-            empty={data.engagement.sessions.length === 0 ? 'No visits reported yet.' : undefined}
-          >
-            {data.engagement.sessions.map((row, index) => (
-              <tr key={index}>
-                <td className={TD}>
-                  <Time ms={row.started_at} now={now} />
-                </td>
-                <td className={TD}>{duration(row.visible_ms)}</td>
-                <td className={TD}>{duration(row.open_ms)}</td>
-                <td className={TD}>{row.listened_ms ? duration(row.listened_ms) : '—'}</td>
-                <td className={TD}>{row.first_mode ?? '—'}</td>
-                <td className={TD}>{row.browser ? `${row.browser} · ${row.os} · ${capital(row.device ?? '')}` : '—'}</td>
-                <td className={TD}>{countryName(row.country)}</td>
-              </tr>
-            ))}
-          </Table>
-        </Section>
-      )}
-
-      {data && t && (
-        <Section title={`Browsers, systems and devices · last ${data.visits.days} days`}>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Breakdown title="Browser" rows={data.visits.browser} total={t.visits_month} />
-            <Breakdown title="System" rows={data.visits.os} total={t.visits_month} />
-            <Breakdown title="Device" rows={data.visits.device} total={t.visits_month} label={capital} />
-            <Breakdown title="Country" rows={data.visits.country} total={t.visits_month} label={countryName} />
-          </div>
-          {data.visits.perDay.length > 0 && (
-            <Breakdown
-              title="Visits per day (UTC)"
-              rows={data.visits.perDay.map((row) => ({ name: row.day, n: row.n }))}
-              total={Math.max(...data.visits.perDay.map((row) => row.n))}
-              shares={false}
-              label={dayLabel}
-            />
-          )}
-        </Section>
-      )}
-
-      {data && data.listening.length > 0 && (
-        <Section title="AI-controlled tabs, now">
-          <Table head={['Visitor', 'Mode', 'Playlist', 'Track', 'Volume', 'Seen']}>
-            {data.listening.map((row) => (
-              <tr key={row.profile_id}>
-                <td className={TD}>
-                  <button type="button" className="text-sky-400 hover:underline" onClick={() => setSelected(row.profile_id)}>
-                    {row.username ?? shortId(row.profile_id)}
-                  </button>
-                </td>
-                <td className={TD}>{row.state.modeName ?? '—'}</td>
-                <td className={TD}>{row.state.playlistName ?? '—'}</td>
-                <td className="max-w-xs truncate px-3 py-2">
-                  <Track state={row.state} />
-                </td>
-                <td className={TD}>{row.state.muted ? 'muted' : (row.state.volume ?? '—')}</td>
-                <td className={TD}>
-                  <Time ms={row.seen_at} now={now} />
-                </td>
-              </tr>
-            ))}
-          </Table>
-        </Section>
-      )}
-
-      {data && (
-        <Section
-          title="Visitors"
-          extra={
-            <form
-              role="search"
-              className="flex w-full gap-2 sm:w-auto"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void load(query.trim());
-              }}
+          <Section title="Listening now">
+            {data.playing.length > 0 && (
+              <ul className="flex flex-wrap gap-2" aria-label="Listeners by mode">
+                {byMode(data.playing).map(([mode, count]) => (
+                  <li key={mode} className="rounded-full border border-zinc-700 px-3 py-1 text-sm">
+                    {mode} <span className="text-zinc-400 tabular-nums">· {count}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Table
+              head={['Mode', 'Playlist', 'Song', 'On', 'Where', 'Heard']}
+              empty={
+                data.playing.length === 0
+                  ? 'Nobody is playing music right now. Browsers that send a privacy signal and haven’t allowed stats aren’t counted.'
+                  : undefined
+              }
             >
-              <input
-                className={INPUT}
-                type="search"
-                aria-label="Find a visitor by username, Google email or id"
-                placeholder="Username, email or id"
-                value={query}
-                onChange={(event) => setQuery(event.currentTarget.value)}
-              />
-              <button type="submit" className={BUTTON} disabled={loading}>
-                Find
-              </button>
-            </form>
-          }
-        >
-          <Table
-            head={['Visitor', 'Joined', 'Last visit', 'Listened', 'Last change', 'Devices', 'Modes', 'Playlists', 'Pictures', 'Size']}
-            empty={data.visitors.length === 0 ? (searched ? `No visitor matches “${searched}”.` : 'No visitors yet.') : undefined}
-          >
-            {data.visitors.map((visitor) => (
-              <tr key={visitor.id} className="hover:bg-zinc-900/60">
-                <td className={TD}>
-                  <button type="button" className="text-sky-400 hover:underline" onClick={() => setSelected(visitor.id)}>
-                    {visitor.google ?? visitor.username ?? <span className="font-mono">{shortId(visitor.id)}</span>}
-                  </button>
-                  {visitor.seen_at && now - visitor.seen_at < 45_000 && (
-                    <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs text-emerald-400">live</span>
-                  )}
-                </td>
-                <td className={TD}>
-                  <Time ms={visitor.created_at} now={now} />
-                </td>
-                <td className={TD}>
-                  <Time ms={visitor.last_visit} now={now} />
-                </td>
-                <td className={TD}>{visitor.listened_ms ? duration(visitor.listened_ms) : '—'}</td>
-                <td className={TD}>
-                  <Time ms={visitor.version} now={now} />
-                </td>
-                <td className={TD}>{visitor.devices}</td>
-                <td className={TD} title="added · edited">
-                  {visitor.added_modes} · {visitor.edited_modes}
-                </td>
-                <td className={TD}>{visitor.playlists}</td>
-                <td className={TD}>{visitor.uploads}</td>
-                <td className={TD}>{bytes(visitor.data_bytes)}</td>
-              </tr>
-            ))}
-          </Table>
-          {data.more && (
-            <div>
-              <button type="button" className={BUTTON} disabled={loading} onClick={() => void load(searched, data.visitors.length)}>
-                Show more
-              </button>
-            </div>
-          )}
-        </Section>
-      )}
-
-      {data && (
-        <details className="rounded-xl border border-zinc-800 p-4">
-          <summary className="cursor-pointer text-sm font-semibold tracking-wide text-zinc-400 uppercase">
-            Site defaults ({data.defaults.length} rows in D1)
-          </summary>
-          <div className="mt-3">
-            <Table head={['Kind', 'Id', 'Value']} empty={data.defaults.length === 0 ? 'No rows.' : undefined}>
-              {data.defaults.map((row) => (
-                <tr key={`${row.kind}:${row.id}`}>
-                  <td className={TD}>{row.kind}</td>
-                  <td className={TD}>{row.id}</td>
-                  <td className="px-3 py-2 font-mono text-xs break-all">{row.value}</td>
+              {data.playing.map((row, index) => (
+                <tr key={index}>
+                  <td className={TD}>{row.mode_name ?? row.mode}</td>
+                  <td className={TD}>{row.playlist_name ?? '—'}</td>
+                  <td className="max-w-md truncate px-3 py-2">{row.track ?? <span className="text-zinc-500">—</span>}</td>
+                  <td className={TD}>{row.browser ? `${row.browser} · ${row.os} · ${capital(row.device ?? '')}` : '—'}</td>
+                  <td className={TD}>{countryName(row.country)}</td>
+                  <td className={TD}>
+                    <Time ms={row.seen_at} now={now} />
+                  </td>
                 </tr>
               ))}
             </Table>
+          </Section>
+
+          <Section title="AI-controlled tabs, now">
+            <Table
+              head={['Visitor', 'Mode', 'Playlist', 'Track', 'Volume', 'Seen']}
+              empty={data.listening.length === 0 ? 'No tab has “Let AI control this tab” on right now.' : undefined}
+            >
+              {data.listening.map((row) => (
+                <tr key={row.profile_id}>
+                  <td className={TD}>
+                    <button type="button" className="text-sky-400 hover:underline" onClick={() => setSelected(row.profile_id)}>
+                      {row.username ?? shortId(row.profile_id)}
+                    </button>
+                  </td>
+                  <td className={TD}>{row.state.modeName ?? '—'}</td>
+                  <td className={TD}>{row.state.playlistName ?? '—'}</td>
+                  <td className="max-w-xs truncate px-3 py-2">
+                    <Track state={row.state} />
+                  </td>
+                  <td className={TD}>{row.state.muted ? 'muted' : (row.state.volume ?? '—')}</td>
+                  <td className={TD}>
+                    <Time ms={row.seen_at} now={now} />
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          </Section>
+        </>
+      )}
+
+      {/* ── Listening: what plays, over time ──────────────────────────────── */}
+      {tab === 'listening' && data && (
+        <>
+          <BarChart
+            title="Listening per day (UTC)"
+            rows={data.engagement.perDay.map((row) => ({ day: row.day, n: row.ms }))}
+            days={data.visits.days}
+            now={now}
+            format={duration}
+            empty="Nothing played yet."
+          />
+          <Section title={`Most played · last ${data.visits.days} days`}>
+            <div className="grid gap-3 lg:grid-cols-3">
+              <Breakdown
+                title="Modes"
+                rows={data.engagement.modes.map((row) => ({ name: row.name ?? row.mode, n: row.ms }))}
+                total={data.engagement.listened_ms_month}
+                format={duration}
+                empty="Nothing played yet."
+              />
+              <Breakdown
+                title="Playlists"
+                rows={data.engagement.playlists.map((row) => ({ name: `${row.name ?? '—'} · ${row.mode ?? '—'}`, n: row.ms }))}
+                total={data.engagement.listened_ms_month}
+                format={duration}
+                empty="Nothing played yet."
+              />
+              <Breakdown
+                title="Songs"
+                rows={data.engagement.tracks.map((row) => ({ name: row.name, n: row.ms }))}
+                total={data.engagement.listened_ms_month}
+                format={duration}
+                empty="Nothing played yet."
+              />
+            </div>
+          </Section>
+        </>
+      )}
+
+      {/* ── Visitors: accounts and people ─────────────────────────────────── */}
+      {tab === 'visitors' && data && t && (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <Stat label="Cloud copies" value={t.visitors} hint={`${t.new_day} new in 24 h · ${t.new_week} in 7 days`} />
+            <Stat label="Changed something" value={t.active_day} hint={`last 24 h · ${t.active_week} in 7 days`} />
+            <Stat label="Google accounts" value={t.google} hint="signed in with Google" />
+            <Stat label="Devices signed in" value={t.devices} hint="browsers, links, AI apps" />
+            <Stat label="Pictures" value={t.uploads} hint={bytes(t.upload_bytes)} />
+            <Stat label="Saved settings" value={bytes(t.data_bytes)} hint="all visitors, text only" />
           </div>
-        </details>
+
+          {data.insights && (
+            <Section title="Returning visitors · only browsers that allowed it">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Stat label="Seen, 7 days" value={data.insights.returning.seen_week} />
+                <Stat label="Came back" value={data.insights.returning.returning_week} hint="seen on 2+ days" />
+                <Stat label="New this week" value={data.insights.returning.new_week} />
+                <Stat
+                  label="Days per visitor"
+                  value={data.insights.returning.avg_days_month.toFixed(1)}
+                  hint={`last 30 days · ${data.insights.returning.remembered} remembered in all`}
+                />
+              </div>
+            </Section>
+          )}
+
+          <Section
+            title="Visitors"
+            extra={
+              <form
+                role="search"
+                className="flex w-full gap-2 sm:w-auto"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void load(query.trim());
+                }}
+              >
+                <input
+                  className={INPUT}
+                  type="search"
+                  aria-label="Find a visitor by username, Google email or id"
+                  placeholder="Username, email or id"
+                  value={query}
+                  onChange={(event) => setQuery(event.currentTarget.value)}
+                />
+                <button type="submit" className={BUTTON} disabled={loading}>
+                  Find
+                </button>
+              </form>
+            }
+          >
+            <Table
+              head={['Visitor', 'Joined', 'Last visit', 'Listened', 'Last change', 'Devices', 'Modes', 'Playlists', 'Pictures', 'Size']}
+              empty={data.visitors.length === 0 ? (searched ? `No visitor matches “${searched}”.` : 'No visitors yet.') : undefined}
+            >
+              {data.visitors.map((visitor) => (
+                <tr key={visitor.id} className="hover:bg-zinc-900/60">
+                  <td className={TD}>
+                    <button type="button" className="text-sky-400 hover:underline" onClick={() => setSelected(visitor.id)}>
+                      {visitor.google ?? visitor.username ?? <span className="font-mono">{shortId(visitor.id)}</span>}
+                    </button>
+                    {visitor.seen_at && now - visitor.seen_at < 45_000 && (
+                      <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs text-emerald-400">live</span>
+                    )}
+                  </td>
+                  <td className={TD}>
+                    <Time ms={visitor.created_at} now={now} />
+                  </td>
+                  <td className={TD}>
+                    <Time ms={visitor.last_visit} now={now} />
+                  </td>
+                  <td className={TD}>{visitor.listened_ms ? duration(visitor.listened_ms) : '—'}</td>
+                  <td className={TD}>
+                    <Time ms={visitor.version} now={now} />
+                  </td>
+                  <td className={TD}>{visitor.devices}</td>
+                  <td className={TD} title="added · edited">
+                    {visitor.added_modes} · {visitor.edited_modes}
+                  </td>
+                  <td className={TD}>{visitor.playlists}</td>
+                  <td className={TD}>{visitor.uploads}</td>
+                  <td className={TD}>{bytes(visitor.data_bytes)}</td>
+                </tr>
+              ))}
+            </Table>
+            {data.more && (
+              <div>
+                <button type="button" className={BUTTON} disabled={loading} onClick={() => void load(searched, data.visitors.length)}>
+                  Show more
+                </button>
+              </div>
+            )}
+          </Section>
+        </>
+      )}
+
+      {/* ── Traffic: visits, where from, on what ──────────────────────────── */}
+      {tab === 'traffic' && data && t && (
+        <>
+          <BarChart
+            title="Visits per day (UTC)"
+            rows={data.visits.perDay}
+            days={data.visits.days}
+            now={now}
+            format={String}
+            empty="No visits yet."
+          />
+          <Section title={`Browsers, systems and devices · last ${data.visits.days} days`}>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Breakdown title="Browser" rows={data.visits.browser} total={t.visits_month} />
+              <Breakdown title="System" rows={data.visits.os} total={t.visits_month} />
+              <Breakdown title="Device" rows={data.visits.device} total={t.visits_month} label={capital} />
+              <Breakdown title="Country" rows={data.visits.country} total={t.visits_month} label={countryName} />
+            </div>
+          </Section>
+          <Section title="How long visits last · last 7 days">
+            <Breakdown
+              title="Time on screen per visit"
+              rows={data.engagement.lengths}
+              total={data.engagement.lengths.reduce((sum, row) => sum + row.n, 0)}
+              empty="No visits reported yet — a visit is reported when its tab is hidden or closed."
+            />
+          </Section>
+          <Section title={`What people use · last ${data.visits.days} days`}>
+            <Table head={['Use', 'Detail', 'Times']} empty={data.engagement.events.length === 0 ? 'Nothing counted yet.' : undefined}>
+              {data.engagement.events
+                .filter((row) => !PROBLEMS.has(row.name))
+                .map((row) => (
+                  <tr key={`${row.name}:${row.detail}`}>
+                    <td className={TD}>{USES[row.name] ?? row.name}</td>
+                    <td className="px-3 py-2">{row.detail || <span className="text-zinc-500">—</span>}</td>
+                    <td className={TD}>{row.n}</td>
+                  </tr>
+                ))}
+            </Table>
+          </Section>
+          <Section title="Recent visits">
+            <Table
+              head={['Started', 'On screen', 'Tab open', 'Listening', 'Landed on', 'On', 'Where']}
+              empty={data.engagement.sessions.length === 0 ? 'No visits reported yet.' : undefined}
+            >
+              {data.engagement.sessions.map((row, index) => (
+                <tr key={index}>
+                  <td className={TD}>
+                    <Time ms={row.started_at} now={now} />
+                  </td>
+                  <td className={TD}>{duration(row.visible_ms)}</td>
+                  <td className={TD}>{duration(row.open_ms)}</td>
+                  <td className={TD}>{row.listened_ms ? duration(row.listened_ms) : '—'}</td>
+                  <td className={TD}>{row.first_mode ?? '—'}</td>
+                  <td className={TD}>{row.browser ? `${row.browser} · ${row.os} · ${capital(row.device ?? '')}` : '—'}</td>
+                  <td className={TD}>{countryName(row.country)}</td>
+                </tr>
+              ))}
+            </Table>
+          </Section>
+        </>
+      )}
+
+      {/* ── Health: what broke, how fast ──────────────────────────────────── */}
+      {tab === 'health' && data && (
+        <>
+          <Section title={`Problems · last ${data.visits.days} days`}>
+            <Table head={['What went wrong', 'Detail', 'Times']} empty={problems.length === 0 ? 'Nothing has gone wrong.' : undefined}>
+              {problems.map((row) => (
+                <tr key={`${row.name}:${row.detail}`}>
+                  <td className={TD}>{USES[row.name] ?? row.name}</td>
+                  <td className="px-3 py-2">{row.detail || <span className="text-zinc-500">—</span>}</td>
+                  <td className={TD}>{row.n}</td>
+                </tr>
+              ))}
+            </Table>
+          </Section>
+          <Section title="Speed · last 7 days">
+            <Table
+              head={['Device', 'Visits measured', 'Page loaded', 'Largest paint']}
+              empty={!data.insights || data.insights.speed.length === 0 ? 'No visits measured yet.' : undefined}
+            >
+              {(data.insights?.speed ?? []).map((row) => (
+                <tr key={row.name}>
+                  <td className={TD}>{capital(row.name ?? '—')}</td>
+                  <td className={TD}>{row.n}</td>
+                  <td className={TD}>{row.load_ms === null ? '—' : <Speed ms={row.load_ms} good={3000} />}</td>
+                  <td className={TD}>{row.lcp_ms === null ? '—' : <Speed ms={row.lcp_ms} good={2500} />}</td>
+                </tr>
+              ))}
+            </Table>
+            <p className="text-xs text-zinc-500">Green is good, amber needs a look: Google counts a largest paint under 2.5 s as good.</p>
+          </Section>
+        </>
+      )}
+
+      {/* ── Site: the defaults every visitor gets ─────────────────────────── */}
+      {tab === 'site' && data && (
+        <Section title={`Site defaults · ${data.defaults.length} rows in D1`}>
+          <Table head={['Kind', 'Id', 'Value']} empty={data.defaults.length === 0 ? 'No rows.' : undefined}>
+            {data.defaults.map((row) => (
+              <tr key={`${row.kind}:${row.id}`}>
+                <td className={TD}>{row.kind}</td>
+                <td className={TD}>{row.id}</td>
+                <td className="px-3 py-2 font-mono text-xs break-all">{row.value}</td>
+              </tr>
+            ))}
+          </Table>
+        </Section>
       )}
     </>
+  );
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────── */
+
+/** sessionStorage: whether the Live tab refreshes itself. On unless switched off in this tab. */
+const AUTO_KEY = 'vibe-mode.adminAuto';
+const AUTO_REFRESH_MS = 30_000;
+
+const TABS = [
+  { id: 'live', label: 'Live' },
+  { id: 'listening', label: 'Listening' },
+  { id: 'visitors', label: 'Visitors' },
+  { id: 'traffic', label: 'Traffic' },
+  { id: 'health', label: 'Health' },
+  { id: 'site', label: 'Site' },
+] as const;
+type Tab = (typeof TABS)[number]['id'];
+
+const tabFromHash = (): Tab => {
+  const hash = window.location.hash.slice(1);
+  return TABS.some((item) => item.id === hash) ? (hash as Tab) : 'live';
+};
+
+/**
+ * The open tab, kept in the address (#visitors) — plain links, so Back,
+ * bookmarks and a refresh all land on the same tab, with no ARIA tab widget.
+ */
+function useHashTab(): Tab {
+  const [tab, setTab] = useState(tabFromHash);
+  useEffect(() => {
+    const onHash = () => setTab(tabFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  return tab;
+}
+
+/** "1.8 s", green under `good` ms and amber over it. */
+function Speed({ ms, good }: { ms: number; good: number }) {
+  return <span className={ms <= good ? 'text-emerald-400' : 'text-amber-300'}>{seconds(ms)}</span>;
+}
+
+/** 'YYYY-MM-DD' (UTC) for `back` days before `now`, as the API writes days. */
+const utcDay = (now: number, back: number) => new Date(now - back * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * One bar per day, oldest left. SVG attributes, not inline styles: the page's
+ * CSP keeps styles to its own stylesheet. Days with nothing get an empty slot,
+ * so gaps read as quiet days instead of disappearing.
+ */
+function BarChart({
+  title,
+  rows,
+  days,
+  now,
+  format,
+  empty,
+}: {
+  title: string;
+  rows: { day: string; n: number }[];
+  days: number;
+  now: number;
+  format: (n: number) => string;
+  empty: string;
+}) {
+  const byDay = new Map(rows.map((row) => [row.day, row.n]));
+  const series = Array.from({ length: days }, (_, index) => {
+    const day = utcDay(now, days - 1 - index);
+    return { day, n: byDay.get(day) ?? 0 };
+  });
+  const max = Math.max(1, ...series.map((row) => row.n));
+  const total = series.reduce((sum, row) => sum + row.n, 0);
+  const width = 100;
+  const height = 40;
+  const slot = width / series.length;
+  return (
+    <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="font-mono text-xs font-semibold tracking-[0.14em] text-zinc-300 uppercase">{title}</h2>
+        <span className="font-mono text-xs text-zinc-400 tabular-nums">
+          {format(total)} in {days} days · today {format(series[series.length - 1].n)}
+        </span>
+      </div>
+      {total === 0 ? (
+        <p className="mt-2 text-sm text-zinc-500">{empty}</p>
+      ) : (
+        <>
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="none"
+            className="mt-3 h-32 w-full"
+            role="img"
+            aria-label={`${title}: ${series
+              .filter((row) => row.n > 0)
+              .map((row) => `${dayLabel(row.day)} ${format(row.n)}`)
+              .join(', ')}`}
+          >
+            {series.map((row, index) => {
+              const barHeight = row.n ? Math.max((row.n / max) * height, 0.8) : 0;
+              return (
+                <rect
+                  key={row.day}
+                  x={index * slot + slot * 0.15}
+                  y={height - barHeight}
+                  width={slot * 0.7}
+                  height={barHeight}
+                  rx={0.3}
+                  className={index === series.length - 1 ? 'fill-amber-400' : 'fill-emerald-400/80 hover:fill-emerald-300'}
+                >
+                  <title>{`${dayLabel(row.day)}: ${format(row.n)}`}</title>
+                </rect>
+              );
+            })}
+          </svg>
+          <div className="mt-1 flex justify-between font-mono text-[0.65rem] text-zinc-500">
+            <span>{dayLabel(series[0].day)}</span>
+            <span>today</span>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
